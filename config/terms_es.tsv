@@ -1,0 +1,273 @@
+# Diccionario de pronunciacion: termino en ingles <TAB> como debe sonar con voz espanola.
+#
+# Por que existe este archivo:
+#   Cuando escribes en espanol y sueltas un termino tecnico en ingles, cambiar
+#   la voz a ingles por una sola palabra suena peor que dejarla en espanol.
+#   La solucion es reescribir esa palabra con grafia espanola para que el motor
+#   la pronuncie como la dirias tu.
+#
+# Como editarlo:
+#   - Una linea por termino, separada por UN TABULADOR (no espacios).
+#   - No distingue mayusculas de minusculas.
+#   - Los terminos de varias palabras se aplican antes que los de una sola,
+#     asi que "pull request" gana sobre "pull".
+#   - Guarda el archivo en UTF-8.
+#   - Prueba un termino con:  .\read_aloud.ps1 -InputText "hay que hacer el deploy"
+#   - Si una palabra ya suena bien, borra su linea. Menos reglas es mejor.
+
+# --- Siglas: se leen deletreadas al modo espanol ---------------------------
+API	a pe i
+CLI	ce ele i
+CPU	ce pe u
+CSS	ce ese ese
+CSV	ce ese uve
+DNS	de ene ese
+GPU	ge pe u
+HTML	hache te eme ele
+HTTP	hache te te pe
+HTTPS	hache te te pe ese
+IDE	i de e
+IP	i pe
+JSON	yeison
+KPI	ka pe i
+LLM	ele ele eme
+NPM	ene pe eme
+OS	o ese
+PDF	pe de efe
+PNG	pe ene ge
+PR	pe erre
+QA	cu a
+RAM	ram
+ROI	erre o i
+SDK	ese de ka
+SQL	ese cu ele
+SSD	ese ese de
+SSH	ese ese hache
+TTS	te te ese
+UI	u i
+URL	u erre ele
+USB	u ese be
+UX	u equis
+VPN	uve pe ene
+XML	equis eme ele
+YAML	yamel
+CI/CD	ce i ce de
+CI	ce i
+AWS	a doble uve ese
+GCP	ge ce pe
+CRM	ce erre eme
+ERP	e erre pe
+AI	inteligencia artificial
+IA	inteligencia artificial
+
+# --- Nombres propios de herramientas ---------------------------------------
+PowerShell	Pauer Chel
+GitHub	Guit jab
+GitLab	Guit lab
+Git	Guit
+Python	Paiton
+JavaScript	Yava script
+TypeScript	Taip script
+Node.js	Noud yei ese
+React	Riact
+Docker	Doker
+Kubernetes	Kubernetis
+Windows	Uindous
+Google	Gugol
+Chrome	Croum
+Jira	Yira
+Notion	Nouchon
+Claude	Clod
+OpenAI	Oupen ei ai
+ChatGPT	Chat ye pe te
+Anthropic	Antropic
+Excel	Exel
+
+# --- Flujo de trabajo con codigo -------------------------------------------
+pull request	pul rikuést
+pull requests	pul rikuésts
+merge conflict	merch cónflict
+stack trace	stak tréis
+feature flag	fícher flag
+open source	óupen sors
+machine learning	machín lérnin
+deep learning	dip lérnin
+health check	jelt chek
+load balancer	loud bálanser
+release notes	rilís nóuts
+commit	cómit
+commits	cómits
+merge	merch
+push	puch
+pull	pul
+deploy	diplói
+deployment	diplóiment
+release	rilís
+build	bild
+builds	bilds
+debug	dibág
+debugging	dibáguin
+issue	íshu
+issues	íshus
+feature	fícher
+features	fíchers
+bug	bag
+bugs	bags
+patch	pach
+rollback	rólbak
+staging	estéiyin
+pipeline	páiplain
+workflow	uérkflou
+repository	ripósitori
+repo	ripo
+framework	fréimuork
+software	sóftuer
+hardware	járduer
+cloud	claud
+default	difólt
+update	ápdeit
+updates	ápdeits
+upgrade	ápgreid
+download	dáunloud
+upload	áploud
+cache	caché
+caching	cachín
+queue	kiu
+thread	tred
+threads	treds
+array	arréi
+string	estrín
+strings	estríns
+boolean	búlean
+integer	íntayer
+float	flout
+loop	lup
+loops	lups
+scope	skóup
+script	escrípt
+scripts	escrípts
+runtime	rántaim
+timeout	táimaut
+callback	cólbak
+request	rikuést
+requests	rikuésts
+response	rispóns
+token	tóuken
+tokens	tóukens
+layout	léiaut
+design	disáin
+dashboard	dáchbord
+database	déitabeis
+dataset	déitaset
+training	tréinin
+overfitting	overfítin
+embedding	embédin
+embeddings	embédins
+inference	ínferens
+epoch	ípok
+weights	ueits
+notebook	nóutbuk
+review	riviú
+reviews	riviús
+stack	stak
+trace	tréis
+logging	lóguin
+warning	uórnin
+warnings	uórnins
+container	contéiner
+containers	contéiners
+image	ímich
+images	ímiches
+volume	vólium
+network	nétuork
+serverless	sérverles
+cluster	cláster
+node	noud
+nodes	nouds
+scaling	eskéilin
+throughput	trúput
+latency	léitensi
+performance	perfórmans
+backlog	báklog
+standup	stándap
+milestone	máilstoun
+roadmap	róudmap
+stakeholder	stéikjoulder
+deadline	dédlain
+meeting	mítin
+email	iméil
+click	clik
+folder	fólder
+file	fail
+files	fails
+path	pat
+paths	pats
+key	ki
+keys	kis
+value	váliu
+values	válius
+hash	jach
+encoding	encóudin
+parsing	pársin
+parser	párser
+wrapper	uraper
+handler	jándler
+listener	lísener
+event	ivént
+events	ivénts
+trigger	tríguer
+triggers	tríguers
+job	yob
+jobs	yobs
+worker	uórker
+workers	uórkers
+daemon	dímon
+service	sérvis
+services	sérvis
+testing	téstin
+coverage	cáverich
+mock	mok
+production	prodákchon
+toggle	tógol
+setup	sétap
+settings	sétins
+configuration	configuréichon
+username	yúserneim
+password	pásuord
+login	lóguin
+logout	lógaut
+dropdown	drópdaun
+checkbox	chékboks
+button	bóton
+screen	skrin
+screenshot	skrínchot
+scroll	skrol
+mouse	maus
+keyboard	kíbord
+shortcut	chórtcat
+laptop	láptop
+browser	bráuser
+plugin	plágin
+plugins	plágins
+package	pákech
+packages	pákeches
+library	láibrari
+license	láisens
+board	bord
+spreadsheet	sprédchit
+report	ripórt
+insight	ínsait
+insights	ínsaits
+target	tárguet
+goal	goul
+growth	gróut
+revenue	révenu
+churn	chern
+funnel	fánel
+onboarding	onbórdin
+feedback	fídbak
+survey	sérvei
+budget	báyet
+forecast	fórcast
+deliverable	delíverabol
+timeline	táimlain
