@@ -1,0 +1,13 @@
+# Binarios de Piper y modelos de voz: se instalan con setup.ps1
+read_aloud_piper/bin/
+read_aloud_piper/voices/
+read_aloud_piper/tmp/
+
+# Estado en tiempo de ejecucion
+read_aloud_piper/runtime/
+*.wav
+*.log
+
+# Windows
+Thumbs.db
+desktop.ini
