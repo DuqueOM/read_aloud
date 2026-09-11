@@ -69,8 +69,7 @@ if ($Stop) {
             Where-Object {
                 $_.Name -eq 'powershell.exe' -and
                 $_.ProcessId -ne $PID -and
-                $_.CommandLine -like ('*-File*' + $paths.Root + '
-ead_aloud*.ps1*')
+                $_.CommandLine -like ('*-File*' + $paths.Root + '\read_aloud*.ps1*')
             } |
             ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
         Get-Process -Name 'piper' -ErrorAction SilentlyContinue | Stop-Process -Force
@@ -182,7 +181,7 @@ if ($ShowPlan) {
     Set-SpeechTerms (Import-SpeechTerms -Path $paths.TermsFile)
 
     $plan = Build-SpeechPlan -Text $text -Requested $Language -MlMode $MlMode `
-        -TargetChars $settings.ChunkTargetChars -FirstChunkChars $settings.FirstChunkChars `
+        -TargetChars $settings.ChunkTargetChars -FirstChunkMinChars $settings.FirstChunkMinChars `
         -Fallback $settings.FallbackLanguage
 
     $profile = Get-LanguageProfile -Text $text
@@ -212,7 +211,7 @@ function Invoke-DirectRead {
     Set-SpeechTerms (Import-SpeechTerms -Path $paths.TermsFile)
 
     $plan = Build-SpeechPlan -Text $Text -Requested $Language -MlMode $MlMode `
-        -TargetChars $settings.ChunkTargetChars -FirstChunkChars $settings.FirstChunkChars `
+        -TargetChars $settings.ChunkTargetChars -FirstChunkMinChars $settings.FirstChunkMinChars `
         -Fallback $settings.FallbackLanguage
 
     $voice = Get-VoiceModelPath -Paths $paths -Settings $settings -Lang $plan.DocumentLang

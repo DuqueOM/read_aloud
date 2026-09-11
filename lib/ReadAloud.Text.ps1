@@ -377,14 +377,22 @@ function Prepare-TextForPiper {
 
 function Split-SegmentIntoChunks {
     # Divide un segmento de un solo idioma en fragmentos para sintetizar.
-    # El primero es corto a proposito: es el que decide cuanto tarda en sonar
-    # la primera palabra.
+    #
+    # El primer fragmento decide cuanto tardas en oir la primera palabra, y
+    # sintetizar cuesta alrededor del siete por ciento de lo que dura su audio.
+    # Por eso el primero se cierra en cuanto tiene una frase completa con un
+    # minimo de texto, sin esperar a llenar el cupo: acumular dos frases
+    # duplicaba la espera inicial sin ninguna ganancia.
     param(
         [string]$Text,
         [int]$TargetChars = 220,
-        [int]$FirstChunkChars = 70,
+        [int]$FirstChunkMinChars = 25,
         [switch]$IsFirstSegment
     )
+
+    # Una frase mas corta que esto no justifica un fragmento propio: el corte
+    # se oiria como un tropiezo.
+    $minimoPrimerFragmento = $FirstChunkMinChars
 
     $pieces = [regex]::Split($Text, '(?<=[\.\!\?\:;])\s+|\r?\n+')
 
@@ -401,10 +409,17 @@ function Split-SegmentIntoChunks {
             $current = "$current $p"
         }
 
-        $limit = $TargetChars
-        if ($IsFirstSegment -and $chunks.Count -eq 0) { $limit = $FirstChunkChars }
+        $esPrimerFragmento = ($IsFirstSegment -and $chunks.Count -eq 0)
 
-        if ($current.Length -ge $limit) {
+        if ($esPrimerFragmento) {
+            # Cada vuelta del bucle agrega una frase completa, asi que basta
+            # con comprobar que ya hay texto suficiente.
+            $cerrar = ($current.Length -ge $minimoPrimerFragmento)
+        } else {
+            $cerrar = ($current.Length -ge $TargetChars)
+        }
+
+        if ($cerrar) {
             [void]$chunks.Add($current)
             $current = ''
         }
@@ -424,7 +439,7 @@ function Build-SpeechPlan {
         [string]$Requested = 'Auto',
         [string]$MlMode = 'MachineLearning',
         [int]$TargetChars = 220,
-        [int]$FirstChunkChars = 70,
+        [int]$FirstChunkMinChars = 25,
         [string]$Fallback = 'es'
     )
 
@@ -438,7 +453,7 @@ function Build-SpeechPlan {
         $normalized = Normalize-ForSpeech -Text $segment.Text -Lang $segment.Lang -MlMode $MlMode
         $prepared = Prepare-TextForPiper -Text $normalized
 
-        $chunks = Split-SegmentIntoChunks -Text $prepared -TargetChars $TargetChars -FirstChunkChars $FirstChunkChars -IsFirstSegment:$isFirst
+        $chunks = Split-SegmentIntoChunks -Text $prepared -TargetChars $TargetChars -FirstChunkMinChars $FirstChunkMinChars -IsFirstSegment:$isFirst
 
         foreach ($chunk in $chunks) {
             [void]$plan.Add(@{ Lang = $segment.Lang; Text = $chunk })

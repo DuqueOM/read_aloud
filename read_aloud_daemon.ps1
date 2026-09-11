@@ -62,6 +62,11 @@ Write-DaemonLog "Inicio. Temporales eliminados: $purged"
 
 Set-SpeechTerms (Import-SpeechTerms -Path $paths.TermsFile)
 
+# La expresion regular del diccionario se compila la primera vez que se usa, y
+# esa compilacion tardaba cerca de medio segundo justo en la primera lectura
+# del dia. Ejercerla aqui la paga por adelantado.
+[void](Expand-EnglishTerms -Text 'deploy cache pull request')
+
 $voiceEs = Get-VoiceModelPath -Paths $paths -Settings $settings -Lang 'es'
 $voiceEn = Get-VoiceModelPath -Paths $paths -Settings $settings -Lang 'en'
 
@@ -143,11 +148,16 @@ $pipeScript = {
                 $writer.WriteLine('empty')
             }
 
-            $server.WaitForPipeDrain()
         } catch {
             Start-Sleep -Milliseconds 50
         } finally {
-            if ($server) { $server.Dispose() }
+            # Sin desconectar explicitamente, un cliente que escribe y se va
+            # sin leer la respuesta deja el hilo esperando para siempre y el
+            # residente deja de aceptar ordenes.
+            if ($server) {
+                try { if ($server.IsConnected) { $server.Disconnect() } } catch { }
+                $server.Dispose()
+            }
         }
     }
 }
@@ -514,7 +524,7 @@ function Start-Speaking {
     $state.Finished = $false
 
     $plan = Build-SpeechPlan -Text $Text -Requested $Requested `
-        -TargetChars $settings.ChunkTargetChars -FirstChunkChars $settings.FirstChunkChars `
+        -TargetChars $settings.ChunkTargetChars -FirstChunkMinChars $settings.FirstChunkMinChars `
         -Fallback $settings.FallbackLanguage
 
     $index = 0

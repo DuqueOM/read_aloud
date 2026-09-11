@@ -53,20 +53,39 @@ ReadSelection() {
 }
 
 ; Manda una linea JSON al proceso residente. Devuelve true si la recibio.
+;
+; Se usa CreateFileW y no FileOpen: FileOpen intenta crear el archivo si no
+; existe, y sobre una tuberia con nombre eso falla o se queda colgado.
+; OPEN_EXISTING es la unica forma correcta de abrir una tuberia.
 SendCommand(payload) {
     global pipePath
+
+    static GENERIC_READ  := 0x80000000
+    static GENERIC_WRITE := 0x40000000
+    static OPEN_EXISTING := 3
 
     ; El servidor atiende una conexion a la vez y vuelve a abrir la tuberia
     ; enseguida. Un par de reintentos cubre esa rendija de milisegundos.
     loop 5 {
-        try {
-            pipe := FileOpen(pipePath, "rw", "UTF-8-RAW")
+        handle := DllCall("CreateFileW", "Str", pipePath
+            , "UInt", GENERIC_READ | GENERIC_WRITE
+            , "UInt", 0, "Ptr", 0, "UInt", OPEN_EXISTING, "UInt", 0, "Ptr", 0, "Ptr")
 
-            if IsObject(pipe) {
-                pipe.Write(payload . "`n")
-                pipe.Close()
-                return true
-            }
+        if (handle != -1) {
+            linea := payload . "`n"
+            bytes := StrPut(linea, "UTF-8") - 1
+
+            ; El nombre no puede ser "buffer": AutoHotkey no distingue
+            ; mayusculas y chocaria con la clase Buffer, que es de solo lectura.
+            datos := Buffer(bytes + 1)
+            StrPut(linea, datos, "UTF-8")
+
+            escritos := 0
+            correcto := DllCall("WriteFile", "Ptr", handle, "Ptr", datos
+                , "UInt", bytes, "UInt*", &escritos, "Ptr", 0)
+
+            DllCall("CloseHandle", "Ptr", handle)
+            return correcto && escritos = bytes
         }
 
         Sleep(25)

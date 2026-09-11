@@ -24,10 +24,14 @@
     NoiseW = 0.8
 
     # Tamano de los fragmentos de audio, en caracteres.
-    # El primero es corto a proposito: es el que decide cuanto tardas en oir
-    # la primera palabra.
+    #
+    # ChunkTargetChars es el tamano al que se cierran los fragmentos normales.
+    #
+    # FirstChunkMinChars es el minimo del primero, que se corta en la primera
+    # frase completa que llegue a ese tamano. El primero decide cuanto tardas
+    # en oir la primera palabra, asi que conviene pequeno.
     ChunkTargetChars = 220
-    FirstChunkChars = 70
+    FirstChunkMinChars = 25
 
     # Idioma que se usa cuando el texto es demasiado corto o ambiguo.
     FallbackLanguage = 'es'

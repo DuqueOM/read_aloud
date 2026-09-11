@@ -23,7 +23,7 @@ Get-CimInstance Win32_Process |
     Where-Object {
         $_.Name -eq 'powershell.exe' -and
         $_.ProcessId -ne $PID -and
-        $_.CommandLine -like ('*-File*' + $scriptRoot + 'ead_aloud*.ps1*')
+        $_.CommandLine -like ('*-File*' + $scriptRoot + '\read_aloud*.ps1*')
     } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 
