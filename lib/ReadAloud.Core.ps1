@@ -188,15 +188,21 @@ function Get-WavDuration {
 }
 
 function Send-ReadAloudCommand {
-    # Manda una orden al proceso residente. Devuelve la respuesta o $null si el
-    # proceso no esta escuchando.
+    # Manda una orden al proceso residente. Devuelve 'ok' si la entrego, o
+    # $null si nadie estaba escuchando.
+    #
+    # El envio es de una sola direccion a proposito. Cuando el servidor
+    # respondia, tenia que desconectar despues de escribir, y esa desconexion
+    # descartaba la respuesta antes de que el cliente alcanzara a leerla: las
+    # ordenes se perdian de forma intermitente. Conectar ya demuestra que hay
+    # alguien escuchando, asi que la respuesta sobraba.
     param(
         [string]$PipeName,
         [hashtable]$Command,
         [int]$TimeoutMs = 400
     )
 
-    $client = New-Object IO.Pipes.NamedPipeClientStream('.', $PipeName, [IO.Pipes.PipeDirection]::InOut)
+    $client = New-Object IO.Pipes.NamedPipeClientStream('.', $PipeName, [IO.Pipes.PipeDirection]::Out)
 
     try {
         $client.Connect($TimeoutMs)
@@ -204,9 +210,9 @@ function Send-ReadAloudCommand {
         $writer = New-Object IO.StreamWriter($client, (New-Object Text.UTF8Encoding($false)))
         $writer.AutoFlush = $true
         $writer.WriteLine(($Command | ConvertTo-Json -Compress -Depth 5))
+        $writer.Flush()
 
-        $reader = New-Object IO.StreamReader($client, (New-Object Text.UTF8Encoding($false)))
-        return $reader.ReadLine()
+        return 'ok'
     } catch {
         return $null
     } finally {

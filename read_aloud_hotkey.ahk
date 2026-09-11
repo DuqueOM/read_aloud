@@ -60,15 +60,16 @@ ReadSelection() {
 SendCommand(payload) {
     global pipePath
 
-    static GENERIC_READ  := 0x80000000
+    ; Solo escritura: la tuberia del proceso residente es de una sola
+    ; direccion, y pedir lectura tambien la abriria con permisos denegados.
     static GENERIC_WRITE := 0x40000000
     static OPEN_EXISTING := 3
 
-    ; El servidor atiende una conexion a la vez y vuelve a abrir la tuberia
-    ; enseguida. Un par de reintentos cubre esa rendija de milisegundos.
+    ; El servidor vuelve a abrir la tuberia despues de cada conexion. Un par de
+    ; reintentos cubre esa rendija de milisegundos.
     loop 5 {
         handle := DllCall("CreateFileW", "Str", pipePath
-            , "UInt", GENERIC_READ | GENERIC_WRITE
+            , "UInt", GENERIC_WRITE
             , "UInt", 0, "Ptr", 0, "UInt", OPEN_EXISTING, "UInt", 0, "Ptr", 0, "Ptr")
 
         if (handle != -1) {

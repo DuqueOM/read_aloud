@@ -129,31 +129,25 @@ $pipeScript = {
     while (-not $sync.Stopping) {
         $server = $null
         try {
+            # La tuberia es de una sola direccion: el servidor solo lee. Cuando
+            # tambien respondia, habia que desconectar despues de escribir, y
+            # eso descartaba la respuesta antes de que el cliente la leyera.
+            # El resultado era que las ordenes se perdian de forma intermitente.
             $server = New-Object IO.Pipes.NamedPipeServerStream(
-                $pipeName, [IO.Pipes.PipeDirection]::InOut, 1,
+                $pipeName, [IO.Pipes.PipeDirection]::In, 4,
                 [IO.Pipes.PipeTransmissionMode]::Byte, [IO.Pipes.PipeOptions]::None, 4096, 4096)
 
             $server.WaitForConnection()
 
-            $encoding = New-Object Text.UTF8Encoding($false)
-            $reader = New-Object IO.StreamReader($server, $encoding)
-            $writer = New-Object IO.StreamWriter($server, $encoding)
-            $writer.AutoFlush = $true
+            $reader = New-Object IO.StreamReader($server, (New-Object Text.UTF8Encoding($false)))
 
-            $line = $reader.ReadLine()
-            if ($line) {
-                $sync.Requests.Enqueue($line)
-                $writer.WriteLine('ok')
-            } else {
-                $writer.WriteLine('empty')
+            # Un cliente puede mandar varias ordenes seguidas antes de cerrar.
+            while ($null -ne ($line = $reader.ReadLine())) {
+                if ($line.Trim() -ne '') { $sync.Requests.Enqueue($line) }
             }
-
         } catch {
             Start-Sleep -Milliseconds 50
         } finally {
-            # Sin desconectar explicitamente, un cliente que escribe y se va
-            # sin leer la respuesta deja el hilo esperando para siempre y el
-            # residente deja de aceptar ordenes.
             if ($server) {
                 try { if ($server.IsConnected) { $server.Disconnect() } } catch { }
                 $server.Dispose()

@@ -113,7 +113,12 @@ Si quieres controlar el lector desde otro programa, escribe una línea JSON en
 | `{"cmd":"toggle"}` | Pausa o continúa |
 | `{"cmd":"back"}` | Retrocede |
 | `{"cmd":"forward"}` | Avanza |
-| `{"cmd":"ping"}` | Comprueba que está vivo |
+| `{"cmd":"ping"}` | No hace nada, sirve para probar la conexión |
 | `{"cmd":"quit"}` | Cierra el proceso residente |
 
 `lang` acepta `Auto`, `Spanish` o `English`.
+
+La tubería es de una sola dirección: el proceso residente lee pero nunca
+responde. Saber si está vivo consiste en abrir la tubería, porque solo existe
+mientras él escucha. Abre con `GENERIC_WRITE` y `OPEN_EXISTING`, escribe la
+línea terminada en salto de línea y cierra.
