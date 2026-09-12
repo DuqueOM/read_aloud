@@ -78,6 +78,21 @@ La ventana se arrastra desde cualquier parte que no sea un botón, y recuerda
 dónde la dejaste: la posición se guarda en
 `read_aloud_piper\runtime\player.json`.
 
+### Velocidad de reproducción
+
+El botón verde junto a `+10` muestra la velocidad actual. Un clic la sube un
+paso y un clic derecho la baja. También responden `Ctrl+Shift+]` y
+`Ctrl+Shift+[`. Los pasos son 0.75x, 1x, 1.25x, 1.5x, 1.75x y 2x.
+
+El cambio es inmediato porque acelera la reproducción del audio ya generado,
+sin volver a sintetizar nada. La velocidad elegida se recuerda para las
+siguientes lecturas, en el mismo `player.json`.
+
+No es lo mismo que `LengthScale`. Ese ajuste cambia el ritmo con que la voz
+genera el audio y requiere reiniciar el proceso residente; el botón actúa
+encima de eso. El reloj del reproductor cuenta tiempo del audio, así que a 2x
+avanza dos segundos por cada segundo real.
+
 ## Limpieza
 
 | Valor | Por defecto | Qué hace |
@@ -113,6 +128,8 @@ Si quieres controlar el lector desde otro programa, escribe una línea JSON en
 | `{"cmd":"toggle"}` | Pausa o continúa |
 | `{"cmd":"back"}` | Retrocede |
 | `{"cmd":"forward"}` | Avanza |
+| `{"cmd":"faster"}` | Sube la velocidad un paso |
+| `{"cmd":"slower"}` | Baja la velocidad un paso |
 | `{"cmd":"ping"}` | No hace nada, sirve para probar la conexión |
 | `{"cmd":"quit"}` | Cierra el proceso residente |
 

@@ -8,6 +8,8 @@
 ;   Ctrl+Shift+Espacio  Pausa o continua
 ;   Ctrl+Shift+,        Retrocede 10 segundos
 ;   Ctrl+Shift+.        Avanza 10 segundos
+;   Ctrl+Shift+]        Sube la velocidad
+;   Ctrl+Shift+[        Baja la velocidad
 ;
 ; El atajo habla directamente con el proceso residente por una tuberia con
 ; nombre. No arranca PowerShell, y por eso la respuesta es inmediata. Solo si
@@ -29,6 +31,8 @@ StartDaemon()
 ^+Space:: SendCommand('{"cmd":"toggle"}')
 ^+,:: SendCommand('{"cmd":"back"}')
 ^+.:: SendCommand('{"cmd":"forward"}')
+^+]:: SendCommand('{"cmd":"faster"}')
+^+[:: SendCommand('{"cmd":"slower"}')
 
 ReadSelection() {
     saved := ClipboardAll()

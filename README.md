@@ -14,10 +14,11 @@ Ctrl+Shift+Q        detener
 Ctrl+Shift+Espacio  pausar o continuar
 Ctrl+Shift+,        retroceder 10 segundos
 Ctrl+Shift+.        avanzar 10 segundos
+Ctrl+Shift+] y [    subir o bajar la velocidad
 ```
 
 Mientras lee aparece una barra pequeña sobre todas las ventanas, con pausa,
-avance, retroceso y posición. Se cierra sola al terminar.
+avance, retroceso, velocidad y posición. Se cierra sola al terminar.
 
 ## Qué necesitas
 

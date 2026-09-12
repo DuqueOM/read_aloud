@@ -317,6 +317,10 @@ $xaml = @'
       <Button x:Name="BtnFwd" Content="+10" FontFamily="Segoe UI" FontSize="10" FontWeight="SemiBold"
               Width="28" Height="26" Foreground="White" Background="Transparent"
               BorderThickness="0" Cursor="Hand" ToolTip="Avanzar 10 segundos"/>
+      <Button x:Name="BtnSpeed" Content="1x" FontFamily="Segoe UI" FontSize="10" FontWeight="SemiBold"
+              Width="40" Height="26" Foreground="#9AE6B4" Background="Transparent"
+              BorderThickness="0" Cursor="Hand" Margin="4,0,0,0"
+              ToolTip="Velocidad. Clic: mas rapido. Clic derecho: mas lento."/>
       <Grid Width="170" Height="26" Margin="8,0,8,0" VerticalAlignment="Center">
         <Border Height="4" CornerRadius="2" Background="#3AFFFFFF" VerticalAlignment="Center"/>
         <Border x:Name="BufferBar" Height="4" CornerRadius="2" Background="#55FFFFFF"
@@ -339,7 +343,7 @@ $xmlReader = [Xml.XmlReader]::Create($reader)
 $window = [Windows.Markup.XamlReader]::Load($xmlReader)
 
 $ui = @{}
-foreach ($name in @('Root','LangBadge','BtnBack','BtnPlay','BtnFwd','BufferBar','Seek','TimeLabel','BtnClose')) {
+foreach ($name in @('Root','LangBadge','BtnBack','BtnPlay','BtnFwd','BtnSpeed','BufferBar','Seek','TimeLabel','BtnClose')) {
     $ui[$name] = $window.FindName($name)
 }
 
@@ -361,6 +365,45 @@ if (Test-Path -LiteralPath $paths.StateFile) {
 }
 
 $player = New-Object Windows.Media.MediaPlayer
+
+# Velocidades que recorre el boton. Se cambia la velocidad de reproduccion, no
+# la de sintesis: asi el cambio es inmediato y no hay que regenerar el audio.
+$speedSteps = @(0.75, 1.0, 1.25, 1.5, 1.75, 2.0)
+$script:speed = 1.0
+
+if ($savedState -and $savedState.PSObject.Properties.Name -contains 'Speed') {
+    $saved = [double]$savedState.Speed
+    if ($speedSteps -contains $saved) { $script:speed = $saved }
+}
+
+function Save-PlayerState {
+    # Se guarda en cada cambio y no solo al cerrar: si el proceso se corta a
+    # la fuerza, la velocidad elegida no se pierde.
+    try {
+        @{ Left = $window.Left; Top = $window.Top; Speed = $script:speed } |
+            ConvertTo-Json |
+            Set-Content -LiteralPath $paths.StateFile -Encoding UTF8
+    } catch { }
+}
+
+function Format-Speed {
+    param([double]$Value)
+    return ($Value.ToString('0.##', [Globalization.CultureInfo]::InvariantCulture) + 'x')
+}
+
+function Set-PlaybackSpeed {
+    param([int]$Direction)
+
+    $index = [Array]::IndexOf($speedSteps, $script:speed)
+    if ($index -lt 0) { $index = 1 }
+
+    $index = [Math]::Max(0, [Math]::Min($speedSteps.Count - 1, $index + $Direction))
+    $script:speed = $speedSteps[$index]
+
+    $player.SpeedRatio = $script:speed
+    $ui.BtnSpeed.Content = Format-Speed $script:speed
+    Save-PlayerState
+}
 
 # --------------------------------------------------------------------------
 # Estado de la lectura en curso.
@@ -571,6 +614,10 @@ $player.add_MediaOpened({
         $player.Play()
         Set-PlayIcon -Playing $true
     }
+
+    # MediaPlayer vuelve a 1x con cada archivo nuevo; se reaplica despues de
+    # Play porque antes no siempre surte efecto.
+    $player.SpeedRatio = $script:speed
 })
 
 $player.add_MediaEnded({
@@ -635,6 +682,10 @@ $ui.BtnFwd.Add_Click({
     Invoke-Seek -TargetSeconds ((Get-GlobalPosition) + $settings.SkipSeconds)
 })
 
+$ui.BtnSpeed.Add_Click({ Set-PlaybackSpeed -Direction 1 })
+$ui.BtnSpeed.Add_MouseRightButtonUp({ Set-PlaybackSpeed -Direction -1 })
+$ui.BtnSpeed.Content = Format-Speed $script:speed
+
 $ui.BtnClose.Add_Click({
     Stop-Playback
 })
@@ -688,6 +739,8 @@ $timer.Add_Tick({
             'toggle' { Toggle-Playback }
             'back'   { Invoke-Seek -TargetSeconds ((Get-GlobalPosition) - $settings.SkipSeconds) }
             'forward'{ Invoke-Seek -TargetSeconds ((Get-GlobalPosition) + $settings.SkipSeconds) }
+            'faster' { Set-PlaybackSpeed -Direction 1 }
+            'slower' { Set-PlaybackSpeed -Direction -1 }
             'quit'   {
                 Stop-Playback
                 $sync.Stopping = $true
@@ -799,11 +852,7 @@ try {
 } finally {
     $sync.Stopping = $true
 
-    try {
-        @{ Left = $window.Left; Top = $window.Top } |
-            ConvertTo-Json |
-            Set-Content -LiteralPath $paths.StateFile -Encoding UTF8
-    } catch { }
+    Save-PlayerState
 
     foreach ($entry in $runspaces) {
         try { $entry.PowerShell.Dispose() } catch { }
