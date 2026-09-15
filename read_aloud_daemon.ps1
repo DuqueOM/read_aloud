@@ -300,6 +300,37 @@ $xaml = @'
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         Topmost="True" ShowInTaskbar="False" ShowActivated="False"
         SizeToContent="WidthAndHeight" ResizeMode="NoResize">
+  <Window.Resources>
+    <!--
+      Estilo propio para todos los botones. El de Windows pinta un fondo claro
+      al pasar el cursor, y el texto, que tambien es claro, se perdia encima.
+      Aqui el resaltado es un velo blanco translucido sobre el fondo oscuro:
+      se nota el cambio y el texto conserva el contraste.
+    -->
+    <Style TargetType="Button">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="Fondo" Background="{TemplateBinding Background}" CornerRadius="6">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Fondo" Property="Background" Value="#2EFFFFFF"/>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="Fondo" Property="Background" Value="#4DFFFFFF"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </Window.Resources>
   <Border x:Name="Root" CornerRadius="10" Background="#F21B1B1F" BorderBrush="#33FFFFFF"
           BorderThickness="1" Padding="10,7">
     <Border.Effect>
@@ -357,12 +388,37 @@ $window.Top = $screen.Bottom - 70
 if (Test-Path -LiteralPath $paths.StateFile) {
     try {
         $savedState = Get-Content -LiteralPath $paths.StateFile -Raw -Encoding UTF8 | ConvertFrom-Json
-        if ($savedState.Left -ge $screen.Left -and $savedState.Top -ge $screen.Top) {
-            $window.Left = $savedState.Left
-            $window.Top = $savedState.Top
-        }
+        $window.Left = $savedState.Left
+        $window.Top = $savedState.Top
     } catch { }
 }
+
+function Move-PlayerOnScreen {
+    # La posicion guardada puede venir de un monitor que ya no esta conectado.
+    # Antes solo se comprobaba el borde superior izquierdo, y la ventana podia
+    # abrirse por completo fuera de la pantalla visible. Si no cabe entera en
+    # el escritorio actual, vuelve a la esquina inferior derecha.
+    $izquierda = [Windows.SystemParameters]::VirtualScreenLeft
+    $arriba = [Windows.SystemParameters]::VirtualScreenTop
+    $derecha = $izquierda + [Windows.SystemParameters]::VirtualScreenWidth
+    $abajo = $arriba + [Windows.SystemParameters]::VirtualScreenHeight
+
+    $ancho = $window.ActualWidth
+    $alto = $window.ActualHeight
+    if ($ancho -le 0) { $ancho = 480 }
+    if ($alto -le 0) { $alto = 50 }
+
+    $cabe = ($window.Left -ge $izquierda) -and ($window.Top -ge $arriba) -and
+            (($window.Left + $ancho) -le $derecha) -and (($window.Top + $alto) -le $abajo)
+
+    if (-not $cabe) {
+        $area = [Windows.SystemParameters]::WorkArea
+        $window.Left = $area.Right - $ancho - 12
+        $window.Top = $area.Bottom - $alto - 12
+    }
+}
+
+Move-PlayerOnScreen
 
 $player = New-Object Windows.Media.MediaPlayer
 
@@ -596,7 +652,12 @@ function Start-Speaking {
     Set-PlayIcon -Playing $true
     $state.IsPlaying = $true
 
-    if ($settings.ShowPlayer) { $window.Show() }
+    if ($settings.ShowPlayer) {
+        $window.Show()
+        # Se revisa al mostrar, no solo al arrancar: el monitor puede cambiar
+        # mientras el proceso residente sigue vivo.
+        Move-PlayerOnScreen
+    }
 
     Write-DaemonLog ("Lectura {0}: {1} fragmentos, idioma {2}" -f $generation, $state.Chunks.Count, $plan.DocumentLang)
 }
