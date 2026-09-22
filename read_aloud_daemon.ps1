@@ -470,6 +470,8 @@ $state = [pscustomobject]@{
     PlayIndex     = -1
     IsPlaying     = $false
     IsSeeking     = $false
+    SyncingSlider = $false
+    PendingSlider = $null
     PendingSeek   = $null
     Total         = 0.0
     LastText      = ''
@@ -579,6 +581,8 @@ function Invoke-Seek {
     $maxSeekable = $state.Chunks[$lastReady].Offset + $state.Chunks[$lastReady].Duration - 0.15
     if ($TargetSeconds -gt $maxSeekable) { $TargetSeconds = $maxSeekable }
     if ($TargetSeconds -lt 0) { $TargetSeconds = 0 }
+
+    Write-DaemonLog ('Salto a {0:N1} s de {1:N1} s' -f $TargetSeconds, $state.Total)
 
     for ($i = $lastReady; $i -ge 0; $i--) {
         $chunk = $state.Chunks[$i]
@@ -751,17 +755,94 @@ $ui.BtnClose.Add_Click({
     Stop-Playback
 })
 
-$ui.Seek.Add_PreviewMouseDown({ $state.IsSeeking = $true })
+# El salto se decide por el valor de la barra y no por el evento del raton.
+# Con el raton, un clic sobre la linea movia el control pero no llegaba a
+# producir el salto; asi funcionan igual el clic, el arrastre y las flechas
+# del teclado.
+function Complete-SliderSeek {
+    # Al soltar el raton se salta a donde quedo el control. Se lee su valor
+    # actual, que es el autoritativo, y no el ultimo anotado: si el arrastre
+    # termino entre dos avisos de cambio, el valor sigue siendo el bueno.
+    $huboCambio = ($null -ne $state.PendingSlider)
 
-$ui.Seek.Add_PreviewMouseUp({
     $state.IsSeeking = $false
-    if ($state.Total -gt 0) {
+    $state.PendingSlider = $null
+
+    if ($huboCambio -and $state.Total -gt 0) {
         Invoke-Seek -TargetSeconds (($ui.Seek.Value / 100.0) * $state.Total)
+    }
+}
+
+$ui.Seek.Add_ValueChanged({
+    # Cambio hecho por el reloj de la propia reproduccion, no por el usuario.
+    if ($state.SyncingSlider) { return }
+    if ($state.Total -le 0) { return }
+
+    $destino = ($ui.Seek.Value / 100.0) * $state.Total
+
+    if ($state.IsSeeking) {
+        # Con el raton encima solo se toma nota. El salto se aplica al soltar,
+        # porque hacerlo en cada movimiento del arrastre obligaria a reabrir el
+        # audio decenas de veces.
+        $state.PendingSlider = $destino
+        return
+    }
+
+    Invoke-Seek -TargetSeconds $destino
+})
+
+# La marca se pone desde el borde de la ventana, no desde la barra: WPF mueve
+# el control y cambia el valor en su propio manejador, que corre antes que los
+# de esta ventana. Puesta aqui, el cambio del valor ya se sabe hecho a raton y
+# el salto se aplica solo al soltar, tanto si fue un clic como un arrastre.
+$ui.Root.Add_PreviewMouseDown({
+    param($sender, $e)
+
+    $nodo = $e.OriginalSource
+
+    while ($null -ne $nodo) {
+        if ($nodo -is [Windows.Controls.Slider]) {
+            $state.IsSeeking = $true
+            return
+        }
+
+        if ($nodo -is [Windows.Media.Visual]) {
+            $nodo = [Windows.Media.VisualTreeHelper]::GetParent($nodo)
+        } else {
+            $nodo = $null
+        }
     }
 })
 
+$ui.Seek.Add_PreviewMouseUp({ Complete-SliderSeek })
+
+# Si otro control se queda con el raton, el arrastre termina igual.
+$ui.Seek.Add_LostMouseCapture({ Complete-SliderSeek })
+
 # La ventana se arrastra desde cualquier parte que no sea un control.
+#
+# El clic sobre la linea de la barra no lo marca nadie como atendido, asi que
+# llegaba hasta aqui y arrancaba el arrastre de la ventana. DragMove se queda
+# con el raton, y el salto de posicion nunca se completaba: se oia seguir en
+# el mismo sitio. Por eso se ignoran los clics nacidos dentro de un control.
 $ui.Root.Add_MouseLeftButtonDown({
+    param($sender, $e)
+
+    $nodo = $e.OriginalSource
+
+    while ($null -ne $nodo) {
+        if (($nodo -is [Windows.Controls.Primitives.ButtonBase]) -or
+            ($nodo -is [Windows.Controls.Slider])) {
+            return
+        }
+
+        if ($nodo -is [Windows.Media.Visual]) {
+            $nodo = [Windows.Media.VisualTreeHelper]::GetParent($nodo)
+        } else {
+            $nodo = $null
+        }
+    }
+
     try { $window.DragMove() } catch { }
 })
 
@@ -869,7 +950,11 @@ $timer.Add_Tick({
         $position = Get-GlobalPosition
 
         if (-not $state.IsSeeking -and $state.Total -gt 0) {
+            # La bandera evita que este refresco se confunda con un cambio
+            # hecho por el usuario y dispare un salto en cada pulso.
+            $state.SyncingSlider = $true
             $ui.Seek.Value = [Math]::Min(100, ($position / $state.Total) * 100)
+            $state.SyncingSlider = $false
         }
 
         $ui.TimeLabel.Text = '{0} / {1}' -f (Format-Time $position), (Format-Time $state.Total)
