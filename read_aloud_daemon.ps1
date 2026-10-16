@@ -57,6 +57,25 @@ function Write-DaemonLog {
     }
 }
 
+function Get-ConfiguredPauses {
+    # Las pausas estructurales salen de los ajustes, con los valores por
+    # defecto de la libreria como red de seguridad.
+    $pausas = Get-DefaultPauses
+
+    foreach ($par in @(
+        @{ Clave = 'Paragraph';     Ajuste = 'PauseParagraph' }
+        @{ Clave = 'BeforeHeading'; Ajuste = 'PauseBeforeHeading' }
+        @{ Clave = 'AfterHeading';  Ajuste = 'PauseAfterHeading' }
+        @{ Clave = 'TableRow';      Ajuste = 'PauseTableRow' }
+    )) {
+        if ($settings.ContainsKey($par.Ajuste)) {
+            $pausas[$par.Clave] = [double]$settings[$par.Ajuste]
+        }
+    }
+
+    return $pausas
+}
+
 $purged = Clear-OldTempAudio -TmpDir $paths.TmpDir -MaxAgeHours $settings.MaxTmpAgeHours
 Write-DaemonLog "Inicio. Temporales eliminados: $purged"
 
@@ -420,7 +439,19 @@ function Move-PlayerOnScreen {
 
 Move-PlayerOnScreen
 
-$player = New-Object Windows.Media.MediaPlayer
+# Dos reproductores en vez de uno. Abrir un archivo cuesta cerca de medio
+# segundo, y hacerlo al terminar el fragmento anterior dejaba ese hueco de
+# silencio en cada cambio, con lo que todas las transiciones sonaban igual de
+# largas. Mientras uno suena, el otro ya tiene cargado el fragmento siguiente
+# y el relevo es inmediato. Asi las unicas pausas que se oyen son las que el
+# texto pide.
+$players = @(
+    (New-Object Windows.Media.MediaPlayer),
+    (New-Object Windows.Media.MediaPlayer)
+)
+
+function Get-ActivePlayer { return $players[$state.Active] }
+function Get-IdlePlayer   { return $players[1 - $state.Active] }
 
 # Velocidades que recorre el boton. Se cambia la velocidad de reproduccion, no
 # la de sintesis: asi el cambio es inmediato y no hay que regenerar el audio.
@@ -456,7 +487,7 @@ function Set-PlaybackSpeed {
     $index = [Math]::Max(0, [Math]::Min($speedSteps.Count - 1, $index + $Direction))
     $script:speed = $speedSteps[$index]
 
-    $player.SpeedRatio = $script:speed
+    foreach ($p in $players) { $p.SpeedRatio = $script:speed }
     $ui.BtnSpeed.Content = Format-Speed $script:speed
     Save-PlayerState
 }
@@ -469,6 +500,8 @@ $state = [pscustomobject]@{
     Chunks        = New-Object System.Collections.Generic.List[object]
     PlayIndex     = -1
     IsPlaying     = $false
+    Active        = 0
+    PreloadIndex  = -1
     IsSeeking     = $false
     SyncingSlider = $false
     PendingSlider = $null
@@ -507,7 +540,24 @@ function Update-Offsets {
 
 function Get-GlobalPosition {
     if ($state.PlayIndex -lt 0 -or $state.PlayIndex -ge $state.Chunks.Count) { return 0.0 }
-    return $state.Chunks[$state.PlayIndex].Offset + $player.Position.TotalSeconds
+    return $state.Chunks[$state.PlayIndex].Offset + (Get-ActivePlayer).Position.TotalSeconds
+}
+
+function Open-NextChunk {
+    # Deja listo el fragmento siguiente en el reproductor que no esta sonando.
+    if ($state.PlayIndex -lt 0) { return }
+
+    $siguiente = $state.PlayIndex + 1
+    if ($siguiente -ge $state.Chunks.Count) { return }
+    if ($state.PreloadIndex -eq $siguiente) { return }
+    if (-not $state.Chunks[$siguiente].Ready) { return }
+
+    try {
+        (Get-IdlePlayer).Open([uri]$state.Chunks[$siguiente].Wav)
+        $state.PreloadIndex = $siguiente
+    } catch {
+        $state.PreloadIndex = -1
+    }
 }
 
 function Set-PlayIcon {
@@ -523,8 +573,12 @@ function Set-PlayIcon {
 function Stop-Playback {
     param([switch]$KeepWindow)
 
-    $player.Stop()
-    try { $player.Close() } catch { }
+    foreach ($p in $players) {
+        $p.Stop()
+        try { $p.Close() } catch { }
+    }
+
+    $state.PreloadIndex = -1
 
     $state.IsPlaying = $false
     $state.Finished = $true
@@ -561,8 +615,12 @@ function Start-Chunk {
     $state.PendingSeek = $Offset
     $state.IsPlaying = $AutoPlay
 
+    # Lo que hubiera precargado deja de servir: se va a otro punto.
+    $state.PreloadIndex = -1
+    (Get-IdlePlayer).Stop()
+
     $ui.LangBadge.Text = $chunk.Lang.ToUpperInvariant()
-    $player.Open([uri]$chunk.Wav)
+    (Get-ActivePlayer).Open([uri]$chunk.Wav)
 }
 
 function Invoke-Seek {
@@ -622,20 +680,25 @@ function Start-Speaking {
 
     $plan = Build-SpeechPlan -Text $Text -Requested $Requested `
         -TargetChars $settings.ChunkTargetChars -FirstChunkMinChars $settings.FirstChunkMinChars `
-        -Fallback $settings.FallbackLanguage
+        -Fallback $settings.FallbackLanguage -Pauses (Get-ConfiguredPauses)
 
     $index = 0
+    $pausas = 0.0
+
     foreach ($item in $plan.Chunks) {
         $wav = Join-Path $paths.TmpDir ('ra_{0}_{1:d4}.wav' -f $generation, $index)
+        $pausa = [double]$item.PauseAfter
+        $pausas += $pausa
 
         $state.Chunks.Add([pscustomobject]@{
-            Index    = $index
-            Lang     = $item.Lang
-            Text     = $item.Text
-            Wav      = $wav
-            Duration = (Get-EstimatedDuration -Text $item.Text)
-            Offset   = 0.0
-            Ready    = $false
+            Index      = $index
+            Lang       = $item.Lang
+            Text       = $item.Text
+            Wav        = $wav
+            Duration   = (Get-EstimatedDuration -Text $item.Text) + $pausa
+            PauseAfter = $pausa
+            Offset     = 0.0
+            Ready      = $false
         })
 
         $sync.SynthJobs.Enqueue(@{
@@ -663,50 +726,83 @@ function Start-Speaking {
         Move-PlayerOnScreen
     }
 
-    Write-DaemonLog ("Lectura {0}: {1} fragmentos, idioma {2}" -f $generation, $state.Chunks.Count, $plan.DocumentLang)
+    Write-DaemonLog ("Lectura {0}: {1} fragmentos, {2:N1} s de pausas, idioma {3}" -f $generation, $state.Chunks.Count, $pausas, $plan.DocumentLang)
 }
 
 # --------------------------------------------------------------------------
 # Eventos del reproductor.
 # --------------------------------------------------------------------------
-$player.add_MediaOpened({
-    if ($null -ne $state.PendingSeek) {
-        $player.Position = [timespan]::FromSeconds($state.PendingSeek)
-        $state.PendingSeek = $null
-    }
+foreach ($instancia in $players) {
+    $instancia.add_MediaOpened({
+        param($sender, $e)
 
-    if ($state.IsPlaying) {
-        $player.Play()
-        Set-PlayIcon -Playing $true
-    }
+        # El que no esta sonando solo se esta precargando: no toca nada.
+        if (-not [object]::ReferenceEquals($sender, (Get-ActivePlayer))) { return }
 
-    # MediaPlayer vuelve a 1x con cada archivo nuevo; se reaplica despues de
-    # Play porque antes no siempre surte efecto.
-    $player.SpeedRatio = $script:speed
-})
-
-$player.add_MediaEnded({
-    $next = $state.PlayIndex + 1
-
-    if ($next -ge $state.Chunks.Count) {
-        $state.Finished = $true
-        $state.IsPlaying = $false
-        Set-PlayIcon -Playing $false
-
-        if ($settings.PlayerAutoClose) {
-            Stop-Playback
+        if ($null -ne $state.PendingSeek) {
+            $sender.Position = [timespan]::FromSeconds($state.PendingSeek)
+            $state.PendingSeek = $null
         }
-        return
-    }
 
-    if ($state.Chunks[$next].Ready) {
-        Start-Chunk -Index $next -Offset 0 -AutoPlay $true
-    } else {
-        # El siguiente fragmento aun se esta generando. El pulso lo arranca en
-        # cuanto llegue; sin esta bandera la lectura se quedaba muda ahi.
-        $state.WaitingForNext = $true
-    }
-})
+        if ($state.IsPlaying) {
+            $sender.Play()
+            Set-PlayIcon -Playing $true
+        }
+
+        # MediaPlayer vuelve a 1x con cada archivo nuevo; se reaplica despues
+        # de Play porque antes no siempre surte efecto.
+        $sender.SpeedRatio = $script:speed
+
+        Open-NextChunk
+    })
+
+    $instancia.add_MediaEnded({
+        param($sender, $e)
+
+        if (-not [object]::ReferenceEquals($sender, (Get-ActivePlayer))) { return }
+
+        $next = $state.PlayIndex + 1
+
+        if ($next -ge $state.Chunks.Count) {
+            $state.Finished = $true
+            $state.IsPlaying = $false
+            Set-PlayIcon -Playing $false
+
+            if ($settings.PlayerAutoClose) {
+                Stop-Playback
+            }
+            return
+        }
+
+        if ($state.PreloadIndex -eq $next) {
+            # Relevo inmediato: el siguiente ya esta abierto en el otro.
+            $sender.Stop()
+
+            $state.Active = 1 - $state.Active
+            $state.PlayIndex = $next
+            $state.PreloadIndex = -1
+            $state.WaitingForNext = $false
+
+            $nuevo = Get-ActivePlayer
+            $ui.LangBadge.Text = $state.Chunks[$next].Lang.ToUpperInvariant()
+
+            try { $nuevo.Position = [timespan]::Zero } catch { }
+            $nuevo.Play()
+            $nuevo.SpeedRatio = $script:speed
+
+            Open-NextChunk
+            return
+        }
+
+        if ($state.Chunks[$next].Ready) {
+            Start-Chunk -Index $next -Offset 0 -AutoPlay $true
+        } else {
+            # El siguiente fragmento aun se esta generando. El pulso lo arranca
+            # en cuanto llegue; sin esta bandera la lectura se quedaba muda.
+            $state.WaitingForNext = $true
+        }
+    })
+}
 
 # --------------------------------------------------------------------------
 # Controles.
@@ -715,7 +811,7 @@ function Toggle-Playback {
     if ($state.Chunks.Count -eq 0) { return }
 
     if ($state.IsPlaying) {
-        $player.Pause()
+        (Get-ActivePlayer).Pause()
         $state.IsPlaying = $false
         Set-PlayIcon -Playing $false
         return
@@ -731,7 +827,7 @@ function Toggle-Playback {
         Invoke-Seek -TargetSeconds 0
     } else {
         $state.IsPlaying = $true
-        $player.Play()
+        (Get-ActivePlayer).Play()
     }
 
     Set-PlayIcon -Playing $true
@@ -925,6 +1021,12 @@ $timer.Add_Tick({
             continue
         }
 
+        # El silencio del final del bloque se pega al propio audio, para no
+        # pagar el arranque de un archivo mas en cada pausa.
+        if ($chunk.PauseAfter -gt 0) {
+            [void](Add-WavSilence -Path $done.Wav -Seconds $chunk.PauseAfter)
+        }
+
         $chunk.Duration = Get-WavDuration -Path $done.Wav
         $chunk.Ready = $true
         $changed = $true
@@ -936,12 +1038,17 @@ $timer.Add_Tick({
     if ($state.Chunks.Count -gt 0 -and -not $state.Finished) {
         if ($state.PlayIndex -lt 0 -and $state.Chunks[0].Ready -and $state.IsPlaying) {
             Start-Chunk -Index 0 -Offset 0 -AutoPlay $true
+            Open-NextChunk
         } elseif ($state.WaitingForNext -and $state.IsPlaying) {
             $next = $state.PlayIndex + 1
             if ($next -lt $state.Chunks.Count -and $state.Chunks[$next].Ready) {
                 $state.WaitingForNext = $false
                 Start-Chunk -Index $next -Offset 0 -AutoPlay $true
             }
+        } else {
+            # El fragmento siguiente puede haberse generado despues de empezar
+            # a sonar el actual; aqui se precarga en cuanto esta.
+            Open-NextChunk
         }
     }
 

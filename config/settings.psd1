@@ -42,6 +42,14 @@
     PlayerOpacity = 0.94
     SkipSeconds = 10
 
+    # Pausas, en segundos, que se agregan donde el texto cambia de bloque.
+    # Van encima del silencio normal de fin de frase, asi que valores
+    # pequenos ya se notan. Con 0 se desactiva cada una.
+    PauseParagraph = 0.35      # entre un parrafo y el siguiente
+    PauseBeforeHeading = 0.55  # antes de un titulo
+    PauseAfterHeading = 0.30   # entre el titulo y lo que viene debajo
+    PauseTableRow = 0.18       # entre filas de una tabla o vinetas de una lista
+
     # Horas que se conservan los WAV temporales antes de borrarlos.
     MaxTmpAgeHours = 6
 }

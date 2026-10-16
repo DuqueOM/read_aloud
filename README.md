@@ -107,6 +107,10 @@ El texto se parte en fragmentos cortos. El primero es más corto a propósito,
 porque es el que decide cuánto tardas en oír la primera palabra; los
 siguientes se generan mientras suena el anterior.
 
+Antes de partirlo, el texto se lee como lo que es: títulos, párrafos, filas de
+tabla y viñetas. Cada cambio de bloque recibe una pausa propia, de modo que se
+oye cuándo termina una fila y empieza la siguiente, o cuándo llega un título.
+
 Detalle completo en [docs/como-funciona.md](docs/como-funciona.md).
 
 ## Idiomas

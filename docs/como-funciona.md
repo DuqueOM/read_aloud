@@ -88,6 +88,45 @@ Con un factor de tiempo real de 0.07, generar un fragmento cuesta alrededor
 del 7 % de lo que dura su audio. Dicho de otro modo, la síntesis avanza unas
 catorce veces más rápido que la reproducción, así que nunca la alcanza.
 
+## Las pausas que marcan la estructura
+
+Leer de corrido un informe con títulos y tablas suena plano: nada distingue el
+final de una fila del punto y seguido de un párrafo. Por eso el texto se parte
+primero en bloques según su forma visible.
+
+| Bloque | Cómo se reconoce |
+|---|---|
+| Título | Línea corta sin puntuación final que abre bloque, o prefijo `#` |
+| Fila de tabla | Línea con tabuladores, o con dos o más barras verticales |
+| Viñeta | Línea que empieza por guion, asterisco o número con punto |
+| Párrafo | El resto; las líneas seguidas se unen en uno solo |
+
+La condición de "abre bloque" es la que evita el error obvio: en un texto con
+los renglones cortados a lo ancho, cada línea termina sin punto y parecería un
+título. Solo se considera título la que empieza un bloque, después de una
+línea en blanco o de otro bloque.
+
+El silencio no se reproduce como un archivo aparte. Se añade al final del WAV
+del fragmento anterior, reescribiendo su cabecera. Hacerlo con un archivo
+propio costaba el arranque de ese archivo, y una pausa de 0.18 s acababa
+durando más de medio segundo.
+
+## Por qué hay dos reproductores
+
+Abrir un archivo de audio cuesta alrededor de medio segundo. Con un solo
+reproductor, esa espera caía entre cada par de fragmentos, así que todas las
+transiciones sonaban igual de largas y las pausas de estructura se perdían
+dentro del ruido.
+
+Ahora hay dos. Mientras uno suena, el otro ya tiene abierto el fragmento
+siguiente, y al terminar basta con darle a reproducir. El hueco entre
+fragmentos bajó de 0.45 a 0.1 segundos, medido sobre el mismo texto, y las
+únicas pausas que se oyen son las que el texto pide.
+
+El reproductor activo se alterna entre los dos. Los eventos llegan a ambos, y
+cada manejador comprueba si el que avisa es el que está sonando: al que solo
+está precargando no se le hace caso.
+
 ## Cómo se descarta una lectura vieja
 
 Cada lectura tiene un número de generación. Cuando llega una orden nueva, el

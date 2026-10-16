@@ -54,6 +54,35 @@ ganancia a cambio.
 más continuos porque cada uno lleva su entonación completa; fragmentos
 pequeños permiten saltar con más precisión con los botones de avance.
 
+## Pausas entre bloques
+
+El texto se divide en bloques antes de leerlo: títulos, párrafos, filas de
+tabla y viñetas. Al final de cada bloque se añade un silencio para que el
+cambio se oiga.
+
+| Valor | Por defecto | Dónde se aplica |
+|---|---|---|
+| `PauseParagraph` | `0.35` | Entre un párrafo y el siguiente |
+| `PauseBeforeHeading` | `0.55` | Antes de un título |
+| `PauseAfterHeading` | `0.30` | Entre el título y lo que viene debajo |
+| `PauseTableRow` | `0.18` | Entre filas de una tabla o viñetas de una lista |
+
+Están en segundos y se suman al silencio normal de fin de frase, que es
+`SentenceSilence`. Por eso valores pequeños ya se notan: una fila de tabla
+termina con unos seis décimas de silencio en total, y un título llega después
+de casi un segundo.
+
+Con `0` se desactiva cada una por separado. Si quieres el comportamiento
+anterior, pon las cuatro en `0`.
+
+Para ver qué bloques detecta en un texto concreto, sin escucharlo:
+
+```powershell
+.ead_aloud.ps1 -ShowPlan
+```
+
+Debajo de cada fragmento aparece la pausa que lo sigue.
+
 ## Idioma
 
 | Valor | Por defecto | Qué hace |

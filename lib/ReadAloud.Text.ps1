@@ -431,35 +431,187 @@ function Split-SegmentIntoChunks {
     return ,$chunks
 }
 
+function Test-TableRow {
+    # Una fila de tabla copiada del portapapeles llega con tabuladores entre
+    # columnas, o con barras verticales si viene de Markdown.
+    param([string]$Line)
+
+    if ($Line -match "`t") { return $true }
+    return (([regex]::Matches($Line, '\|')).Count -ge 2)
+}
+
+function Test-TableSeparator {
+    # La linea de guiones que separa el encabezado de una tabla no se lee.
+    param([string]$Line)
+
+    $l = $Line.Trim()
+    if ($l -eq '') { return $false }
+    return ($l -match '^[\s\|:+_=-]+$') -and ($l -match '[-=_|]')
+}
+
+function Test-ListItem {
+    param([string]$Line)
+    return ($Line -match '^\s*([-*>]|[0-9]+[\.\)])\s+\S')
+}
+
+function Test-Heading {
+    # Un titulo es una linea corta, sin puntuacion final, que abre su propio
+    # bloque. Se exige que empiece bloque para no confundir un titulo con la
+    # primera linea de un parrafo partido a lo ancho, que tambien termina sin
+    # punto pero viene seguida de mas texto de la misma frase.
+    param(
+        [string]$Line,
+        [bool]$AbreBloque
+    )
+
+    $l = $Line.Trim()
+    if ($l -eq '') { return $false }
+
+    if ($l -match '^#{1,6}\s+\S') { return $true }
+
+    if (-not $AbreBloque) { return $false }
+    if ($l.Length -gt 70) { return $false }
+    if ($l -match '[\.\!\?,;:]$') { return $false }
+    if (Test-ListItem -Line $l) { return $false }
+    if (Test-TableRow -Line $l) { return $false }
+
+    return $true
+}
+
+function Split-IntoBlocks {
+    # Parte el texto en bloques segun su estructura visible y le asigna a cada
+    # uno la pausa que le corresponde despues.
+    #
+    # Es lo que hace que un cambio de fila, de parrafo o de titulo se oiga como
+    # un cambio. Sin esto todo el texto se leia de corrido, con la misma pausa
+    # entre dos frases de un parrafo que entre dos filas de una tabla.
+    param(
+        [string]$Text,
+        [hashtable]$Pauses
+    )
+
+    $t = $Text -replace "`r`n", "`n"
+    $t = $t -replace "`r", "`n"
+
+    $blocks = New-Object System.Collections.Generic.List[object]
+    $parrafo = New-Object System.Collections.Generic.List[string]
+    $abreBloque = $true
+
+    foreach ($linea in ($t -split "`n", -1)) {
+        $l = $linea.Trim()
+
+        if ($l -eq '') {
+            if ($parrafo.Count -gt 0) {
+                [void]$blocks.Add(@{ Text = ($parrafo -join ' '); Kind = 'parrafo'; PauseAfter = $Pauses.Paragraph })
+                $parrafo.Clear()
+            }
+            $abreBloque = $true
+            continue
+        }
+
+        if (Test-TableSeparator -Line $l) { continue }
+
+        $tipo = 'parrafo'
+        if (Test-Heading -Line $l -AbreBloque $abreBloque) {
+            $tipo = 'titulo'
+        } elseif (Test-TableRow -Line $l) {
+            $tipo = 'fila'
+        } elseif (Test-ListItem -Line $l) {
+            $tipo = 'vineta'
+        }
+
+        if ($tipo -ne 'parrafo') {
+            # Los titulos, las filas y las vinetas son bloques de una sola
+            # linea: cada uno termina donde termina la linea.
+            if ($parrafo.Count -gt 0) {
+                [void]$blocks.Add(@{ Text = ($parrafo -join ' '); Kind = 'parrafo'; PauseAfter = $Pauses.Paragraph })
+                $parrafo.Clear()
+            }
+
+            $pausa = $Pauses.TableRow
+            if ($tipo -eq 'titulo') { $pausa = $Pauses.AfterHeading }
+
+            [void]$blocks.Add(@{ Text = $l; Kind = $tipo; PauseAfter = $pausa })
+            $abreBloque = $true
+            continue
+        }
+
+        [void]$parrafo.Add($l)
+        $abreBloque = $false
+    }
+
+    if ($parrafo.Count -gt 0) {
+        [void]$blocks.Add(@{ Text = ($parrafo -join ' '); Kind = 'parrafo'; PauseAfter = $Pauses.Paragraph })
+    }
+
+    # Un titulo tambien necesita aire antes, para que no parezca la
+    # continuacion de lo anterior.
+    for ($i = 1; $i -lt $blocks.Count; $i++) {
+        if ($blocks[$i].Kind -eq 'titulo' -and $blocks[$i - 1].PauseAfter -lt $Pauses.BeforeHeading) {
+            $blocks[$i - 1].PauseAfter = $Pauses.BeforeHeading
+        }
+    }
+
+    if ($blocks.Count -gt 0) {
+        # Al final del texto no hay nada que separar.
+        $blocks[$blocks.Count - 1].PauseAfter = 0.0
+    }
+
+    return ,$blocks
+}
+
+function Get-DefaultPauses {
+    return @{
+        Paragraph     = 0.35
+        BeforeHeading = 0.55
+        AfterHeading  = 0.30
+        TableRow      = 0.18
+    }
+}
+
 function Build-SpeechPlan {
     # Punto de entrada unico: texto crudo -> lista de fragmentos listos para
-    # sintetizar, cada uno con su idioma y su voz.
+    # sintetizar, cada uno con su idioma, su voz y la pausa que lo sigue.
     param(
         [string]$Text,
         [string]$Requested = 'Auto',
         [string]$MlMode = 'MachineLearning',
         [int]$TargetChars = 220,
         [int]$FirstChunkMinChars = 25,
-        [string]$Fallback = 'es'
+        [string]$Fallback = 'es',
+        [hashtable]$Pauses = $null
     )
 
+    if ($null -eq $Pauses) { $Pauses = Get-DefaultPauses }
+
     $docLang = Get-DocumentLanguage -Text $Text -Requested $Requested -Fallback $Fallback
-    $segments = Split-IntoLanguageSegments -Text $Text -DocumentLang $docLang -Requested $Requested
+    $blocks = Split-IntoBlocks -Text $Text -Pauses $Pauses
 
     $plan = New-Object System.Collections.Generic.List[object]
     $isFirst = $true
 
-    foreach ($segment in $segments) {
-        $normalized = Normalize-ForSpeech -Text $segment.Text -Lang $segment.Lang -MlMode $MlMode
-        $prepared = Prepare-TextForPiper -Text $normalized
+    foreach ($block in $blocks) {
+        $delBloque = New-Object System.Collections.Generic.List[object]
+        $segments = Split-IntoLanguageSegments -Text $block.Text -DocumentLang $docLang -Requested $Requested
 
-        $chunks = Split-SegmentIntoChunks -Text $prepared -TargetChars $TargetChars -FirstChunkMinChars $FirstChunkMinChars -IsFirstSegment:$isFirst
+        foreach ($segment in $segments) {
+            $normalized = Normalize-ForSpeech -Text $segment.Text -Lang $segment.Lang -MlMode $MlMode
+            $prepared = Prepare-TextForPiper -Text $normalized
 
-        foreach ($chunk in $chunks) {
-            [void]$plan.Add(@{ Lang = $segment.Lang; Text = $chunk })
+            $chunks = Split-SegmentIntoChunks -Text $prepared -TargetChars $TargetChars -FirstChunkMinChars $FirstChunkMinChars -IsFirstSegment:$isFirst
+
+            foreach ($chunk in $chunks) {
+                [void]$delBloque.Add(@{ Lang = $segment.Lang; Text = $chunk; PauseAfter = 0.0 })
+            }
+
+            $isFirst = $false
         }
 
-        $isFirst = $false
+        if ($delBloque.Count -gt 0) {
+            # La pausa va despues del ultimo fragmento del bloque.
+            $delBloque[$delBloque.Count - 1].PauseAfter = [double]$block.PauseAfter
+            foreach ($c in $delBloque) { [void]$plan.Add($c) }
+        }
     }
 
     return @{ DocumentLang = $docLang; Chunks = $plan }

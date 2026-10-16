@@ -60,6 +60,10 @@ function Get-ReadAloudSettings {
         PlayerAutoClose     = $true
         PlayerOpacity       = 0.94
         SkipSeconds         = 10
+        PauseParagraph      = 0.35
+        PauseBeforeHeading  = 0.55
+        PauseAfterHeading   = 0.30
+        PauseTableRow       = 0.18
         MaxTmpAgeHours      = 6
     }
 
@@ -180,6 +184,91 @@ function Get-WavDuration {
 
         if ($byteRate -le 0) { return 0.0 }
         return [double]$dataSize / [double]$byteRate
+    } catch {
+        return 0.0
+    } finally {
+        $stream.Dispose()
+    }
+}
+
+function Add-WavSilence {
+    # Alarga un WAV con silencio al final.
+    #
+    # Las pausas entre bloques no se reproducen como un archivo aparte: cada
+    # cambio de archivo cuesta cerca de medio segundo de arranque, asi que una
+    # pausa de 0.18 s acababa durando mas de medio segundo y sonaba a corte.
+    # Pegado al final del audio anterior, el silencio dura exactamente lo
+    # pedido y no agrega ningun cambio de archivo.
+    param(
+        [string]$Path,
+        [double]$Seconds
+    )
+
+    if ($Seconds -le 0) { return 0.0 }
+
+    $stream = [IO.File]::Open($Path, 'Open', 'ReadWrite')
+
+    try {
+        $lector = New-Object IO.BinaryReader($stream)
+
+        if ([Text.Encoding]::ASCII.GetString($lector.ReadBytes(4)) -ne 'RIFF') { return 0.0 }
+        [void]$lector.ReadUInt32()
+        if ([Text.Encoding]::ASCII.GetString($lector.ReadBytes(4)) -ne 'WAVE') { return 0.0 }
+
+        $byteRate = 0
+        $alineacion = 2
+        $posTamanoDatos = -1
+        $tamanoDatos = 0
+
+        while ($stream.Position -lt ($stream.Length - 8)) {
+            $id = [Text.Encoding]::ASCII.GetString($lector.ReadBytes(4))
+            $posTamano = $stream.Position
+            $tamano = $lector.ReadUInt32()
+
+            if ($id -eq 'fmt ') {
+                [void]$lector.ReadUInt16()
+                [void]$lector.ReadUInt16()
+                [void]$lector.ReadUInt32()
+                $byteRate = $lector.ReadUInt32()
+                $alineacion = $lector.ReadUInt16()
+                $resto = $tamano - 14
+                if ($resto -gt 0) { [void]$lector.ReadBytes($resto) }
+            } elseif ($id -eq 'data') {
+                $posTamanoDatos = $posTamano
+                $tamanoDatos = $tamano
+                break
+            } else {
+                [void]$lector.ReadBytes($tamano)
+            }
+
+            if ($tamano % 2 -eq 1) { [void]$lector.ReadBytes(1) }
+        }
+
+        if ($byteRate -le 0 -or $posTamanoDatos -lt 0) { return 0.0 }
+
+        # Solo se alarga si los datos llegan hasta el final del archivo; con
+        # cualquier otra cosa detras, anadir al final lo corromperia.
+        if (($stream.Position + $tamanoDatos) -ne $stream.Length) { return 0.0 }
+
+        if ($alineacion -lt 1) { $alineacion = 2 }
+        $aAnadir = [int]([Math]::Round($Seconds * $byteRate))
+        $aAnadir = $aAnadir - ($aAnadir % $alineacion)
+        if ($aAnadir -lt $alineacion) { return 0.0 }
+
+        $escritor = New-Object IO.BinaryWriter($stream)
+
+        $stream.Seek(0, 'End') | Out-Null
+        $escritor.Write((New-Object byte[] $aAnadir))
+
+        $stream.Seek($posTamanoDatos, 'Begin') | Out-Null
+        $escritor.Write([uint32]($tamanoDatos + $aAnadir))
+
+        $stream.Seek(4, 'Begin') | Out-Null
+        $escritor.Write([uint32]($stream.Length - 8))
+
+        $escritor.Flush()
+
+        return [double]$aAnadir / [double]$byteRate
     } catch {
         return 0.0
     } finally {

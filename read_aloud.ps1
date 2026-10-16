@@ -195,6 +195,11 @@ if ($ShowPlan) {
         $color = if ($chunk.Lang -eq 'en') { 'Yellow' } else { 'Green' }
         Write-Host ('[{0,2}] {1}  ' -f $index, $chunk.Lang.ToUpperInvariant()) -ForegroundColor $color -NoNewline
         Write-Host $chunk.Text
+
+        if ($chunk.PauseAfter -gt 0) {
+            Write-Host ('      pausa de {0:N2} s' -f $chunk.PauseAfter) -ForegroundColor DarkGray
+        }
+
         $index++
     }
 
