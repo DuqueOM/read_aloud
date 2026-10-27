@@ -170,13 +170,13 @@ function Split-IntoLanguageSegments {
     $sentences = Split-IntoSentences -Text $Text
 
     if ($sentences.Count -eq 0) {
-        [void]$segments.Add(@{ Lang = $DocumentLang; Text = $Text })
+        [void]$segments.Add(@{ Lang = $DocumentLang; Text = $Text; Sentences = @($Text) })
         return ,$segments
     }
 
     # Con idioma forzado no hay nada que segmentar: todo va a una sola voz.
     if ($Requested -eq 'Spanish' -or $Requested -eq 'English') {
-        [void]$segments.Add(@{ Lang = $DocumentLang; Text = ($sentences -join ' ') })
+        [void]$segments.Add(@{ Lang = $DocumentLang; Text = ($sentences -join ' '); Sentences = $sentences.ToArray() })
         return ,$segments
     }
 
@@ -192,7 +192,7 @@ function Split-IntoLanguageSegments {
         }
 
         if (($sentenceLang -ne $currentLang) -and ($buffer.Count -gt 0)) {
-            [void]$segments.Add(@{ Lang = $currentLang; Text = ($buffer -join ' ') })
+            [void]$segments.Add(@{ Lang = $currentLang; Text = ($buffer -join ' '); Sentences = $buffer.ToArray() })
             $buffer.Clear()
         }
 
@@ -201,7 +201,7 @@ function Split-IntoLanguageSegments {
     }
 
     if ($buffer.Count -gt 0) {
-        [void]$segments.Add(@{ Lang = $currentLang; Text = ($buffer -join ' ') })
+        [void]$segments.Add(@{ Lang = $currentLang; Text = ($buffer -join ' '); Sentences = $buffer.ToArray() })
     }
 
     return ,$segments
@@ -375,60 +375,54 @@ function Prepare-TextForPiper {
     return ($out -join "`n")
 }
 
-function Split-SegmentIntoChunks {
-    # Divide un segmento de un solo idioma en fragmentos para sintetizar.
+function Split-SentencesIntoUnits {
+    # Agrupa frases en unidades de lectura: cada unidad es un fragmento de
+    # audio y, a la vez, lo que se resalta en el panel de texto. Por eso cada
+    # unidad es una sola frase, y el resaltado coincide con lo que se oye.
     #
-    # El primer fragmento decide cuanto tardas en oir la primera palabra, y
-    # sintetizar cuesta alrededor del siete por ciento de lo que dura su audio.
-    # Por eso el primero se cierra en cuanto tiene una frase completa con un
-    # minimo de texto, sin esperar a llenar el cupo: acumular dos frases
-    # duplicaba la espera inicial sin ninguna ganancia.
+    # Solo se juntan las frases muy cortas con la siguiente, porque un
+    # fragmento de una o dos palabras sonaria entrecortado. Esa misma regla
+    # hace que el primer fragmento sea corto y la voz arranque enseguida.
     param(
-        [string]$Text,
-        [int]$TargetChars = 220,
-        [int]$FirstChunkMinChars = 25,
-        [switch]$IsFirstSegment
+        [string[]]$Sentences,
+        [int]$MinChars = 25
     )
 
-    # Una frase mas corta que esto no justifica un fragmento propio: el corte
-    # se oiria como un tropiezo.
-    $minimoPrimerFragmento = $FirstChunkMinChars
+    $units = New-Object System.Collections.Generic.List[string]
+    $actual = ''
 
-    $pieces = [regex]::Split($Text, '(?<=[\.\!\?\:;])\s+|\r?\n+')
+    foreach ($frase in $Sentences) {
+        $t = $frase.Trim()
+        if ($t -eq '') { continue }
 
-    $chunks = New-Object System.Collections.Generic.List[string]
-    $current = ''
+        if ($actual -eq '') { $actual = $t } else { $actual = "$actual $t" }
 
-    foreach ($piece in $pieces) {
-        $p = $piece.Trim()
-        if ($p -eq '') { continue }
-
-        if ($current -eq '') {
-            $current = $p
-        } else {
-            $current = "$current $p"
-        }
-
-        $esPrimerFragmento = ($IsFirstSegment -and $chunks.Count -eq 0)
-
-        if ($esPrimerFragmento) {
-            # Cada vuelta del bucle agrega una frase completa, asi que basta
-            # con comprobar que ya hay texto suficiente.
-            $cerrar = ($current.Length -ge $minimoPrimerFragmento)
-        } else {
-            $cerrar = ($current.Length -ge $TargetChars)
-        }
-
-        if ($cerrar) {
-            [void]$chunks.Add($current)
-            $current = ''
+        if ($actual.Length -ge $MinChars) {
+            [void]$units.Add($actual)
+            $actual = ''
         }
     }
 
-    if ($current.Trim() -ne '') { [void]$chunks.Add($current) }
-    if ($chunks.Count -eq 0) { [void]$chunks.Add($Text) }
+    if ($actual -ne '') { [void]$units.Add($actual) }
 
-    return ,$chunks
+    return ,$units
+}
+
+function Format-DisplayText {
+    # Texto tal como se muestra en el panel: el original, sin las
+    # transformaciones que solo sirven para la voz.
+    param(
+        [string]$Text,
+        [string]$Kind
+    )
+
+    $t = $Text -replace "`t+", '    '
+
+    if ($Kind -eq 'vineta') {
+        $t = $t -replace '^\s*[-*>]\s+', ([string][char]0x2022 + '  ')
+    }
+
+    return $t
 }
 
 function Test-TableRow {
@@ -571,13 +565,19 @@ function Get-DefaultPauses {
 
 function Build-SpeechPlan {
     # Punto de entrada unico: texto crudo -> lista de fragmentos listos para
-    # sintetizar, cada uno con su idioma, su voz y la pausa que lo sigue.
+    # sintetizar. Cada fragmento lleva su idioma, el texto para la voz, el
+    # texto original para mostrar, el bloque al que pertenece y la pausa que
+    # lo sigue.
+    #
+    # Las frases se separan sobre el texto original y cada una se transforma
+    # para la voz por separado. Hacerlo al reves, transformar y despues
+    # partir, podia desalinear lo que se muestra de lo que se oye cuando una
+    # sustitucion quitaba o agregaba un punto.
     param(
         [string]$Text,
         [string]$Requested = 'Auto',
         [string]$MlMode = 'MachineLearning',
-        [int]$TargetChars = 220,
-        [int]$FirstChunkMinChars = 25,
+        [int]$MinChunkChars = 25,
         [string]$Fallback = 'es',
         [hashtable]$Pauses = $null
     )
@@ -588,23 +588,33 @@ function Build-SpeechPlan {
     $blocks = Split-IntoBlocks -Text $Text -Pauses $Pauses
 
     $plan = New-Object System.Collections.Generic.List[object]
-    $isFirst = $true
+    $numeroBloque = 0
 
     foreach ($block in $blocks) {
+        $textoBloque = $block.Text
+        if ($block.Kind -eq 'titulo') { $textoBloque = $textoBloque -replace '^#{1,6}\s+', '' }
+
         $delBloque = New-Object System.Collections.Generic.List[object]
-        $segments = Split-IntoLanguageSegments -Text $block.Text -DocumentLang $docLang -Requested $Requested
+        $segments = Split-IntoLanguageSegments -Text $textoBloque -DocumentLang $docLang -Requested $Requested
 
         foreach ($segment in $segments) {
-            $normalized = Normalize-ForSpeech -Text $segment.Text -Lang $segment.Lang -MlMode $MlMode
-            $prepared = Prepare-TextForPiper -Text $normalized
+            $frases = @($segment.Sentences)
+            if ($frases.Count -eq 0) { $frases = @($segment.Text) }
 
-            $chunks = Split-SegmentIntoChunks -Text $prepared -TargetChars $TargetChars -FirstChunkMinChars $FirstChunkMinChars -IsFirstSegment:$isFirst
+            foreach ($unidad in (Split-SentencesIntoUnits -Sentences $frases -MinChars $MinChunkChars)) {
+                $normalized = Normalize-ForSpeech -Text $unidad -Lang $segment.Lang -MlMode $MlMode
+                $prepared = (Prepare-TextForPiper -Text $normalized).Trim()
+                if ($prepared -eq '') { continue }
 
-            foreach ($chunk in $chunks) {
-                [void]$delBloque.Add(@{ Lang = $segment.Lang; Text = $chunk; PauseAfter = 0.0 })
+                [void]$delBloque.Add(@{
+                    Lang       = $segment.Lang
+                    Text       = $prepared
+                    Display    = (Format-DisplayText -Text $unidad -Kind $block.Kind)
+                    Block      = $numeroBloque
+                    Kind       = $block.Kind
+                    PauseAfter = 0.0
+                })
             }
-
-            $isFirst = $false
         }
 
         if ($delBloque.Count -gt 0) {
@@ -612,6 +622,8 @@ function Build-SpeechPlan {
             $delBloque[$delBloque.Count - 1].PauseAfter = [double]$block.PauseAfter
             foreach ($c in $delBloque) { [void]$plan.Add($c) }
         }
+
+        $numeroBloque++
     }
 
     return @{ DocumentLang = $docLang; Chunks = $plan }

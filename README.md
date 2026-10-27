@@ -20,6 +20,10 @@ Ctrl+Shift+] y [    subir o bajar la velocidad
 Mientras lee aparece una barra pequeña sobre todas las ventanas, con pausa,
 avance, retroceso, velocidad y posición. Se cierra sola al terminar.
 
+El botón `≡` de esa barra despliega el texto que se está leyendo, con la frase
+que suena resaltada y lo ya leído atenuado. Así no te pierdes aunque cambies
+de ventana, y un clic sobre cualquier frase salta a ella.
+
 ## Qué necesitas
 
 | Requisito | Detalle |
@@ -103,9 +107,10 @@ Ctrl+Shift+V                 read_aloud.ps1
         reproductor flotante
 ```
 
-El texto se parte en fragmentos cortos. El primero es más corto a propósito,
-porque es el que decide cuánto tardas en oír la primera palabra; los
-siguientes se generan mientras suena el anterior.
+El texto se parte en fragmentos de una frase cada uno. El primero suena en
+cuanto está listo, y los siguientes se generan mientras suena el anterior.
+Que cada fragmento sea una frase es lo que permite resaltar en el panel
+exactamente lo que se está oyendo.
 
 Antes de partirlo, el texto se lee como lo que es: títulos, párrafos, filas de
 tabla y viñetas. Cada cambio de bloque recibe una pausa propia, de modo que se

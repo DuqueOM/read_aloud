@@ -349,13 +349,49 @@ $xaml = @'
         </Setter.Value>
       </Setter>
     </Style>
+
+    <!-- Barra de desplazamiento fina y oscura para el panel de texto. La de
+         Windows es clara y ancha, y desentona sobre el fondo oscuro. -->
+    <Style TargetType="ScrollBar">
+      <Setter Property="Width" Value="6"/>
+      <Setter Property="MinWidth" Value="6"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ScrollBar">
+            <Track x:Name="PART_Track" IsDirectionReversed="True">
+              <Track.Thumb>
+                <Thumb>
+                  <Thumb.Template>
+                    <ControlTemplate TargetType="Thumb">
+                      <Border Background="#55FFFFFF" CornerRadius="3"/>
+                    </ControlTemplate>
+                  </Thumb.Template>
+                </Thumb>
+              </Track.Thumb>
+            </Track>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
   </Window.Resources>
   <Border x:Name="Root" CornerRadius="10" Background="#F21B1B1F" BorderBrush="#33FFFFFF"
           BorderThickness="1" Padding="10,7">
     <Border.Effect>
       <DropShadowEffect BlurRadius="14" ShadowDepth="2" Opacity="0.45" Color="#000000"/>
     </Border.Effect>
-    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+    <StackPanel Orientation="Vertical">
+    <!-- Panel con el texto que se esta leyendo. El ancho se ata al de la
+         barra de controles: sin limite, el texto no partiria las lineas y la
+         ventana crecería a lo ancho sin fin. -->
+    <Border x:Name="TextPanel" Visibility="Collapsed" Height="210" Margin="0,2,0,8"
+            CornerRadius="6" Background="#FF26262B" Padding="12,8,6,8"
+            Width="{Binding ActualWidth, ElementName=Bar}">
+      <ScrollViewer x:Name="TextScroll" VerticalScrollBarVisibility="Auto"
+                    HorizontalScrollBarVisibility="Disabled">
+        <StackPanel x:Name="TextHost" Margin="0,0,8,0"/>
+      </ScrollViewer>
+    </Border>
+    <StackPanel x:Name="Bar" Orientation="Horizontal" VerticalAlignment="Center">
       <TextBlock x:Name="LangBadge" Text="ES" Foreground="#9AE6B4" FontFamily="Segoe UI"
                  FontSize="10" FontWeight="Bold" VerticalAlignment="Center" Margin="2,0,8,0"/>
       <Button x:Name="BtnBack" Content="-10" FontFamily="Segoe UI" FontSize="10" FontWeight="SemiBold"
@@ -380,9 +416,14 @@ $xaml = @'
       </Grid>
       <TextBlock x:Name="TimeLabel" Text="0:00 / 0:00" Foreground="#D8D8DC" FontFamily="Segoe UI"
                  FontSize="11" VerticalAlignment="Center" Width="86" TextAlignment="Right"/>
+      <Button x:Name="BtnText" Content="&#x2261;" FontFamily="Segoe UI" FontSize="15"
+              Width="26" Height="26" Foreground="#C8C8CC" Background="Transparent"
+              BorderThickness="0" Cursor="Hand" Margin="6,0,0,0"
+              ToolTip="Mostrar el texto que se esta leyendo"/>
       <Button x:Name="BtnClose" Content="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="12"
               Width="26" Height="26" Foreground="#C8C8CC" Background="Transparent"
-              BorderThickness="0" Cursor="Hand" Margin="6,0,0,0" ToolTip="Cerrar"/>
+              BorderThickness="0" Cursor="Hand" Margin="2,0,0,0" ToolTip="Cerrar"/>
+    </StackPanel>
     </StackPanel>
   </Border>
 </Window>
@@ -393,7 +434,7 @@ $xmlReader = [Xml.XmlReader]::Create($reader)
 $window = [Windows.Markup.XamlReader]::Load($xmlReader)
 
 $ui = @{}
-foreach ($name in @('Root','LangBadge','BtnBack','BtnPlay','BtnFwd','BtnSpeed','BufferBar','Seek','TimeLabel','BtnClose')) {
+foreach ($name in @('Root','LangBadge','BtnBack','BtnPlay','BtnFwd','BtnSpeed','BufferBar','Seek','TimeLabel','BtnText','BtnClose','TextPanel','TextScroll','TextHost','Bar')) {
     $ui[$name] = $window.FindName($name)
 }
 
@@ -467,7 +508,7 @@ function Save-PlayerState {
     # Se guarda en cada cambio y no solo al cerrar: si el proceso se corta a
     # la fuerza, la velocidad elegida no se pierde.
     try {
-        @{ Left = $window.Left; Top = $window.Top; Speed = $script:speed } |
+        @{ Left = $window.Left; Top = $window.Top; Speed = $script:speed; TextPanel = $script:panelVisible } |
             ConvertTo-Json |
             Set-Content -LiteralPath $paths.StateFile -Encoding UTF8
     } catch { }
@@ -502,6 +543,7 @@ $state = [pscustomobject]@{
     IsPlaying     = $false
     Active        = 0
     PreloadIndex  = -1
+    HighlightIndex = -1
     IsSeeking     = $false
     SyncingSlider = $false
     PendingSlider = $null
@@ -593,6 +635,10 @@ function Stop-Playback {
     }
 
     $state.Chunks.Clear()
+
+    $ui.TextHost.Children.Clear()
+    $script:runs.Clear()
+    $state.HighlightIndex = -1
     $state.Total = 0.0
 
     if (-not $KeepWindow) { $window.Hide() }
@@ -653,6 +699,200 @@ function Invoke-Seek {
     Start-Chunk -Index 0 -Offset 0 -AutoPlay $state.IsPlaying
 }
 
+# --------------------------------------------------------------------------
+# Panel de texto: muestra lo que se esta leyendo y resalta la frase que suena.
+# --------------------------------------------------------------------------
+$conversorColor = New-Object Windows.Media.BrushConverter
+
+function New-Brush {
+    param([string]$Hex)
+    $pincel = $conversorColor.ConvertFromString($Hex)
+    $pincel.Freeze()
+    return $pincel
+}
+
+$colores = @{
+    Pendiente = New-Brush '#D0D0D6'
+    Leido     = New-Brush '#7C7C84'
+    Actual    = New-Brush '#FFFFFF'
+    Fondo     = New-Brush '#663B82F6'
+    Ninguno   = [Windows.Media.Brushes]::Transparent
+    Encendido = New-Brush '#9AE6B4'
+    Apagado   = New-Brush '#C8C8CC'
+}
+
+$fuenteTexto = New-Object Windows.Media.FontFamily 'Segoe UI'
+$script:runs = New-Object System.Collections.Generic.List[object]
+$script:panelVisible = $false
+
+if ($savedState -and $savedState.PSObject.Properties.Name -contains 'TextPanel') {
+    $script:panelVisible = [bool]$savedState.TextPanel
+}
+
+function Build-TextPanel {
+    # Una linea de texto por bloque y, dentro, un trozo por frase. Cada trozo
+    # sabe a que fragmento de audio corresponde, y por eso basta un clic en
+    # una frase para saltar a ella.
+    $ui.TextHost.Children.Clear()
+    $script:runs.Clear()
+    $state.HighlightIndex = -1
+
+    $bloque = -1
+    $parrafo = $null
+
+    for ($i = 0; $i -lt $state.Chunks.Count; $i++) {
+        $c = $state.Chunks[$i]
+
+        if ($c.Block -ne $bloque) {
+            $parrafo = New-Object Windows.Controls.TextBlock
+            $parrafo.TextWrapping = 'Wrap'
+            $parrafo.FontFamily = $fuenteTexto
+            $parrafo.FontSize = 13
+            $parrafo.LineHeight = 19
+
+            switch ($c.Kind) {
+                'titulo' {
+                    $parrafo.FontWeight = [Windows.FontWeights]::SemiBold
+                    $parrafo.FontSize = 14
+                    $arriba = 0
+                    if ($i -gt 0) { $arriba = 10 }
+                    $parrafo.Margin = New-Object Windows.Thickness(0, $arriba, 0, 4)
+                }
+                'fila'   { $parrafo.Margin = New-Object Windows.Thickness(0, 0, 0, 2) }
+                'vineta' { $parrafo.Margin = New-Object Windows.Thickness(6, 0, 0, 2) }
+                default  { $parrafo.Margin = New-Object Windows.Thickness(0, 0, 0, 8) }
+            }
+
+            [void]$ui.TextHost.Children.Add($parrafo)
+            $bloque = $c.Block
+        } else {
+            $parrafo.Inlines.Add([Windows.Documents.Run]::new(' '))
+        }
+
+        $trozo = [Windows.Documents.Run]::new([string]$c.Display)
+        $trozo.Tag = $i
+        $trozo.Foreground = $colores.Pendiente
+        $trozo.Cursor = [Windows.Input.Cursors]::Hand
+
+        $trozo.Add_MouseLeftButtonDown({
+            param($sender, $e)
+            $e.Handled = $true
+            Start-FromChunk -Index ([int]$sender.Tag)
+        })
+
+        $parrafo.Inlines.Add($trozo)
+        [void]$script:runs.Add(@{ Run = $trozo; Host = $parrafo })
+    }
+
+    $ui.TextScroll.ScrollToTop()
+}
+
+function Start-FromChunk {
+    # Clic en una frase del panel: se lee desde ahi, aunque estuviera en pausa.
+    param([int]$Index)
+
+    if ($Index -lt 0 -or $Index -ge $state.Chunks.Count) { return }
+
+    $state.Finished = $false
+    $state.IsPlaying = $true
+    Set-PlayIcon -Playing $true
+
+    # El margen minimo asegura que el salto caiga dentro de esa frase y no al
+    # final de la anterior.
+    Invoke-Seek -TargetSeconds ($state.Chunks[$Index].Offset + 0.01)
+}
+
+function Show-ChunkInPanel {
+    # Desplaza el panel para que la frase actual quede a la vista. Solo se
+    # mueve cuando la frase se sale de la franja comoda, asi el texto no da
+    # un salto en cada frase y respeta si estas desplazandote a mano.
+    param([int]$Index)
+
+    try {
+        $entrada = $script:runs[$Index]
+        $ui.TextScroll.UpdateLayout()
+
+        $rect = $entrada.Run.ContentStart.GetCharacterRect([Windows.Documents.LogicalDirection]::Forward)
+        $punto = $entrada.Host.TransformToAncestor($ui.TextHost).Transform((New-Object Windows.Point($rect.X, $rect.Y)))
+
+        $vista = $ui.TextScroll.ViewportHeight
+        $arriba = $ui.TextScroll.VerticalOffset
+
+        if (($punto.Y -lt ($arriba + 4)) -or ($punto.Y -gt ($arriba + $vista * 0.65))) {
+            $ui.TextScroll.ScrollToVerticalOffset([Math]::Max(0, $punto.Y - $vista * 0.25))
+        }
+    } catch { }
+}
+
+function Update-Highlight {
+    # Lo ya leido se apaga, la frase actual se resalta y lo pendiente queda
+    # en el color normal. Asi se ve de un vistazo por donde va la lectura.
+    param([switch]$Force)
+
+    if ($script:runs.Count -eq 0) { return }
+
+    $actual = $state.PlayIndex
+    if ((-not $Force) -and ($actual -eq $state.HighlightIndex)) { return }
+
+    for ($i = 0; $i -lt $script:runs.Count; $i++) {
+        $trozo = $script:runs[$i].Run
+
+        if ($i -eq $actual) {
+            $trozo.Foreground = $colores.Actual
+            $trozo.Background = $colores.Fondo
+        } elseif (($actual -ge 0) -and ($i -lt $actual)) {
+            $trozo.Foreground = $colores.Leido
+            $trozo.Background = $colores.Ninguno
+        } else {
+            $trozo.Foreground = $colores.Pendiente
+            $trozo.Background = $colores.Ninguno
+        }
+    }
+
+    $state.HighlightIndex = $actual
+
+    if ($script:panelVisible -and ($actual -ge 0) -and ($actual -lt $script:runs.Count)) {
+        Show-ChunkInPanel -Index $actual
+    }
+}
+
+function Set-TextPanel {
+    param([bool]$Visible)
+
+    $abajo = $window.Top + $window.ActualHeight
+    $estabaVisible = $window.IsVisible
+
+    if ($Visible) {
+        $ui.TextPanel.Visibility = 'Visible'
+        $ui.BtnText.Foreground = $colores.Encendido
+        $ui.BtnText.ToolTip = 'Ocultar el texto'
+    } else {
+        $ui.TextPanel.Visibility = 'Collapsed'
+        $ui.BtnText.Foreground = $colores.Apagado
+        $ui.BtnText.ToolTip = 'Mostrar el texto que se esta leyendo'
+    }
+
+    $script:panelVisible = $Visible
+
+    if ($estabaVisible) {
+        # El panel crece hacia arriba: la barra de controles se queda donde
+        # estaba y no se sale por el borde inferior de la pantalla.
+        $window.UpdateLayout()
+        $window.Top = $abajo - $window.ActualHeight
+        Move-PlayerOnScreen
+    }
+
+    Save-PlayerState
+
+    if ($Visible) { Update-Highlight -Force }
+}
+
+if ($script:panelVisible) {
+    $ui.TextPanel.Visibility = 'Visible'
+    $ui.BtnText.Foreground = $colores.Encendido
+    $ui.BtnText.ToolTip = 'Ocultar el texto'
+}
+
 function Start-Speaking {
     param(
         [string]$Text,
@@ -679,7 +919,7 @@ function Start-Speaking {
     $state.Finished = $false
 
     $plan = Build-SpeechPlan -Text $Text -Requested $Requested `
-        -TargetChars $settings.ChunkTargetChars -FirstChunkMinChars $settings.FirstChunkMinChars `
+        -MinChunkChars $settings.MinChunkChars `
         -Fallback $settings.FallbackLanguage -Pauses (Get-ConfiguredPauses)
 
     $index = 0
@@ -697,6 +937,9 @@ function Start-Speaking {
             Wav        = $wav
             Duration   = (Get-EstimatedDuration -Text $item.Text) + $pausa
             PauseAfter = $pausa
+            Display    = $item.Display
+            Block      = $item.Block
+            Kind       = $item.Kind
             Offset     = 0.0
             Ready      = $false
         })
@@ -713,6 +956,7 @@ function Start-Speaking {
     }
 
     Update-Offsets
+    Build-TextPanel
     $ui.LangBadge.Text = $plan.DocumentLang.ToUpperInvariant()
     $ui.Seek.Value = 0
     $ui.TimeLabel.Text = '0:00 / ' + (Format-Time $state.Total)
@@ -847,6 +1091,8 @@ $ui.BtnSpeed.Add_Click({ Set-PlaybackSpeed -Direction 1 })
 $ui.BtnSpeed.Add_MouseRightButtonUp({ Set-PlaybackSpeed -Direction -1 })
 $ui.BtnSpeed.Content = Format-Speed $script:speed
 
+$ui.BtnText.Add_Click({ Set-TextPanel -Visible (-not $script:panelVisible) })
+
 $ui.BtnClose.Add_Click({
     Stop-Playback
 })
@@ -928,7 +1174,9 @@ $ui.Root.Add_MouseLeftButtonDown({
 
     while ($null -ne $nodo) {
         if (($nodo -is [Windows.Controls.Primitives.ButtonBase]) -or
-            ($nodo -is [Windows.Controls.Slider])) {
+            ($nodo -is [Windows.Controls.Slider]) -or
+            ($nodo -is [Windows.Controls.ScrollViewer]) -or
+            ($nodo -is [Windows.Documents.TextElement])) {
             return
         }
 
@@ -978,6 +1226,7 @@ $timer.Add_Tick({
             'back'   { Invoke-Seek -TargetSeconds ((Get-GlobalPosition) - $settings.SkipSeconds) }
             'forward'{ Invoke-Seek -TargetSeconds ((Get-GlobalPosition) + $settings.SkipSeconds) }
             'faster' { Set-PlaybackSpeed -Direction 1 }
+            'panel'  { Set-TextPanel -Visible (-not $script:panelVisible) }
             'slower' { Set-PlaybackSpeed -Direction -1 }
             'quit'   {
                 Stop-Playback
@@ -1052,8 +1301,10 @@ $timer.Add_Tick({
         }
     }
 
-    # 4. Barra de progreso y reloj.
+    # 4. Barra de progreso, reloj y frase resaltada.
     if ($window.IsVisible -and $state.Chunks.Count -gt 0) {
+        Update-Highlight
+
         $position = Get-GlobalPosition
 
         if (-not $state.IsSeeking -and $state.Total -gt 0) {

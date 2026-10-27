@@ -74,15 +74,23 @@ reproducir de principio a fin.
 4. Las frases contiguas del mismo idioma se agrupan en segmentos.
 5. Cada segmento se normaliza según su idioma y se parte en fragmentos.
 
-El primer fragmento se cierra en la primera frase completa de al menos 25
-caracteres; los demás se acumulan hasta 220. Es una asimetría deliberada: el
-primero determina cuánto esperas a oír algo, y los siguientes se generan
-mientras suena el anterior, así que conviene que sean grandes para que Piper
-trabaje de forma eficiente.
+Cada fragmento es una frase. Solo se juntan con la siguiente las frases de
+menos de 25 caracteres, que sonarían entrecortadas por sí solas.
 
-La diferencia es medible. Con el primer fragmento fijado en 70 caracteres se
-acumulaban dos frases y la primera palabra tardaba 702 milisegundos; cortando
-en la primera frase, 449.
+Antes los fragmentos acumulaban frases hasta 220 caracteres. Se cambió por el
+panel de texto: si un fragmento lleva tres frases, el reproductor sabe que
+suena ese fragmento, pero no cuál de las tres. Con una frase por fragmento,
+lo resaltado es exactamente lo que se oye.
+
+Dividir más fino no le cuesta naturalidad a la voz, porque Piper ya sintetiza
+cada frase por separado aunque le lleguen juntas. Y como los dos
+reproductores encadenan los fragmentos sin hueco, tampoco se nota el cambio.
+La primera palabra depende de la primera frase: con un título corto al
+principio, sonó en 116 milisegundos en las pruebas.
+
+Las frases se separan sobre el texto original y cada una se transforma para
+la voz por separado. Hacerlo al revés podía desalinear lo mostrado de lo
+oído, cuando una sustitución del diccionario quitaba o agregaba un punto.
 
 Con un factor de tiempo real de 0.07, generar un fragmento cuesta alrededor
 del 7 % de lo que dura su audio. Dicho de otro modo, la síntesis avanza unas
@@ -110,6 +118,20 @@ El silencio no se reproduce como un archivo aparte. Se añade al final del WAV
 del fragmento anterior, reescribiendo su cabecera. Hacerlo con un archivo
 propio costaba el arranque de ese archivo, y una pausa de 0.18 s acababa
 durando más de medio segundo.
+
+## El panel de texto
+
+Cada fragmento guarda dos textos: el que se pronuncia y el original. El panel
+muestra el original, con una línea por bloque y un trozo por frase, y cada
+trozo sabe a qué fragmento de audio corresponde. Resaltar la frase actual es
+entonces cambiar el color del trozo cuyo fragmento está sonando, y un clic
+sobre un trozo es un salto a su fragmento.
+
+El panel se descartó como alternativa a resaltar en la ventana de donde se
+copió el texto. Eso exigiría que cada programa expusiera la posición de sus
+palabras en pantalla, y la mayoría no lo hace: VS Code, Slack, Teams, las
+terminales y los visores de PDF quedarían fuera. El panel funciona igual sea
+cual sea el origen del texto.
 
 ## Por qué hay dos reproductores
 

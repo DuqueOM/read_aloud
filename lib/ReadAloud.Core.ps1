@@ -53,8 +53,7 @@ function Get-ReadAloudSettings {
         SentenceSilence     = 0.36
         NoiseScale          = 0.667
         NoiseW              = 0.8
-        ChunkTargetChars    = 220
-        FirstChunkMinChars  = 25
+        MinChunkChars       = 25
         FallbackLanguage    = 'es'
         ShowPlayer          = $true
         PlayerAutoClose     = $true
@@ -298,7 +297,18 @@ function Send-ReadAloudCommand {
 
         $writer = New-Object IO.StreamWriter($client, (New-Object Text.UTF8Encoding($false)))
         $writer.AutoFlush = $true
-        $writer.WriteLine(($Command | ConvertTo-Json -Compress -Depth 5))
+        # Un texto leido con Get-Content trae propiedades ocultas de
+        # PowerShell, y ConvertTo-Json lo enviaria como un objeto en vez de
+        # como texto: el lector acababa diciendo "arroba value igual" al
+        # principio. Pasar cada valor a texto puro lo evita.
+        $limpio = @{}
+        foreach ($clave in $Command.Keys) {
+            $valor = $Command[$clave]
+            if ($valor -is [string]) { $valor = [string]$valor.ToString() }
+            $limpio[$clave] = $valor
+        }
+
+        $writer.WriteLine(($limpio | ConvertTo-Json -Compress -Depth 5))
         $writer.Flush()
 
         return 'ok'

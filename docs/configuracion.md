@@ -39,20 +39,15 @@ una voz más plana y predecible; subirlos, más variada y a veces inestable.
 
 | Valor | Por defecto | Qué hace |
 |---|---|---|
-| `ChunkTargetChars` | `220` | Tamaño al que se cierran los fragmentos normales |
-| `FirstChunkMinChars` | `25` | Mínimo del primer fragmento |
+| `MinChunkChars` | `25` | Frases más cortas que esto se juntan con la siguiente |
 
-`FirstChunkMinChars` decide cuánto esperas a oír la primera palabra. El primer
-fragmento se corta en la primera frase completa que llegue a ese tamaño, así
-que con `25` casi siempre es una sola frase.
+Cada frase es un fragmento de audio, y cada fragmento es lo que se resalta en
+el panel de texto. Solo las frases muy cortas, como un `OK.` suelto, se juntan
+con la siguiente para que no suenen entrecortadas.
 
-Subirlo agrupa más frases al principio y retrasa el arranque: pasar de `25` a
-`70` subió la espera de 449 a 702 milisegundos en las pruebas, sin ninguna
-ganancia a cambio.
-
-`ChunkTargetChars` afecta a la fluidez del resto. Fragmentos grandes suenan
-más continuos porque cada uno lleva su entonación completa; fragmentos
-pequeños permiten saltar con más precisión con los botones de avance.
+Subir el valor agrupa más frases en cada fragmento. El resaltado del panel se
+vuelve menos preciso, porque marca el fragmento entero, y la primera palabra
+tarda más en sonar, porque el primer fragmento es más largo.
 
 ## Pausas entre bloques
 
@@ -107,6 +102,20 @@ La ventana se arrastra desde cualquier parte que no sea un botón, y recuerda
 dónde la dejaste: la posición se guarda en
 `read_aloud_piper\runtime\player.json`.
 
+### Panel de texto
+
+El botón `≡` de la barra despliega el texto que se está leyendo, encima de
+los controles. La frase que suena aparece resaltada en azul, lo ya leído se
+atenúa y lo pendiente queda en el color normal. El panel se desplaza solo
+para mantener la frase actual a la vista, pero únicamente cuando se sale de
+la franja visible, así que puedes desplazarte a mano sin que te lo quite.
+
+Un clic sobre cualquier frase salta a ella y sigue leyendo desde ahí, incluso
+si estaba en pausa.
+
+El panel recuerda si lo dejaste abierto. Se muestra el texto original, no el
+que se pronuncia: verás `deploy`, aunque la voz diga `diplói`.
+
 ### Velocidad de reproducción
 
 El botón verde junto a `+10` muestra la velocidad actual. Un clic la sube un
@@ -158,6 +167,7 @@ Si quieres controlar el lector desde otro programa, escribe una línea JSON en
 | `{"cmd":"back"}` | Retrocede |
 | `{"cmd":"forward"}` | Avanza |
 | `{"cmd":"faster"}` | Sube la velocidad un paso |
+| `{"cmd":"panel"}` | Muestra u oculta el panel de texto |
 | `{"cmd":"slower"}` | Baja la velocidad un paso |
 | `{"cmd":"ping"}` | No hace nada, sirve para probar la conexión |
 | `{"cmd":"quit"}` | Cierra el proceso residente |

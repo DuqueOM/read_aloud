@@ -181,7 +181,7 @@ if ($ShowPlan) {
     Set-SpeechTerms (Import-SpeechTerms -Path $paths.TermsFile)
 
     $plan = Build-SpeechPlan -Text $text -Requested $Language -MlMode $MlMode `
-        -TargetChars $settings.ChunkTargetChars -FirstChunkMinChars $settings.FirstChunkMinChars `
+        -MinChunkChars $settings.MinChunkChars `
         -Fallback $settings.FallbackLanguage
 
     $profile = Get-LanguageProfile -Text $text
@@ -216,7 +216,7 @@ function Invoke-DirectRead {
     Set-SpeechTerms (Import-SpeechTerms -Path $paths.TermsFile)
 
     $plan = Build-SpeechPlan -Text $Text -Requested $Language -MlMode $MlMode `
-        -TargetChars $settings.ChunkTargetChars -FirstChunkMinChars $settings.FirstChunkMinChars `
+        -MinChunkChars $settings.MinChunkChars `
         -Fallback $settings.FallbackLanguage
 
     $voice = Get-VoiceModelPath -Paths $paths -Settings $settings -Lang $plan.DocumentLang

@@ -33,8 +33,9 @@ Mira el registro. Lo más probable es que el proceso de Piper se haya caído; el
 residente lo levanta solo en el siguiente fragmento, pero el que estaba en
 curso se pierde.
 
-Si pasa a menudo, prueba fragmentos más pequeños bajando `ChunkTargetChars` a
-`150` en los ajustes.
+Si pasa con un texto concreto, búscalo con `.\read_aloud.ps1 -ShowPlan`. Una
+frase larguísima, sin puntos, se sintetiza en un solo fragmento, y partirla con
+algún punto ayuda.
 
 ## Lee el inglés con acento español
 

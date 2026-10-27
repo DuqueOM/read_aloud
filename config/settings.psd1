@@ -23,15 +23,10 @@
     NoiseScale = 0.667
     NoiseW = 0.8
 
-    # Tamano de los fragmentos de audio, en caracteres.
-    #
-    # ChunkTargetChars es el tamano al que se cierran los fragmentos normales.
-    #
-    # FirstChunkMinChars es el minimo del primero, que se corta en la primera
-    # frase completa que llegue a ese tamano. El primero decide cuanto tardas
-    # en oir la primera palabra, asi que conviene pequeno.
-    ChunkTargetChars = 220
-    FirstChunkMinChars = 25
+    # Cada frase es un fragmento de audio, y es lo que se resalta en el panel
+    # de texto. Las frases mas cortas que esto se juntan con la siguiente para
+    # que no suenen entrecortadas.
+    MinChunkChars = 25
 
     # Idioma que se usa cuando el texto es demasiado corto o ambiguo.
     FallbackLanguage = 'es'
