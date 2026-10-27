@@ -120,7 +120,13 @@ si estaba en pausa. Arrastrar en cambio selecciona texto, sin saltar, y el
 clic derecho sobre la selección ofrece copiarla. También funcionan `Ctrl+C` y
 `Ctrl+A`.
 
-El panel recuerda si lo dejaste abierto. Se muestra el texto original, no el
+El tamaño del panel se cambia como el de una ventana, arrastrando sus bordes:
+el superior cambia el alto, el izquierdo el ancho y la esquina superior
+izquierda ambos. Se estira hacia arriba y hacia la izquierda porque la ventana
+está anclada por su esquina inferior derecha. No baja de 80 píxeles de alto
+ni de lo ancha que es la barra de controles.
+
+El panel recuerda si lo dejaste abierto y el tamaño que le diste. Se muestra el texto original, no el
 que se pronuncia: verás `deploy`, aunque la voz diga `diplói`.
 
 ### Velocidad de reproducción

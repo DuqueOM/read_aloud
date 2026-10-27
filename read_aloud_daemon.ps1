@@ -373,6 +373,27 @@ $xaml = @'
         </Setter.Value>
       </Setter>
     </Style>
+
+    <!-- Bordes para cambiar el tamano del panel. Con clave propia y no como
+         estilo implicito: uno implicito tambien cambiaria el control de la
+         barra de posicion, que por dentro es otro Thumb. -->
+    <Style x:Key="Borde" TargetType="Thumb">
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Thumb">
+            <Border x:Name="Marca" Background="Transparent" CornerRadius="3"/>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="Marca" Property="Background" Value="#40FFFFFF"/>
+              </Trigger>
+              <Trigger Property="IsDragging" Value="True">
+                <Setter TargetName="Marca" Property="Background" Value="#66FFFFFF"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
   </Window.Resources>
   <Border x:Name="Root" CornerRadius="10" Background="#F21B1B1F" BorderBrush="#33FFFFFF"
           BorderThickness="1" Padding="10,7">
@@ -383,9 +404,13 @@ $xaml = @'
     <!-- Panel con el texto que se esta leyendo. El ancho se ata al de la
          barra de controles: sin limite, el texto no partiria las lineas y la
          ventana crecería a lo ancho sin fin. -->
-    <Border x:Name="TextPanel" Visibility="Collapsed" Height="147" Margin="0,2,0,8"
-            CornerRadius="6" Background="#FF26262B" Padding="8,6,2,6"
-            Width="{Binding ActualWidth, ElementName=Bar}">
+    <!-- El ancho parte del de la barra y nunca baja de el. Al estirar el
+         panel se le pone un ancho propio, que sustituye al enlace. -->
+    <Grid x:Name="TextPanel" Visibility="Collapsed" Height="147" Margin="0,2,0,8"
+          HorizontalAlignment="Right"
+          Width="{Binding ActualWidth, ElementName=Bar}"
+          MinWidth="{Binding ActualWidth, ElementName=Bar}">
+    <Border CornerRadius="6" Background="#FF26262B" Padding="8,6,2,6">
       <!-- IsUndoEnabled apagado: cada cambio de color del resaltado quedaria
            guardado en el historial de deshacer y la memoria creceria sin fin. -->
       <RichTextBox x:Name="TextView" IsReadOnly="True" IsUndoEnabled="False"
@@ -404,7 +429,16 @@ $xaml = @'
         <FlowDocument PagePadding="0"/>
       </RichTextBox>
     </Border>
-    <StackPanel x:Name="Bar" Orientation="Horizontal" VerticalAlignment="Center">
+      <!-- La ventana esta anclada abajo a la derecha, asi que el panel se
+           estira desde arriba y desde la izquierda. -->
+      <Thumb x:Name="GripTop" Style="{StaticResource Borde}" Height="5"
+             VerticalAlignment="Top" Margin="14,0,8,0" Cursor="SizeNS"/>
+      <Thumb x:Name="GripLeft" Style="{StaticResource Borde}" Width="5"
+             HorizontalAlignment="Left" Margin="0,14,0,8" Cursor="SizeWE"/>
+      <Thumb x:Name="GripCorner" Style="{StaticResource Borde}" Width="12" Height="12"
+             HorizontalAlignment="Left" VerticalAlignment="Top" Cursor="SizeNWSE"/>
+    </Grid>
+    <StackPanel x:Name="Bar" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
       <TextBlock x:Name="LangBadge" Text="ES" Foreground="#9AE6B4" FontFamily="Segoe UI"
                  FontSize="10" FontWeight="Bold" VerticalAlignment="Center" Margin="2,0,8,0"/>
       <Button x:Name="BtnBack" Content="-10" FontFamily="Segoe UI" FontSize="10" FontWeight="SemiBold"
@@ -447,7 +481,7 @@ $xmlReader = [Xml.XmlReader]::Create($reader)
 $window = [Windows.Markup.XamlReader]::Load($xmlReader)
 
 $ui = @{}
-foreach ($name in @('Root','LangBadge','BtnBack','BtnPlay','BtnFwd','BtnSpeed','BufferBar','Seek','TimeLabel','BtnText','BtnClose','TextPanel','TextView','Bar')) {
+foreach ($name in @('Root','LangBadge','BtnBack','BtnPlay','BtnFwd','BtnSpeed','BufferBar','Seek','TimeLabel','BtnText','BtnClose','TextPanel','TextView','Bar','GripTop','GripLeft','GripCorner')) {
     $ui[$name] = $window.FindName($name)
 }
 
@@ -543,6 +577,9 @@ function Save-PlayerState {
     # la fuerza, la velocidad elegida no se pierde.
     try {
         $estado = @{ Speed = $script:speed; TextPanel = $script:panelVisible }
+
+        if ($script:panelAlto -gt 0) { $estado.PanelHeight = $script:panelAlto }
+        if ($script:panelAncho -gt 0) { $estado.PanelWidth = $script:panelAncho }
 
         # Solo se guarda la esquina si la moviste a mano; si no, se usa la de
         # la pantalla, que sigue siendo valida aunque cambie la resolucion.
@@ -964,6 +1001,64 @@ if ($script:panelVisible) {
     $ui.BtnText.ToolTip = 'Ocultar el texto'
 }
 
+# --------------------------------------------------------------------------
+# Tamano del panel: se cambia arrastrando sus bordes, como una ventana.
+# --------------------------------------------------------------------------
+$script:panelAlto = 0.0
+$script:panelAncho = 0.0
+
+if ($savedState) {
+    $propiedades = $savedState.PSObject.Properties.Name
+    if ($propiedades -contains 'PanelHeight') { $script:panelAlto = [double]$savedState.PanelHeight }
+    if ($propiedades -contains 'PanelWidth') { $script:panelAncho = [double]$savedState.PanelWidth }
+}
+
+if ($script:panelAlto -gt 0) { $ui.TextPanel.Height = $script:panelAlto }
+if ($script:panelAncho -gt 0) { $ui.TextPanel.Width = $script:panelAncho }
+
+function Resize-TextPanel {
+    param(
+        [double]$DeltaAncho = 0,
+        [double]$DeltaAlto = 0
+    )
+
+    $area = [Windows.SystemParameters]::WorkArea
+
+    $alto = $ui.TextPanel.ActualHeight + $DeltaAlto
+    $alto = [Math]::Max(80, [Math]::Min($alto, $area.Height * 0.8))
+
+    # Nunca mas estrecho que la barra de controles, que vive debajo.
+    $ancho = $ui.TextPanel.ActualWidth + $DeltaAncho
+    $ancho = [Math]::Max($ui.Bar.ActualWidth, [Math]::Min($ancho, $area.Width * 0.9))
+
+    $ui.TextPanel.Height = $alto
+    $ui.TextPanel.Width = $ancho
+    $script:panelAlto = $alto
+    $script:panelAncho = $ancho
+
+    # La esquina inferior derecha queda fija y el panel crece hacia el borde
+    # que estas arrastrando.
+    $window.UpdateLayout()
+    Set-PlayerPosition
+}
+
+# El cambio que informa un borde se mide desde donde empezo a arrastrarse,
+# pero como el borde se mueve con la ventana, cada aviso llega ya como el
+# tramo recorrido desde el anterior.
+$ui.GripTop.Add_DragDelta({ param($sender, $e) Resize-TextPanel -DeltaAlto (-$e.VerticalChange) })
+$ui.GripLeft.Add_DragDelta({ param($sender, $e) Resize-TextPanel -DeltaAncho (-$e.HorizontalChange) })
+$ui.GripCorner.Add_DragDelta({
+    param($sender, $e)
+    Resize-TextPanel -DeltaAncho (-$e.HorizontalChange) -DeltaAlto (-$e.VerticalChange)
+})
+
+foreach ($borde in @($ui.GripTop, $ui.GripLeft, $ui.GripCorner)) {
+    $borde.Add_DragCompleted({
+        Save-PlayerState
+        Update-Highlight -Force
+    })
+}
+
 function Start-Speaking {
     param(
         [string]$Text,
@@ -1250,6 +1345,7 @@ $ui.Root.Add_MouseLeftButtonDown({
             ($nodo -is [Windows.Controls.Slider]) -or
             ($nodo -is [Windows.Controls.ScrollViewer]) -or
             ($nodo -is [Windows.Controls.Primitives.TextBoxBase]) -or
+            ($nodo -is [Windows.Controls.Primitives.Thumb]) -or
             ($nodo -is [Windows.Documents.TextElement])) {
             return
         }
