@@ -383,13 +383,26 @@ $xaml = @'
     <!-- Panel con el texto que se esta leyendo. El ancho se ata al de la
          barra de controles: sin limite, el texto no partiria las lineas y la
          ventana crecería a lo ancho sin fin. -->
-    <Border x:Name="TextPanel" Visibility="Collapsed" Height="210" Margin="0,2,0,8"
-            CornerRadius="6" Background="#FF26262B" Padding="12,8,6,8"
+    <Border x:Name="TextPanel" Visibility="Collapsed" Height="147" Margin="0,2,0,8"
+            CornerRadius="6" Background="#FF26262B" Padding="8,6,2,6"
             Width="{Binding ActualWidth, ElementName=Bar}">
-      <ScrollViewer x:Name="TextScroll" VerticalScrollBarVisibility="Auto"
-                    HorizontalScrollBarVisibility="Disabled">
-        <StackPanel x:Name="TextHost" Margin="0,0,8,0"/>
-      </ScrollViewer>
+      <!-- IsUndoEnabled apagado: cada cambio de color del resaltado quedaria
+           guardado en el historial de deshacer y la memoria creceria sin fin. -->
+      <RichTextBox x:Name="TextView" IsReadOnly="True" IsUndoEnabled="False"
+                   Background="Transparent" BorderThickness="0" Padding="0"
+                   Foreground="#D0D0D6" FontFamily="Segoe UI" FontSize="13"
+                   SelectionBrush="#569CF6" SelectionOpacity="0.45"
+                   VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <RichTextBox.ContextMenu>
+          <ContextMenu>
+            <MenuItem Header="Copiar" Command="ApplicationCommands.Copy" InputGestureText="Ctrl+C"
+                      CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+            <MenuItem Header="Seleccionar todo" Command="ApplicationCommands.SelectAll" InputGestureText="Ctrl+A"
+                      CommandTarget="{Binding PlacementTarget, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+          </ContextMenu>
+        </RichTextBox.ContextMenu>
+        <FlowDocument PagePadding="0"/>
+      </RichTextBox>
     </Border>
     <StackPanel x:Name="Bar" Orientation="Horizontal" VerticalAlignment="Center">
       <TextBlock x:Name="LangBadge" Text="ES" Foreground="#9AE6B4" FontFamily="Segoe UI"
@@ -434,51 +447,72 @@ $xmlReader = [Xml.XmlReader]::Create($reader)
 $window = [Windows.Markup.XamlReader]::Load($xmlReader)
 
 $ui = @{}
-foreach ($name in @('Root','LangBadge','BtnBack','BtnPlay','BtnFwd','BtnSpeed','BufferBar','Seek','TimeLabel','BtnText','BtnClose','TextPanel','TextScroll','TextHost','Bar')) {
+foreach ($name in @('Root','LangBadge','BtnBack','BtnPlay','BtnFwd','BtnSpeed','BufferBar','Seek','TimeLabel','BtnText','BtnClose','TextPanel','TextView','Bar')) {
     $ui[$name] = $window.FindName($name)
 }
 
 $window.Opacity = [double]$settings.PlayerOpacity
 
-# Posicion recordada entre sesiones; si no hay, abajo a la derecha.
-$screen = [Windows.SystemParameters]::WorkArea
-$window.Left = $screen.Right - 480
-$window.Top = $screen.Bottom - 70
+# Posicion: la ventana se ancla por su esquina inferior derecha. Asi aparece
+# abajo a la derecha, y al abrir el panel de texto crece hacia arriba sin que
+# la barra de controles se mueva.
+#
+# Las versiones anteriores guardaban la esquina superior izquierda, y esa
+# posicion se descarta a proposito: con el panel la ventana cambia de alto, y
+# anclada por arriba la barra se desplazaba hacia abajo o se salia de la vista.
+$script:ancla = $null
 
 if (Test-Path -LiteralPath $paths.StateFile) {
     try {
         $savedState = Get-Content -LiteralPath $paths.StateFile -Raw -Encoding UTF8 | ConvertFrom-Json
-        $window.Left = $savedState.Left
-        $window.Top = $savedState.Top
+        $propiedades = $savedState.PSObject.Properties.Name
+        if (($propiedades -contains 'Right') -and ($propiedades -contains 'Bottom')) {
+            $script:ancla = @{ Right = [double]$savedState.Right; Bottom = [double]$savedState.Bottom }
+        }
     } catch { }
 }
 
-function Move-PlayerOnScreen {
-    # La posicion guardada puede venir de un monitor que ya no esta conectado.
-    # Antes solo se comprobaba el borde superior izquierdo, y la ventana podia
-    # abrirse por completo fuera de la pantalla visible. Si no cabe entera en
-    # el escritorio actual, vuelve a la esquina inferior derecha.
-    $izquierda = [Windows.SystemParameters]::VirtualScreenLeft
-    $arriba = [Windows.SystemParameters]::VirtualScreenTop
-    $derecha = $izquierda + [Windows.SystemParameters]::VirtualScreenWidth
-    $abajo = $arriba + [Windows.SystemParameters]::VirtualScreenHeight
-
+function Set-PlayerPosition {
+    # Coloca la ventana segun su esquina inferior derecha: la de la pantalla si
+    # nunca la moviste, o la que dejaste al arrastrarla.
     $ancho = $window.ActualWidth
     $alto = $window.ActualHeight
     if ($ancho -le 0) { $ancho = 480 }
     if ($alto -le 0) { $alto = 50 }
 
-    $cabe = ($window.Left -ge $izquierda) -and ($window.Top -ge $arriba) -and
-            (($window.Left + $ancho) -le $derecha) -and (($window.Top + $alto) -le $abajo)
+    $area = [Windows.SystemParameters]::WorkArea
+    $derecha = $area.Right - 12
+    $abajo = $area.Bottom - 12
+
+    if ($null -ne $script:ancla) {
+        $derecha = $script:ancla.Right
+        $abajo = $script:ancla.Bottom
+    }
+
+    $izquierda = $derecha - $ancho
+    $arriba = $abajo - $alto
+
+    # La esquina guardada puede ser de un monitor que ya no esta conectado. Si
+    # la ventana no cabe entera en el escritorio actual, vuelve a la esquina.
+    $pantallaIzq = [Windows.SystemParameters]::VirtualScreenLeft
+    $pantallaArr = [Windows.SystemParameters]::VirtualScreenTop
+    $pantallaDer = $pantallaIzq + [Windows.SystemParameters]::VirtualScreenWidth
+    $pantallaAba = $pantallaArr + [Windows.SystemParameters]::VirtualScreenHeight
+
+    $cabe = ($izquierda -ge $pantallaIzq) -and ($arriba -ge $pantallaArr) -and
+            ($derecha -le $pantallaDer) -and ($abajo -le $pantallaAba)
 
     if (-not $cabe) {
-        $area = [Windows.SystemParameters]::WorkArea
-        $window.Left = $area.Right - $ancho - 12
-        $window.Top = $area.Bottom - $alto - 12
+        $script:ancla = $null
+        $izquierda = $area.Right - 12 - $ancho
+        $arriba = $area.Bottom - 12 - $alto
     }
+
+    $window.Left = $izquierda
+    $window.Top = $arriba
 }
 
-Move-PlayerOnScreen
+Set-PlayerPosition
 
 # Dos reproductores en vez de uno. Abrir un archivo cuesta cerca de medio
 # segundo, y hacerlo al terminar el fragmento anterior dejaba ese hueco de
@@ -508,7 +542,16 @@ function Save-PlayerState {
     # Se guarda en cada cambio y no solo al cerrar: si el proceso se corta a
     # la fuerza, la velocidad elegida no se pierde.
     try {
-        @{ Left = $window.Left; Top = $window.Top; Speed = $script:speed; TextPanel = $script:panelVisible } |
+        $estado = @{ Speed = $script:speed; TextPanel = $script:panelVisible }
+
+        # Solo se guarda la esquina si la moviste a mano; si no, se usa la de
+        # la pantalla, que sigue siendo valida aunque cambie la resolucion.
+        if ($null -ne $script:ancla) {
+            $estado.Right = $script:ancla.Right
+            $estado.Bottom = $script:ancla.Bottom
+        }
+
+        $estado |
             ConvertTo-Json |
             Set-Content -LiteralPath $paths.StateFile -Encoding UTF8
     } catch { }
@@ -636,7 +679,7 @@ function Stop-Playback {
 
     $state.Chunks.Clear()
 
-    $ui.TextHost.Children.Clear()
+    $ui.TextView.Document.Blocks.Clear()
     $script:runs.Clear()
     $state.HighlightIndex = -1
     $state.Total = 0.0
@@ -701,6 +744,10 @@ function Invoke-Seek {
 
 # --------------------------------------------------------------------------
 # Panel de texto: muestra lo que se esta leyendo y resalta la frase que suena.
+#
+# Es un RichTextBox de solo lectura y no un TextBlock: un TextBlock no deja
+# seleccionar, y el texto tiene que poder copiarse. Un clic sin arrastrar
+# salta a esa frase; arrastrar selecciona, y el clic derecho ofrece copiar.
 # --------------------------------------------------------------------------
 $conversorColor = New-Object Windows.Media.BrushConverter
 
@@ -721,7 +768,6 @@ $colores = @{
     Apagado   = New-Brush '#C8C8CC'
 }
 
-$fuenteTexto = New-Object Windows.Media.FontFamily 'Segoe UI'
 $script:runs = New-Object System.Collections.Generic.List[object]
 $script:panelVisible = $false
 
@@ -730,10 +776,10 @@ if ($savedState -and $savedState.PSObject.Properties.Name -contains 'TextPanel')
 }
 
 function Build-TextPanel {
-    # Una linea de texto por bloque y, dentro, un trozo por frase. Cada trozo
-    # sabe a que fragmento de audio corresponde, y por eso basta un clic en
-    # una frase para saltar a ella.
-    $ui.TextHost.Children.Clear()
+    # Un parrafo por bloque y, dentro, un trozo por frase. Cada trozo sabe a
+    # que fragmento de audio corresponde.
+    $documento = $ui.TextView.Document
+    $documento.Blocks.Clear()
     $script:runs.Clear()
     $state.HighlightIndex = -1
 
@@ -744,10 +790,7 @@ function Build-TextPanel {
         $c = $state.Chunks[$i]
 
         if ($c.Block -ne $bloque) {
-            $parrafo = New-Object Windows.Controls.TextBlock
-            $parrafo.TextWrapping = 'Wrap'
-            $parrafo.FontFamily = $fuenteTexto
-            $parrafo.FontSize = 13
+            $parrafo = New-Object Windows.Documents.Paragraph
             $parrafo.LineHeight = 19
 
             switch ($c.Kind) {
@@ -763,7 +806,7 @@ function Build-TextPanel {
                 default  { $parrafo.Margin = New-Object Windows.Thickness(0, 0, 0, 8) }
             }
 
-            [void]$ui.TextHost.Children.Add($parrafo)
+            $documento.Blocks.Add($parrafo)
             $bloque = $c.Block
         } else {
             $parrafo.Inlines.Add([Windows.Documents.Run]::new(' '))
@@ -772,19 +815,12 @@ function Build-TextPanel {
         $trozo = [Windows.Documents.Run]::new([string]$c.Display)
         $trozo.Tag = $i
         $trozo.Foreground = $colores.Pendiente
-        $trozo.Cursor = [Windows.Input.Cursors]::Hand
-
-        $trozo.Add_MouseLeftButtonDown({
-            param($sender, $e)
-            $e.Handled = $true
-            Start-FromChunk -Index ([int]$sender.Tag)
-        })
 
         $parrafo.Inlines.Add($trozo)
-        [void]$script:runs.Add(@{ Run = $trozo; Host = $parrafo })
+        [void]$script:runs.Add(@{ Run = $trozo })
     }
 
-    $ui.TextScroll.ScrollToTop()
+    $ui.TextView.ScrollToHome()
 }
 
 function Start-FromChunk {
@@ -808,18 +844,21 @@ function Show-ChunkInPanel {
     # un salto en cada frase y respeta si estas desplazandote a mano.
     param([int]$Index)
 
+    # Mientras hay texto seleccionado no se mueve nada: estas copiando.
+    if (-not $ui.TextView.Selection.IsEmpty) { return }
+
     try {
-        $entrada = $script:runs[$Index]
-        $ui.TextScroll.UpdateLayout()
+        $ui.TextView.UpdateLayout()
 
-        $rect = $entrada.Run.ContentStart.GetCharacterRect([Windows.Documents.LogicalDirection]::Forward)
-        $punto = $entrada.Host.TransformToAncestor($ui.TextHost).Transform((New-Object Windows.Point($rect.X, $rect.Y)))
+        $rect = $script:runs[$Index].Run.ContentStart.GetCharacterRect([Windows.Documents.LogicalDirection]::Forward)
+        if ($rect.IsEmpty) { return }
 
-        $vista = $ui.TextScroll.ViewportHeight
-        $arriba = $ui.TextScroll.VerticalOffset
+        $vista = $ui.TextView.ViewportHeight
+        $desplazado = $ui.TextView.VerticalOffset
 
-        if (($punto.Y -lt ($arriba + 4)) -or ($punto.Y -gt ($arriba + $vista * 0.65))) {
-            $ui.TextScroll.ScrollToVerticalOffset([Math]::Max(0, $punto.Y - $vista * 0.25))
+        # El rectangulo llega relativo a lo que se ve, no al documento entero.
+        if (($rect.Y -lt 4) -or ($rect.Y -gt ($vista * 0.65))) {
+            $ui.TextView.ScrollToVerticalOffset([Math]::Max(0, $desplazado + $rect.Y - $vista * 0.25))
         }
     } catch { }
 }
@@ -856,11 +895,44 @@ function Update-Highlight {
     }
 }
 
+# Clic sin arrastrar: salto a la frase. Si al soltar hay seleccion, fue un
+# arrastre para copiar y no se salta.
+#
+# Se busca la letra mas cercana al clic y se acepta si esta a la altura de esa
+# linea. Exigir caer justo encima de una letra hacia que un clic en el
+# interlineado, o entre dos palabras de una fila de tabla, no hiciera nada.
+$ui.TextView.Add_PreviewMouseLeftButtonUp({
+    param($sender, $e)
+
+    if (-not $sender.Selection.IsEmpty) { return }
+
+    $punto = $e.GetPosition($sender)
+    $posicion = $sender.GetPositionFromPoint($punto, $true)
+    if ($null -eq $posicion) { return }
+
+    $rect = $posicion.GetCharacterRect([Windows.Documents.LogicalDirection]::Forward)
+    if ($rect.IsEmpty -or $rect.Height -le 0) { return }
+
+    $centro = $rect.Top + ($rect.Height / 2)
+    if ([Math]::Abs($punto.Y - $centro) -gt $rect.Height) { return }
+
+    # El punto puede caer en el espacio que separa dos frases, que no tiene
+    # fragmento propio: se toma la frase de al lado.
+    $trozo = $posicion.Parent
+    foreach ($direccion in @('Forward', 'Backward')) {
+        if (($trozo -is [Windows.Documents.Run]) -and ($null -ne $trozo.Tag)) { break }
+
+        $vecina = $posicion.GetNextInsertionPosition([Windows.Documents.LogicalDirection]$direccion)
+        if ($null -ne $vecina) { $trozo = $vecina.Parent }
+    }
+
+    if (($trozo -is [Windows.Documents.Run]) -and ($null -ne $trozo.Tag)) {
+        Start-FromChunk -Index ([int]$trozo.Tag)
+    }
+})
+
 function Set-TextPanel {
     param([bool]$Visible)
-
-    $abajo = $window.Top + $window.ActualHeight
-    $estabaVisible = $window.IsVisible
 
     if ($Visible) {
         $ui.TextPanel.Visibility = 'Visible'
@@ -874,12 +946,11 @@ function Set-TextPanel {
 
     $script:panelVisible = $Visible
 
-    if ($estabaVisible) {
-        # El panel crece hacia arriba: la barra de controles se queda donde
-        # estaba y no se sale por el borde inferior de la pantalla.
+    if ($window.IsVisible) {
+        # La esquina inferior derecha queda fija: el panel crece hacia arriba
+        # y la barra de controles no se mueve de donde estaba.
         $window.UpdateLayout()
-        $window.Top = $abajo - $window.ActualHeight
-        Move-PlayerOnScreen
+        Set-PlayerPosition
     }
 
     Save-PlayerState
@@ -965,9 +1036,11 @@ function Start-Speaking {
 
     if ($settings.ShowPlayer) {
         $window.Show()
-        # Se revisa al mostrar, no solo al arrancar: el monitor puede cambiar
-        # mientras el proceso residente sigue vivo.
-        Move-PlayerOnScreen
+        # Se coloca al mostrar, no solo al arrancar: el alto depende de si el
+        # panel esta abierto, y el monitor puede cambiar mientras el proceso
+        # residente sigue vivo.
+        $window.UpdateLayout()
+        Set-PlayerPosition
     }
 
     Write-DaemonLog ("Lectura {0}: {1} fragmentos, {2:N1} s de pausas, idioma {3}" -f $generation, $state.Chunks.Count, $pausas, $plan.DocumentLang)
@@ -1176,6 +1249,7 @@ $ui.Root.Add_MouseLeftButtonDown({
         if (($nodo -is [Windows.Controls.Primitives.ButtonBase]) -or
             ($nodo -is [Windows.Controls.Slider]) -or
             ($nodo -is [Windows.Controls.ScrollViewer]) -or
+            ($nodo -is [Windows.Controls.Primitives.TextBoxBase]) -or
             ($nodo -is [Windows.Documents.TextElement])) {
             return
         }
@@ -1187,7 +1261,22 @@ $ui.Root.Add_MouseLeftButtonDown({
         }
     }
 
+    # Doble clic sobre la barra: vuelve a la esquina inferior derecha.
+    if ($e.ClickCount -eq 2) {
+        $script:ancla = $null
+        Set-PlayerPosition
+        Save-PlayerState
+        return
+    }
+
     try { $window.DragMove() } catch { }
+
+    # Donde la dejaste pasa a ser su esquina de referencia.
+    $script:ancla = @{
+        Right  = $window.Left + $window.ActualWidth
+        Bottom = $window.Top + $window.ActualHeight
+    }
+    Save-PlayerState
 })
 
 # La X oculta, no destruye: la ventana se reutiliza en la siguiente lectura.

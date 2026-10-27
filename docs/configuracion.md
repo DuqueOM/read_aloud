@@ -98,8 +98,13 @@ Si trabajas más en inglés que en español, cámbialo a `'en'`.
 Con `PlayerAutoClose = $false` la barra se queda visible al terminar, y el
 botón de reproducir vuelve a leer el mismo texto desde el principio.
 
-La ventana se arrastra desde cualquier parte que no sea un botón, y recuerda
-dónde la dejaste: la posición se guarda en
+La ventana aparece en la esquina inferior derecha de la pantalla y se ancla
+por esa esquina: al abrir el panel de texto crece hacia arriba, y la barra de
+controles se queda donde estaba.
+
+Se arrastra desde cualquier parte que no sea un botón, la barra de posición o
+el texto, y recuerda dónde la dejaste. Un doble clic sobre la barra la
+devuelve a la esquina. La posición se guarda en
 `read_aloud_piper\runtime\player.json`.
 
 ### Panel de texto
@@ -111,7 +116,9 @@ para mantener la frase actual a la vista, pero únicamente cuando se sale de
 la franja visible, así que puedes desplazarte a mano sin que te lo quite.
 
 Un clic sobre cualquier frase salta a ella y sigue leyendo desde ahí, incluso
-si estaba en pausa.
+si estaba en pausa. Arrastrar en cambio selecciona texto, sin saltar, y el
+clic derecho sobre la selección ofrece copiarla. También funcionan `Ctrl+C` y
+`Ctrl+A`.
 
 El panel recuerda si lo dejaste abierto. Se muestra el texto original, no el
 que se pronuncia: verás `deploy`, aunque la voz diga `diplói`.
