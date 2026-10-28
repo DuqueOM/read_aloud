@@ -1,0 +1,27 @@
+# Configuracion de una voz personalizada.
+#
+# El instalador copia este archivo como voz.toml en la carpeta de trabajo de
+# la voz. Ahi se edita; los pasos lo leen de esa carpeta.
+#
+# Las rutas de Windows van entre comillas simples: asi la barra invertida se
+# lee tal cual.
+
+# Nombre corto, sin espacios. Se usa en las carpetas de datos, en el modelo y
+# en el navegador para guardar las decisiones de la revision.
+nombre = "mi_voz"
+
+# Idioma en que habla la voz en las grabaciones, en codigo de dos letras.
+# Whisper lo usa para transcribir, y de el depende el alineador.
+idioma = "es"
+
+# Carpeta con las grabaciones de donde se sacan los clips: videos o audios.
+origen = 'C:\ruta\a\las\grabaciones'
+
+# Expresion regular que saca de cada nombre de archivo su numero de episodio.
+# Por defecto, el primer numero del nombre. Si los nombres llevan otros
+# numeros antes, como "Curso 2 - Video 05", usa algo como 'Episodio\s*(\d+)'.
+# patron_episodio = '(\d+)'
+
+# Modelo wav2vec2 para alinear palabras. Solo hace falta para idiomas que no
+# estan en comun.py; se busca en Hugging Face uno entrenado en ese idioma.
+# alineador = "jonatasgrosman/wav2vec2-large-xlsr-53-spanish"

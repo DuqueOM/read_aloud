@@ -156,6 +156,13 @@ residente está en `read_aloud_piper\runtime\daemon.log`.
 Los casos frecuentes y su solución están en
 [docs/problemas.md](docs/problemas.md).
 
+## Voz personalizada
+
+[docs/voz-personalizada.md](docs/voz-personalizada.md) explica, paso a paso,
+cómo sacar una voz concreta de grabaciones donde habla junto a otras y
+preparar con ella un conjunto limpio para entrenar un modelo de voz. El código
+está en `voz_personalizada/`.
+
 ## Estructura del repositorio
 
 ```
@@ -170,6 +177,7 @@ config/terms_es.tsv         Diccionario de pronunciacion
 lib/ReadAloud.Core.ps1      Rutas, audio y comunicacion
 lib/ReadAloud.Text.ps1      Idioma, segmentacion y normalizacion
 docs/                       Documentacion
+voz_personalizada/          Proceso para crear una voz propia
 read_aloud_piper/           Motor y voces (lo crea setup.ps1)
 ```
 

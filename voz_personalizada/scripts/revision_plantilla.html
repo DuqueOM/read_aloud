@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Revisión de frases</title>
+<style>
+  :root {
+    --fondo: #16161a; --panel: #1f1f25; --borde: #2e2e36; --texto: #e6e6ea;
+    --tenue: #8a8a94; --si: #4ade80; --no: #f87171; --acento: #60a5fa;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fondo); color: var(--texto);
+         font: 14px/1.45 "Segoe UI", system-ui, sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; background: var(--fondo);
+           border-bottom: 1px solid var(--borde); padding: 14px 24px; }
+  h1 { font-size: 16px; margin: 0 0 10px; font-weight: 600; }
+  .cifras { display: flex; gap: 28px; flex-wrap: wrap; align-items: baseline; }
+  .cifra b { font-size: 20px; font-variant-numeric: tabular-nums; }
+  .cifra span { color: var(--tenue); margin-left: 6px; }
+  .meta { height: 6px; background: var(--borde); border-radius: 3px; margin-top: 10px; overflow: hidden; }
+  .meta i { display: block; height: 100%; width: 0; background: var(--si); transition: width .2s; }
+  main { max-width: 980px; margin: 0 auto; padding: 18px 24px 80px; }
+  .actual { background: var(--panel); border: 1px solid var(--borde); border-radius: 10px;
+            padding: 18px 20px; margin-bottom: 18px; }
+  .actual .fila1 { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .actual .id { font-size: 18px; font-weight: 600; }
+  .actual .datos { color: var(--tenue); }
+  .actual .texto { font-size: 17px; margin-top: 10px; min-height: 26px; }
+  td.frase { color: #c9c9d0; max-width: 460px; }
+  .botones { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  button { font: inherit; border: 1px solid var(--borde); background: #2a2a32; color: var(--texto);
+           padding: 8px 14px; border-radius: 7px; cursor: pointer; }
+  button:hover { background: #34343d; }
+  button.si { border-color: #2f6b45; } button.no { border-color: #7a3434; }
+  kbd { font: 12px ui-monospace, Consolas, monospace; background: #2a2a32; border: 1px solid var(--borde);
+        border-radius: 4px; padding: 1px 5px; color: var(--tenue); }
+  .ayuda { color: var(--tenue); margin-top: 12px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; color: var(--tenue); font-weight: 500; padding: 6px 8px;
+       border-bottom: 1px solid var(--borde); }
+  td { padding: 6px 8px; border-bottom: 1px solid #222228; font-variant-numeric: tabular-nums; }
+  tr { cursor: pointer; }
+  tr:hover td { background: #1c1c22; }
+  tr.sel td { background: #1d2738; }
+  tr.si td:first-child { box-shadow: inset 3px 0 var(--si); }
+  tr.no td:first-child { box-shadow: inset 3px 0 var(--no); }
+  tr.no td { color: var(--tenue); }
+  .barra { width: 90px; height: 6px; background: var(--borde); border-radius: 3px; display: inline-block;
+           vertical-align: middle; margin-right: 8px; overflow: hidden; }
+  .barra i { display: block; height: 100%; background: var(--acento); }
+  .estado { width: 90px; }
+  .estado.si { color: var(--si); } .estado.no { color: var(--no); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Revisión de frases candidatas</h1>
+  <div class="cifras">
+    <div class="cifra"><b id="conservadas">0:00</b><span>conservado, meta 20:00</span></div>
+    <div class="cifra"><b id="revisadas">0</b><span id="de">de 0 revisadas</span></div>
+    <div class="cifra"><b id="descartadas">0</b><span>descartadas</span></div>
+    <button id="exportar">Exportar decisiones</button>
+  </div>
+  <div class="meta"><i id="progreso"></i></div>
+</header>
+
+<main>
+  <section class="actual">
+    <div class="fila1">
+      <div class="id" id="actual-id">—</div>
+      <div class="datos" id="actual-datos"></div>
+    </div>
+    <div class="texto" id="actual-texto"></div>
+    <audio id="audio" controls style="width:100%; margin-top:12px"></audio>
+    <div class="botones">
+      <button class="si" id="b-si">Conservar <kbd>1</kbd></button>
+      <button class="no" id="b-no">Descartar <kbd>2</kbd></button>
+      <button id="b-rep">Repetir <kbd>Espacio</kbd></button>
+      <button id="b-des">Deshacer <kbd>Z</kbd></button>
+    </div>
+    <div class="ayuda">
+      Conserva solo clips donde habla la voz buscada sola, sin música, ruido ni otra voz.
+      Si el clip empieza o termina con algo ajeno, aunque el resto sea bueno, descártalo.
+      Ante la duda, descarta: diez minutos limpios entrenan mejor que veinte con ruido.
+      Las frases van de más a menos parecidas a tus referencias; cuando casi todas
+      dejen de ser ella, puedes parar.
+    </div>
+  </section>
+
+  <table>
+    <thead><tr><th>#</th><th>Lo que dice</th><th>Capítulo</th><th>Duración</th><th>Confianza</th><th class="estado">Estado</th></tr></thead>
+    <tbody id="lista"></tbody>
+  </table>
+</main>
+
+<script>
+const FRASES = /*DATOS*/[];
+const NOMBRE = /*NOMBRE*/'voz';
+const CLAVE = 'revision_' + NOMBRE;
+document.title = 'Revisión de frases · ' + NOMBRE;
+
+let decisiones = {};
+try { decisiones = JSON.parse(localStorage.getItem(CLAVE) || '{}'); } catch (e) { decisiones = {}; }
+const historial = [];
+let sel = 0;
+
+const audio = document.getElementById('audio');
+const lista = document.getElementById('lista');
+
+const mmss = s => { const m = Math.floor(s / 60), r = Math.round(s % 60); return m + ':' + String(r).padStart(2, '0'); };
+const guardar = () => { try { localStorage.setItem(CLAVE, JSON.stringify(decisiones)); } catch (e) {} };
+
+const pct = p => Math.round(p * 100) + ' %';
+
+function pintarLista() {
+  lista.innerHTML = '';
+  FRASES.forEach((f, i) => {
+    const tr = document.createElement('tr');
+    tr.id = 'f' + i;
+    tr.innerHTML =
+      `<td>${i + 1}</td><td class="frase"></td><td>${f.ep}</td><td>${f.dur.toFixed(1)} s</td>` +
+      `<td><span class="barra"><i style="width:${(f.confianza * 100).toFixed(0)}%"></i></span>${pct(f.confianza)}</td>` +
+      `<td class="estado"></td>`;
+    tr.querySelector('.frase').textContent = f.texto;
+    tr.onclick = () => seleccionar(i, true);
+    lista.appendChild(tr);
+  });
+  FRASES.forEach((_, i) => pintarFila(i));
+}
+
+function pintarFila(i) {
+  const tr = document.getElementById('f' + i);
+  const d = decisiones[FRASES[i].id];
+  tr.classList.toggle('si', d === 'si');
+  tr.classList.toggle('no', d === 'no');
+  tr.classList.toggle('sel', i === sel);
+  const celda = tr.lastChild;
+  celda.className = 'estado' + (d ? ' ' + d : '');
+  celda.textContent = d === 'si' ? 'conservada' : d === 'no' ? 'descartada' : '';
+}
+
+function pintarCifras() {
+  let seg = 0, rev = 0, des = 0;
+  FRASES.forEach(f => {
+    const d = decisiones[f.id];
+    if (d) rev++;
+    if (d === 'si') seg += f.dur;
+    if (d === 'no') des++;
+  });
+  document.getElementById('conservadas').textContent = mmss(seg);
+  document.getElementById('revisadas').textContent = rev;
+  document.getElementById('de').textContent = 'de ' + FRASES.length + ' revisadas';
+  document.getElementById('descartadas').textContent = des;
+  document.getElementById('progreso').style.width = Math.min(100, seg / 1200 * 100) + '%';
+}
+
+function seleccionar(i, reproducir) {
+  if (i < 0 || i >= FRASES.length) return;
+  const anterior = sel;
+  sel = i;
+  pintarFila(anterior); pintarFila(sel);
+  const f = FRASES[sel];
+  document.getElementById('actual-id').textContent = f.id;
+  document.getElementById('actual-datos').textContent =
+    `${f.ep} · minuto ${mmss(f.inicio)} · ${f.dur.toFixed(1)} s · confianza ${pct(f.confianza)}, palabra más baja ${pct(f.minimo)}, clip entero ${pct(f.clip)}`;
+  document.getElementById('actual-texto').textContent = f.texto;
+  audio.src = f.ruta;
+  // Algunos navegadores no precargan hasta que se pide: sin esto la primera
+  // frase podia quedarse sin sonar.
+  audio.load();
+  if (reproducir) audio.play().catch(() => {});
+  document.getElementById('f' + sel).scrollIntoView({ block: 'nearest' });
+}
+
+function siguientePendiente(desde) {
+  for (let i = desde + 1; i < FRASES.length; i++) if (!decisiones[FRASES[i].id]) return i;
+  return Math.min(desde + 1, FRASES.length - 1);
+}
+
+function decidir(valor) {
+  const f = FRASES[sel];
+  historial.push({ i: sel, antes: decisiones[f.id] });
+  decisiones[f.id] = valor;
+  guardar(); pintarFila(sel); pintarCifras();
+  seleccionar(siguientePendiente(sel), true);
+}
+
+function deshacer() {
+  const h = historial.pop();
+  if (!h) return;
+  const f = FRASES[h.i];
+  if (h.antes) decisiones[f.id] = h.antes; else delete decisiones[f.id];
+  guardar(); pintarFila(h.i); pintarCifras();
+  seleccionar(h.i, true);
+}
+
+function exportar() {
+  const datos = { generado: new Date().toISOString(), decisiones };
+  const blob = new Blob([JSON.stringify(datos, null, 1)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'decisiones.json';
+  a.click();
+}
+
+document.getElementById('b-si').onclick = () => decidir('si');
+document.getElementById('b-no').onclick = () => decidir('no');
+document.getElementById('b-rep').onclick = () => { audio.currentTime = 0; audio.play(); };
+document.getElementById('b-des').onclick = deshacer;
+document.getElementById('exportar').onclick = exportar;
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.key === '1' || e.key === 'Enter') { e.preventDefault(); decidir('si'); }
+  else if (e.key === '2' || e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); decidir('no'); }
+  else if (e.key === ' ') { e.preventDefault(); audio.currentTime = 0; audio.play(); }
+  else if (e.key === 'ArrowDown') { e.preventDefault(); seleccionar(sel + 1, true); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); seleccionar(sel - 1, true); }
+  else if (e.key === 'z' || e.key === 'Z') { e.preventDefault(); deshacer(); }
+});
+
+pintarLista();
+pintarCifras();
+seleccionar(siguientePendiente(-1), false);
+</script>
+</body>
+</html>

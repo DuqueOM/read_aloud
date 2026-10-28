@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Prueba a ciegas</title>
+<style>
+  :root {
+    --fondo: #16161a; --panel: #1f1f25; --borde: #2e2e36; --texto: #e6e6ea;
+    --tenue: #8a8a94; --si: #4ade80; --no: #f87171; --acento: #60a5fa;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fondo); color: var(--texto);
+         font: 14px/1.45 "Segoe UI", system-ui, sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; background: var(--fondo);
+           border-bottom: 1px solid var(--borde); padding: 14px 24px;
+           display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+  h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  .avance { color: var(--tenue); }
+  main { max-width: 860px; margin: 0 auto; padding: 18px 24px 80px; }
+  .ayuda { color: var(--tenue); margin: 0 0 18px; }
+  .clip { background: var(--panel); border: 1px solid var(--borde); border-radius: 10px;
+          padding: 16px 18px; margin-bottom: 14px; }
+  .clip.activo { border-color: var(--acento); }
+  .clip.listo { box-shadow: inset 3px 0 var(--si); }
+  .titulo { display: flex; justify-content: space-between; gap: 12px; }
+  .titulo b { font-size: 15px; }
+  .texto { color: #c9c9d0; margin: 4px 0 12px; }
+  .versiones { display: grid; grid-template-columns: repeat(var(--n, 4), 1fr); gap: 10px; }
+  .version { border: 1px solid var(--borde); border-radius: 8px; padding: 10px; text-align: center; }
+  .version.sonando { border-color: var(--acento); background: #1d2738; }
+  .version.mejor { border-color: var(--si); }
+  button { font: inherit; border: 1px solid var(--borde); background: #2a2a32; color: var(--texto);
+           padding: 8px 14px; border-radius: 7px; cursor: pointer; }
+  button:hover { background: #34343d; color: #fff; }
+  .version button.tocar { width: 100%; font-size: 18px; font-weight: 600; padding: 10px 0; }
+  .version label { display: block; margin-top: 8px; color: var(--tenue); cursor: pointer; user-select: none; }
+  .version label:hover { color: var(--texto); }
+  .version input { accent-color: var(--si); }
+  .version .artificial input { accent-color: var(--no); }
+  .igual { margin-top: 10px; color: var(--tenue); display: inline-block; cursor: pointer; }
+  .igual:hover { color: var(--texto); }
+  kbd { font: 12px ui-monospace, Consolas, monospace; background: #2a2a32; border: 1px solid var(--borde);
+        border-radius: 4px; padding: 1px 5px; color: var(--tenue); }
+  button.exportar { border-color: #2f6b45; background: #24402f; }
+  button.exportar:hover { background: #2f6b45; }
+  @media (max-width: 640px) { .versiones { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="titulo"></h1>
+  <span class="avance" id="avance"></span>
+  <button class="exportar" id="exportar">Exportar respuestas</button>
+</header>
+<main>
+  <p class="ayuda">
+    Cada clip tiene varias versiones en orden distinto, todas al mismo volumen. Escúchalas con
+    audífonos y marca la que suene más natural y limpia. Marca también las que suenen
+    artificiales, metálicas o raras. Si no notas diferencia, márcalo: también es una respuesta útil.
+    Teclas: <kbd>1</kbd>, <kbd>2</kbd>… tocan A, B… del clip activo, <kbd>↑</kbd> <kbd>↓</kbd> cambian de clip,
+    <kbd>Espacio</kbd> detiene.
+  </p>
+  <div id="clips"></div>
+</main>
+<script>
+const CLIPS = /*CLIPS*/[];
+const TITULO = /*TITULO*/'Prueba a ciegas de mejora de audio';
+const VERSIONES = /*VERSIONES*/4;
+const LETRAS = 'ABCDEFGH'.slice(0, VERSIONES).split('');
+const CLAVE = /*CLAVE*/'prueba_mejora';
+document.documentElement.style.setProperty('--n', VERSIONES);
+document.getElementById('titulo').textContent = TITULO;
+
+let respuestas = {};
+try { respuestas = JSON.parse(localStorage.getItem(CLAVE) || '{}'); } catch (e) { respuestas = {}; }
+const guardar = () => { try { localStorage.setItem(CLAVE, JSON.stringify(respuestas)); } catch (e) {} };
+
+const audio = new Audio();
+let activo = 0, sonando = null;
+
+function respuesta(n) {
+  return respuestas['clip' + n] ||= { mejor: null, artificial: [], igual: false };
+}
+
+function pintar() {
+  CLIPS.forEach((c, i) => {
+    const r = respuesta(c.n);
+    const tarjeta = document.getElementById('clip' + c.n);
+    tarjeta.classList.toggle('activo', i === activo);
+    tarjeta.classList.toggle('listo', !!r.mejor || r.igual);
+    LETRAS.forEach(l => {
+      const v = tarjeta.querySelector(`[data-letra="${l}"]`);
+      v.classList.toggle('mejor', r.mejor === l);
+      v.classList.toggle('sonando', sonando === c.n + l);
+      v.querySelector('input[type=radio]').checked = r.mejor === l;
+      v.querySelector('.artificial input').checked = r.artificial.includes(l);
+    });
+    tarjeta.querySelector('.igual input').checked = r.igual;
+  });
+  const hechos = CLIPS.filter(c => respuesta(c.n).mejor || respuesta(c.n).igual).length;
+  document.getElementById('avance').textContent = `${hechos} de ${CLIPS.length} clips respondidos`;
+}
+
+function tocar(n, letra) {
+  const id = n + letra;
+  if (sonando === id && !audio.paused) { audio.pause(); sonando = null; pintar(); return; }
+  audio.src = `audio/clip${n}_${letra}.wav`;
+  audio.play();
+  sonando = id;
+  activo = CLIPS.findIndex(c => c.n === n);
+  pintar();
+}
+audio.onended = () => { sonando = null; pintar(); };
+
+const contenedor = document.getElementById('clips');
+CLIPS.forEach((c, i) => {
+  const tarjeta = document.createElement('div');
+  tarjeta.className = 'clip';
+  tarjeta.id = 'clip' + c.n;
+  tarjeta.innerHTML =
+    `<div class="titulo"><b>Clip ${c.n}</b></div><div class="texto"></div><div class="versiones">` +
+    LETRAS.map(l =>
+      `<div class="version" data-letra="${l}">` +
+      `<button class="tocar">${l}</button>` +
+      `<label><input type="radio" name="mejor${c.n}"> la mejor</label>` +
+      `<label class="artificial"><input type="checkbox"> suena artificial</label></div>`).join('') +
+    `</div><label class="igual"><input type="checkbox"> no noto diferencia entre ellas</label>`;
+  tarjeta.querySelector('.texto').textContent = c.texto;
+  // Solo cambia el clip activo: redibujar aqui desharia la casilla que se
+  // esta marcando, porque este clic llega antes que su cambio.
+  tarjeta.onclick = () => {
+    activo = i;
+    document.querySelectorAll('.clip').forEach((t, k) => t.classList.toggle('activo', k === activo));
+  };
+  LETRAS.forEach(l => {
+    const v = tarjeta.querySelector(`[data-letra="${l}"]`);
+    v.querySelector('.tocar').onclick = () => tocar(c.n, l);
+    v.querySelector('input[type=radio]').onchange = () => {
+      const r = respuesta(c.n); r.mejor = l; r.igual = false; guardar(); pintar();
+    };
+    v.querySelector('.artificial input').onchange = e => {
+      const r = respuesta(c.n);
+      r.artificial = e.target.checked ? [...new Set([...r.artificial, l])] : r.artificial.filter(x => x !== l);
+      guardar(); pintar();
+    };
+  });
+  tarjeta.querySelector('.igual input').onchange = e => {
+    const r = respuesta(c.n); r.igual = e.target.checked; if (r.igual) r.mejor = null; guardar(); pintar();
+  };
+  contenedor.appendChild(tarjeta);
+});
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' && e.key === ' ') return;
+  const c = CLIPS[activo];
+  if (e.key >= '1' && e.key <= String(LETRAS.length)) tocar(c.n, LETRAS[+e.key - 1]);
+  else if (e.key === 'ArrowDown') { activo = Math.min(CLIPS.length - 1, activo + 1); pintar(); }
+  else if (e.key === 'ArrowUp') { activo = Math.max(0, activo - 1); pintar(); }
+  else if (e.key === ' ') { audio.pause(); sonando = null; pintar(); }
+  else return;
+  e.preventDefault();
+  document.getElementById('clip' + CLIPS[activo].n).scrollIntoView({ block: 'nearest' });
+});
+
+document.getElementById('exportar').onclick = () => {
+  const datos = JSON.stringify({ generado: new Date().toISOString(), respuestas }, null, 1);
+  const enlace = document.createElement('a');
+  enlace.href = URL.createObjectURL(new Blob([datos], { type: 'application/json' }));
+  enlace.download = CLAVE + '.json';
+  enlace.click();
+};
+
+pintar();
+</script>
+</body>
+</html>
