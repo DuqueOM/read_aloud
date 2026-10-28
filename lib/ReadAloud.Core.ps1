@@ -57,7 +57,7 @@ function Get-ReadAloudSettings {
         FallbackLanguage    = 'es'
         ShowPlayer          = $true
         PlayerAutoClose     = $true
-        PlayerOpacity       = 0.94
+        PlayerOpacity       = 0.8
         SkipSeconds         = 10
         PauseParagraph      = 0.35
         PauseBeforeHeading  = 0.55

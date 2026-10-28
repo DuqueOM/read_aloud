@@ -92,11 +92,16 @@ Si trabajas más en inglés que en español, cámbialo a `'en'`.
 |---|---|---|
 | `ShowPlayer` | `$true` | Muestra la ventana flotante durante la lectura |
 | `PlayerAutoClose` | `$true` | La cierra sola al terminar |
-| `PlayerOpacity` | `0.94` | Opacidad, de `0.3` a `1.0` |
+| `PlayerOpacity` | `0.8` | Opacidad en reposo, de `0.3` a `1.0` |
 | `SkipSeconds` | `10` | Segundos que saltan los botones y los atajos |
 
 Con `PlayerAutoClose = $false` la barra se queda visible al terminar, y el
 botón de reproducir vuelve a leer el mismo texto desde el principio.
+
+La ventana aparece translúcida, con la opacidad de `PlayerOpacity`, para no
+tapar del todo lo que tiene detrás. Un clic sobre ella la vuelve opaca
+mientras la usas, y un clic en cualquier otra parte la devuelve a la
+opacidad de reposo.
 
 La ventana aparece en la esquina inferior derecha de la pantalla y se ancla
 por esa esquina: al abrir el panel de texto crece hacia arriba, y la barra de
@@ -120,11 +125,11 @@ si estaba en pausa. Arrastrar en cambio selecciona texto, sin saltar, y el
 clic derecho sobre la selección ofrece copiarla. También funcionan `Ctrl+C` y
 `Ctrl+A`.
 
-El tamaño del panel se cambia como el de una ventana, arrastrando sus bordes:
-el superior cambia el alto, el izquierdo el ancho y la esquina superior
-izquierda ambos. Se estira hacia arriba y hacia la izquierda porque la ventana
-está anclada por su esquina inferior derecha. No baja de 80 píxeles de alto
-ni de lo ancha que es la barra de controles.
+Con el panel abierto, el tamaño se cambia como el de cualquier ventana,
+arrastrando su contorno: cada lado mueve solo ese lado y deja quieto el
+opuesto, y cada esquina mueve los dos lados que la forman. Lo que crece es el
+panel; la barra de controles conserva su tamaño. No baja de 80 píxeles de
+alto ni de lo ancha que es la barra, y no se estira más allá del escritorio.
 
 El panel recuerda si lo dejaste abierto y el tamaño que le diste. Se muestra el texto original, no el
 que se pronuncia: verás `deploy`, aunque la voz diga `diplói`.

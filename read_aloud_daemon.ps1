@@ -374,27 +374,22 @@ $xaml = @'
       </Setter>
     </Style>
 
-    <!-- Bordes para cambiar el tamano del panel. Con clave propia y no como
+    <!-- Bordes para cambiar el tamano. Invisibles, como en cualquier ventana:
+         solo el cursor cambia al pasar por encima. El fondo transparente, y no
+         vacio, es lo que hace que reciban el raton. Con clave propia y no como
          estilo implicito: uno implicito tambien cambiaria el control de la
          barra de posicion, que por dentro es otro Thumb. -->
     <Style x:Key="Borde" TargetType="Thumb">
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Thumb">
-            <Border x:Name="Marca" Background="Transparent" CornerRadius="3"/>
-            <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="Marca" Property="Background" Value="#40FFFFFF"/>
-              </Trigger>
-              <Trigger Property="IsDragging" Value="True">
-                <Setter TargetName="Marca" Property="Background" Value="#66FFFFFF"/>
-              </Trigger>
-            </ControlTemplate.Triggers>
+            <Border Background="Transparent"/>
           </ControlTemplate>
         </Setter.Value>
       </Setter>
     </Style>
   </Window.Resources>
+  <Grid>
   <Border x:Name="Root" CornerRadius="10" Background="#F21B1B1F" BorderBrush="#33FFFFFF"
           BorderThickness="1" Padding="10,7">
     <Border.Effect>
@@ -429,14 +424,6 @@ $xaml = @'
         <FlowDocument PagePadding="0"/>
       </RichTextBox>
     </Border>
-      <!-- La ventana esta anclada abajo a la derecha, asi que el panel se
-           estira desde arriba y desde la izquierda. -->
-      <Thumb x:Name="GripTop" Style="{StaticResource Borde}" Height="5"
-             VerticalAlignment="Top" Margin="14,0,8,0" Cursor="SizeNS"/>
-      <Thumb x:Name="GripLeft" Style="{StaticResource Borde}" Width="5"
-             HorizontalAlignment="Left" Margin="0,14,0,8" Cursor="SizeWE"/>
-      <Thumb x:Name="GripCorner" Style="{StaticResource Borde}" Width="12" Height="12"
-             HorizontalAlignment="Left" VerticalAlignment="Top" Cursor="SizeNWSE"/>
     </Grid>
     <StackPanel x:Name="Bar" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
       <TextBlock x:Name="LangBadge" Text="ES" Foreground="#9AE6B4" FontFamily="Segoe UI"
@@ -473,6 +460,29 @@ $xaml = @'
     </StackPanel>
     </StackPanel>
   </Border>
+  <!-- Bordes para cambiar el tamano, en el contorno de la ventana como en
+       cualquier aplicacion: cada uno mueve su lado y el opuesto queda quieto.
+       Caen sobre el relleno de Root, asi que no tapan ningun control. Solo
+       se muestran con el panel de texto abierto, que es lo que crece. -->
+  <Grid x:Name="Bordes" Visibility="Collapsed">
+    <Thumb x:Name="BordeArriba" Style="{StaticResource Borde}" Height="6"
+           VerticalAlignment="Top" Margin="12,0" Cursor="SizeNS"/>
+    <Thumb x:Name="BordeAbajo" Style="{StaticResource Borde}" Height="6"
+           VerticalAlignment="Bottom" Margin="12,0" Cursor="SizeNS"/>
+    <Thumb x:Name="BordeIzquierda" Style="{StaticResource Borde}" Width="6"
+           HorizontalAlignment="Left" Margin="0,12" Cursor="SizeWE"/>
+    <Thumb x:Name="BordeDerecha" Style="{StaticResource Borde}" Width="6"
+           HorizontalAlignment="Right" Margin="0,12" Cursor="SizeWE"/>
+    <Thumb x:Name="EsquinaArribaIzquierda" Style="{StaticResource Borde}" Width="12" Height="12"
+           HorizontalAlignment="Left" VerticalAlignment="Top" Cursor="SizeNWSE"/>
+    <Thumb x:Name="EsquinaArribaDerecha" Style="{StaticResource Borde}" Width="12" Height="12"
+           HorizontalAlignment="Right" VerticalAlignment="Top" Cursor="SizeNESW"/>
+    <Thumb x:Name="EsquinaAbajoIzquierda" Style="{StaticResource Borde}" Width="12" Height="12"
+           HorizontalAlignment="Left" VerticalAlignment="Bottom" Cursor="SizeNESW"/>
+    <Thumb x:Name="EsquinaAbajoDerecha" Style="{StaticResource Borde}" Width="12" Height="12"
+           HorizontalAlignment="Right" VerticalAlignment="Bottom" Cursor="SizeNWSE"/>
+  </Grid>
+  </Grid>
 </Window>
 '@
 
@@ -481,11 +491,18 @@ $xmlReader = [Xml.XmlReader]::Create($reader)
 $window = [Windows.Markup.XamlReader]::Load($xmlReader)
 
 $ui = @{}
-foreach ($name in @('Root','LangBadge','BtnBack','BtnPlay','BtnFwd','BtnSpeed','BufferBar','Seek','TimeLabel','BtnText','BtnClose','TextPanel','TextView','Bar','GripTop','GripLeft','GripCorner')) {
+foreach ($name in @('Root','LangBadge','BtnBack','BtnPlay','BtnFwd','BtnSpeed','BufferBar','Seek','TimeLabel','BtnText','BtnClose','TextPanel','TextView','Bar','Bordes')) {
     $ui[$name] = $window.FindName($name)
 }
 
-$window.Opacity = [double]$settings.PlayerOpacity
+# Opacidad: translucida en reposo, para no tapar del todo lo que hay detras, y
+# opaca mientras la usas. Un clic sobre ella la activa y un clic en cualquier
+# otra parte la desactiva; Windows avisa de ambos. Al ocultarse tambien se
+# desactiva, asi que cada lectura vuelve a aparecer translucida.
+$opacidadReposo = [Math]::Max(0.3, [Math]::Min(1.0, [double]$settings.PlayerOpacity))
+$window.Opacity = $opacidadReposo
+$window.Add_Activated({ $window.Opacity = 1.0 })
+$window.Add_Deactivated({ $window.Opacity = $opacidadReposo })
 
 # Posicion: la ventana se ancla por su esquina inferior derecha. Asi aparece
 # abajo a la derecha, y al abrir el panel de texto crece hacia arriba sin que
@@ -973,10 +990,12 @@ function Set-TextPanel {
 
     if ($Visible) {
         $ui.TextPanel.Visibility = 'Visible'
+        $ui.Bordes.Visibility = 'Visible'
         $ui.BtnText.Foreground = $colores.Encendido
         $ui.BtnText.ToolTip = 'Ocultar el texto'
     } else {
         $ui.TextPanel.Visibility = 'Collapsed'
+        $ui.Bordes.Visibility = 'Collapsed'
         $ui.BtnText.Foreground = $colores.Apagado
         $ui.BtnText.ToolTip = 'Mostrar el texto que se esta leyendo'
     }
@@ -997,12 +1016,15 @@ function Set-TextPanel {
 
 if ($script:panelVisible) {
     $ui.TextPanel.Visibility = 'Visible'
+    $ui.Bordes.Visibility = 'Visible'
     $ui.BtnText.Foreground = $colores.Encendido
     $ui.BtnText.ToolTip = 'Ocultar el texto'
 }
 
 # --------------------------------------------------------------------------
-# Tamano del panel: se cambia arrastrando sus bordes, como una ventana.
+# Tamano: se cambia arrastrando los bordes de la ventana, como en cualquier
+# aplicacion. Lo que crece es el panel de texto; la barra de controles tiene
+# ancho fijo y la ventana se ajusta sola a los dos.
 # --------------------------------------------------------------------------
 $script:panelAlto = 0.0
 $script:panelAncho = 0.0
@@ -1017,27 +1039,58 @@ if ($script:panelAlto -gt 0) { $ui.TextPanel.Height = $script:panelAlto }
 if ($script:panelAncho -gt 0) { $ui.TextPanel.Width = $script:panelAncho }
 
 function Resize-TextPanel {
+    # Cada valor es cuanto se movio ese lado: positivo hacia la derecha o
+    # hacia abajo. Un borde mueve un solo lado; una esquina, dos.
     param(
-        [double]$DeltaAncho = 0,
-        [double]$DeltaAlto = 0
+        [double]$Izquierda = 0,
+        [double]$Derecha = 0,
+        [double]$Arriba = 0,
+        [double]$Abajo = 0
     )
 
     $area = [Windows.SystemParameters]::WorkArea
+    $anchoAntes = $ui.TextPanel.ActualWidth
+    $altoAntes = $ui.TextPanel.ActualHeight
 
-    $alto = $ui.TextPanel.ActualHeight + $DeltaAlto
+    $alto = $altoAntes - $Arriba + $Abajo
     $alto = [Math]::Max(80, [Math]::Min($alto, $area.Height * 0.8))
 
     # Nunca mas estrecho que la barra de controles, que vive debajo.
-    $ancho = $ui.TextPanel.ActualWidth + $DeltaAncho
+    $ancho = $anchoAntes - $Izquierda + $Derecha
     $ancho = [Math]::Max($ui.Bar.ActualWidth, [Math]::Min($ancho, $area.Width * 0.9))
+
+    # La ventana se coloca por su esquina inferior derecha. Al mover el lado
+    # izquierdo o el de arriba, esa esquina queda donde estaba; al mover el
+    # derecho o el de abajo, se desplaza con el, sin salirse del escritorio:
+    # fuera de el, Set-PlayerPosition la devolveria a la esquina de la pantalla.
+    if (($Derecha -ne 0) -or ($Abajo -ne 0)) {
+        if ($null -eq $script:ancla) {
+            $script:ancla = @{
+                Right  = $window.Left + $window.ActualWidth
+                Bottom = $window.Top + $window.ActualHeight
+            }
+        }
+
+        if ($Derecha -ne 0) {
+            $limite = [Windows.SystemParameters]::VirtualScreenLeft + [Windows.SystemParameters]::VirtualScreenWidth
+            $crece = [Math]::Min($ancho - $anchoAntes, $limite - $script:ancla.Right)
+            $ancho = $anchoAntes + $crece
+            $script:ancla.Right += $crece
+        }
+
+        if ($Abajo -ne 0) {
+            $limite = [Windows.SystemParameters]::VirtualScreenTop + [Windows.SystemParameters]::VirtualScreenHeight
+            $crece = [Math]::Min($alto - $altoAntes, $limite - $script:ancla.Bottom)
+            $alto = $altoAntes + $crece
+            $script:ancla.Bottom += $crece
+        }
+    }
 
     $ui.TextPanel.Height = $alto
     $ui.TextPanel.Width = $ancho
     $script:panelAlto = $alto
     $script:panelAncho = $ancho
 
-    # La esquina inferior derecha queda fija y el panel crece hacia el borde
-    # que estas arrastrando.
     $window.UpdateLayout()
     Set-PlayerPosition
 }
@@ -1045,14 +1098,34 @@ function Resize-TextPanel {
 # El cambio que informa un borde se mide desde donde empezo a arrastrarse,
 # pero como el borde se mueve con la ventana, cada aviso llega ya como el
 # tramo recorrido desde el anterior.
-$ui.GripTop.Add_DragDelta({ param($sender, $e) Resize-TextPanel -DeltaAlto (-$e.VerticalChange) })
-$ui.GripLeft.Add_DragDelta({ param($sender, $e) Resize-TextPanel -DeltaAncho (-$e.HorizontalChange) })
-$ui.GripCorner.Add_DragDelta({
-    param($sender, $e)
-    Resize-TextPanel -DeltaAncho (-$e.HorizontalChange) -DeltaAlto (-$e.VerticalChange)
-})
+$lados = @{
+    BordeArriba            = @('Arriba')
+    BordeAbajo             = @('Abajo')
+    BordeIzquierda         = @('Izquierda')
+    BordeDerecha           = @('Derecha')
+    EsquinaArribaIzquierda = @('Arriba', 'Izquierda')
+    EsquinaArribaDerecha   = @('Arriba', 'Derecha')
+    EsquinaAbajoIzquierda  = @('Abajo', 'Izquierda')
+    EsquinaAbajoDerecha    = @('Abajo', 'Derecha')
+}
 
-foreach ($borde in @($ui.GripTop, $ui.GripLeft, $ui.GripCorner)) {
+foreach ($nombre in $lados.Keys) {
+    $borde = $window.FindName($nombre)
+    $borde.Tag = $lados[$nombre]
+
+    $borde.Add_DragDelta({
+        param($sender, $e)
+        $cambio = @{}
+        foreach ($lado in $sender.Tag) {
+            if (($lado -eq 'Arriba') -or ($lado -eq 'Abajo')) {
+                $cambio[$lado] = $e.VerticalChange
+            } else {
+                $cambio[$lado] = $e.HorizontalChange
+            }
+        }
+        Resize-TextPanel @cambio
+    })
+
     $borde.Add_DragCompleted({
         Save-PlayerState
         Update-Highlight -Force

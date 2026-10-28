@@ -23,8 +23,8 @@ avance, retroceso, velocidad y posición. Se cierra sola al terminar.
 El botón `≡` de esa barra despliega el texto que se está leyendo, con la frase
 que suena resaltada y lo ya leído atenuado. Así no te pierdes aunque cambies
 de ventana. Un clic sobre una frase salta a ella, y el texto se puede
-seleccionar y copiar con el clic derecho. Sus bordes se arrastran para
-cambiarle el tamaño.
+seleccionar y copiar con el clic derecho. Con el texto abierto, la ventana
+cambia de tamaño desde cualquiera de sus lados y esquinas.
 
 ## Qué necesitas
 

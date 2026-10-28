@@ -34,7 +34,9 @@
     # Reproductor flotante.
     ShowPlayer = $true
     PlayerAutoClose = $true
-    PlayerOpacity = 0.94
+    # Opacidad en reposo, de 0.3 a 1.0. Al hacer clic sobre el reproductor se
+    # vuelve opaco del todo, y al hacer clic fuera regresa a este valor.
+    PlayerOpacity = 0.6
     SkipSeconds = 10
 
     # Pausas, en segundos, que se agregan donde el texto cambia de bloque.
