@@ -80,8 +80,8 @@ CODIGOS_POR_SEGUNDO = 12.5
 # Cargar el modelo tarda unos 16 s, y esa espera se nota al pedir una lectura.
 # Por eso el proceso se queda abierto mientras nadie mas necesite la tarjeta:
 # cada REVISION_S mira cuanta memoria usan los demas programas, y si despues
-# de un rato sin leer usan CEDER_SI_OTROS_GB mas que al cargar, termina y se
-# la deja. La lectura siguiente lo vuelve a abrir. Se compara con lo que
+# de un rato sin leer usan CEDER_SI_OTROS_GB mas que al cargar (o que lo menos
+# que se les haya visto usar despues), termina y se la deja. La lectura siguiente lo vuelve a abrir. Se compara con lo que
 # habia al cargar, y no con cero, porque Windows y el navegador siempre
 # ocupan algo, y porque en Windows la memoria que informa CUDA no coincide
 # exactamente con la de nvidia-smi; las diferencias, en cambio, si.
@@ -216,7 +216,11 @@ def main() -> None:
             if opciones.inactivo > 0 and quieto >= opciones.inactivo * 60:
                 log("sin ordenes, termino para liberar la tarjeta grafica")
                 return
-            otros = memoria_de_otros_gb() - otros_al_cargar
+            # Si al cargar ya habia otro programa usando la tarjeta, la base
+            # baja cuando la suelta: asi se cede tambien la proxima vez.
+            ahora = memoria_de_otros_gb()
+            otros_al_cargar = min(otros_al_cargar, ahora)
+            otros = ahora - otros_al_cargar
             if quieto >= QUIETO_ANTES_DE_CEDER_S and otros >= CEDER_SI_OTROS_GB:
                 log(f"otro programa usa {otros:.1f} GB mas de la tarjeta grafica: termino para dejarsela")
                 return

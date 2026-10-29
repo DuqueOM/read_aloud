@@ -297,6 +297,56 @@ function Expand-EnglishTerms {
     return $script:RA_TermRegex.Replace($Text, $evaluator)
 }
 
+function Expand-Units {
+    # Unidades abreviadas que la voz leeria letra por letra. "45 s" en espanol
+    # sonaba "cuarenta y cinco ese", y "MB" como "eme be" en los dos idiomas.
+    # Las de tiempo solo cuentan pegadas a un numero: una "s" o una "h" sueltas
+    # pueden ser cualquier cosa. Las de tamano siempre, porque "MB" o "GB" no
+    # significan otra cosa. Con 1 va en singular.
+    param([string]$Text, [string]$Lang)
+
+    $units = @(
+        @{ Pattern = 'TB';  Es = 'terabyte';  En = 'terabyte' }
+        @{ Pattern = 'GB';  Es = 'gigabyte';  En = 'gigabyte' }
+        @{ Pattern = 'MB';  Es = 'megabyte';  En = 'megabyte' }
+        @{ Pattern = '[kK]B'; Es = 'kilobyte'; En = 'kilobyte' }
+    )
+    if ($Lang -eq 'es') {
+        $units += @(
+            @{ Pattern = 'ms';  Es = 'milisegundo'; NumberOnly = $true }
+            @{ Pattern = 's';   Es = 'segundo';     NumberOnly = $true }
+            @{ Pattern = 'min'; Es = 'minuto';      NumberOnly = $true }
+            @{ Pattern = 'h';   Es = 'hora';        NumberOnly = $true }
+        )
+    }
+
+    $t = $Text
+    foreach ($unit in $units) {
+        $word = if ($Lang -eq 'es') { $unit.Es } else { $unit.En }
+
+        # Con numero delante: singular solo si el numero es exactamente 1.
+        $t = [regex]::Replace($t, "(?<![\p{L}\p{N}.,])(\d+(?:[.,]\d+)?)\s?$($unit.Pattern)(?![\p{L}\p{N}])", {
+            param($m)
+            $number = $m.Groups[1].Value
+            $plural = if ($number -eq '1') { '' } else { 's' }
+            return "$number $word$plural"
+        }.GetNewClosure())
+
+        # Sin numero: en singular ("el MB"), salvo detras de una palabra que
+        # pide plural ("los MB", "many GB").
+        if (-not $unit.NumberOnly) {
+            $t = [regex]::Replace($t, "(?<![\p{L}\p{N}])$($unit.Pattern)(?![\p{L}\p{N}])", {
+                param($m)
+                $before = $t.Substring(0, $m.Index)
+                $plural = $before -match '(?i)\b(los|unos|varios|muchos|pocos|cuantos|cuántos|the|many|few|several|some)\s+$'
+                return $word + $(if ($plural) { 's' } else { '' })
+            }.GetNewClosure())
+        }
+    }
+
+    return $t
+}
+
 function Normalize-ForSpeech {
     param(
         [string]$Text,
@@ -322,6 +372,8 @@ function Normalize-ForSpeech {
         if ($Lang -eq 'es') { $replacement = 'eme ele' }
         $t = [regex]::Replace($t, '(?<![\p{L}\p{N}])ml(?![\p{L}\p{N}])', $replacement, 'IgnoreCase')
     }
+
+    $t = Expand-Units -Text $t -Lang $Lang
 
     if ($Lang -eq 'es' -and -not $SkipTerms) {
         $t = Expand-EnglishTerms -Text $t
