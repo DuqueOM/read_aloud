@@ -104,6 +104,19 @@ if (-not $voiceEn.Ready) {
     Write-DaemonLog "Falta la voz en ingles: $($voiceEn.Model). El texto en ingles se leera con la voz en espanol."
 }
 
+# Motor de cada idioma. Si se pide Qwen y falta algo, se lee con Piper: el
+# lector nunca debe quedarse mudo por la voz personalizada.
+$qwenVoice = Get-QwenVoice -Paths $paths -Settings $settings
+$engines = @{}
+foreach ($par in @(@{ Lang = 'es'; Ajuste = 'EngineEs' }, @{ Lang = 'en'; Ajuste = 'EngineEn' })) {
+    $engine = ([string]$settings[$par.Ajuste]).ToLowerInvariant()
+    if ($engine -eq 'qwen' -and -not $qwenVoice.Ready) {
+        Write-DaemonLog "Falta la voz Qwen en '$($settings.QwenWorkDir)'. El idioma '$($par.Lang)' se leera con Piper."
+        $engine = 'piper'
+    }
+    $engines[$par.Lang] = $engine
+}
+
 # --------------------------------------------------------------------------
 # Estado compartido entre hilos.
 # Generation identifica la lectura actual: cuando llega una orden nueva, sube
@@ -185,9 +198,65 @@ Start-BackgroundRunspace -Script $pipeScript -Variables @{
 # Aqui esta la diferencia de fondo con la version anterior: antes se arrancaba
 # piper.exe y se cargaba el modelo de 63 MB en cada fragmento; ahora el modelo
 # se carga una vez y queda residente.
+#
+# Con la voz Qwen hay un solo proceso para los dos idiomas (lib\servidor_qwen.py),
+# que habla el mismo protocolo que Piper. En la tarjeta grafica, generar varias
+# frases juntas cuesta casi lo mismo que una, asi que se le mandan en grupo
+# las que ya esten en cola: las dos primeras juntas, y despues grupos de hasta
+# QwenBatch mientras ya hay audio sonando.
 # --------------------------------------------------------------------------
 $synthScript = {
     $processes = @{}
+
+    function New-QwenProcess {
+        $q = $cfg.Qwen
+        $qwenArgs = @(
+            ('"' + $q.Script + '"')
+            '--voz', ('"' + $q.VoiceDir + '"')
+            '--hf-home', ('"' + $q.HfHome + '"')
+            '--registro', ('"' + $q.Log + '"')
+            '--silencio', $cfg.SentenceSilence
+            '--inactivo', $q.IdleMinutes
+            '--lote', $q.Batch
+        ) -join ' '
+
+        $psi = New-Object Diagnostics.ProcessStartInfo
+        $psi.FileName = $q.Python
+        $psi.Arguments = $qwenArgs
+        $psi.WorkingDirectory = (Split-Path -Parent $q.Script)
+        $psi.UseShellExecute = $false
+        $psi.RedirectStandardInput = $true
+        $psi.RedirectStandardOutput = $true
+        # Los avisos van al registro del propio servidor; una salida de error
+        # redirigida que nadie lee terminaria por bloquearlo.
+        $psi.RedirectStandardError = $false
+        $psi.CreateNoWindow = $true
+        $psi.StandardOutputEncoding = New-Object Text.UTF8Encoding($false)
+
+        $process = [Diagnostics.Process]::Start($psi)
+        $writer = New-Object IO.StreamWriter($process.StandardInput.BaseStream, (New-Object Text.UTF8Encoding($false)))
+        $writer.AutoFlush = $true
+
+        return @{ Process = $process; Writer = $writer }
+    }
+
+    function Get-SynthKey {
+        param([string]$Lang)
+        if ($cfg.Engines[$Lang] -eq 'qwen') { return 'qwen' }
+        return $Lang
+    }
+
+    function Get-BatchLimit {
+        # Una frase sola tarda algo mas de lo que dura; dos juntas, la mitad.
+        # Si la primera fuera sola, la segunda no alcanzaria a estar lista
+        # cuando la primera termina de sonar; juntas, la lectura empieza un
+        # segundo despues pero sin cortes, y el grupo siguiente se genera
+        # mientras suenan esas dos.
+        param([int]$Index)
+        if ($Index -lt 0) { return 1 }
+        if ($Index -eq 0) { return [Math]::Min(2, $cfg.Qwen.Batch) }
+        return $cfg.Qwen.Batch
+    }
 
     function New-PiperProcess {
         param([string]$Lang)
@@ -229,14 +298,15 @@ $synthScript = {
     function Get-PiperProcess {
         param([string]$Lang)
 
-        if ($processes.ContainsKey($Lang)) {
-            $existing = $processes[$Lang]
+        $key = Get-SynthKey -Lang $Lang
+        if ($processes.ContainsKey($key)) {
+            $existing = $processes[$key]
             if (-not $existing.Process.HasExited) { return $existing }
-            $processes.Remove($Lang)
+            $processes.Remove($key)
         }
 
-        $created = New-PiperProcess -Lang $Lang
-        $processes[$Lang] = $created
+        if ($key -eq 'qwen') { $created = New-QwenProcess } else { $created = New-PiperProcess -Lang $Lang }
+        $processes[$key] = $created
         return $created
     }
 
@@ -251,36 +321,73 @@ $synthScript = {
         # Fragmento de una lectura que ya fue reemplazada: no vale la pena.
         if ($job.Generation -ne $sync.Generation) { continue }
 
-        try {
-            $piper = Get-PiperProcess -Lang $job.Lang
-
-            $payload = @{ text = $job.Text; output_file = $job.Wav } | ConvertTo-Json -Compress
-            $piper.Writer.WriteLine($payload)
-
-            # Piper imprime la ruta del WAV cuando termina el fragmento.
-            $produced = $piper.Process.StandardOutput.ReadLine()
-
-            if ([string]::IsNullOrWhiteSpace($produced)) {
-                throw 'Piper cerro la salida sin generar audio.'
+        $key = Get-SynthKey -Lang $job.Lang
+        $batch = New-Object System.Collections.Generic.List[object]
+        $batch.Add($job)
+        if ($key -eq 'qwen') {
+            $limit = Get-BatchLimit -Index $job.Index
+            $next = $null
+            while ($batch.Count -lt $limit -and $sync.SynthJobs.TryPeek([ref]$next) -and
+                   $next.Generation -eq $job.Generation -and (Get-SynthKey -Lang $next.Lang) -eq 'qwen') {
+                [void]$sync.SynthJobs.TryDequeue([ref]$next)
+                $batch.Add($next)
             }
+        }
 
-            $sync.SynthDone.Enqueue(@{
-                Generation = $job.Generation
-                Index      = $job.Index
-                Wav        = $job.Wav
-                Ok         = $true
-                Error      = ''
-            })
-        } catch {
-            if ($processes.ContainsKey($job.Lang)) { $processes.Remove($job.Lang) }
+        # El servidor de Qwen se cierra solo tras un rato sin ordenes; si se
+        # cerro justo al llegar esta, se abre de nuevo y se repite una vez.
+        $errorText = ''
+        for ($attempt = 0; $attempt -lt 2; $attempt++) {
+            try {
+                $piper = Get-PiperProcess -Lang $job.Lang
 
-            $sync.SynthDone.Enqueue(@{
-                Generation = $job.Generation
-                Index      = $job.Index
-                Wav        = $job.Wav
-                Ok         = $false
-                Error      = $_.Exception.Message
-            })
+                if ($key -eq 'qwen') {
+                    $items = @(foreach ($b in $batch) { @{ text = $b.Text; output_file = $b.Wav; lang = $b.Lang } })
+                    $payload = ConvertTo-Json -InputObject $items -Compress
+                } else {
+                    $payload = @{ text = $job.Text; output_file = $job.Wav } | ConvertTo-Json -Compress
+                }
+                $piper.Writer.WriteLine($payload)
+
+                # Piper imprime la ruta del WAV cuando termina el fragmento;
+                # el servidor de Qwen, una ruta por fragmento del grupo. Los
+                # que ya llegaron salen del grupo, para no repetirlos si hay
+                # que reintentar.
+                while ($batch.Count -gt 0) {
+                    $b = $batch[0]
+                    $produced = $piper.Process.StandardOutput.ReadLine()
+                    if ($null -eq $produced) { throw 'El motor de voz cerro la salida sin generar audio.' }
+                    $ok = (-not [string]::IsNullOrWhiteSpace($produced)) -and (Test-Path -LiteralPath $b.Wav)
+                    $sync.SynthDone.Enqueue(@{
+                        Generation = $b.Generation
+                        Index      = $b.Index
+                        Wav        = $b.Wav
+                        Ok         = $ok
+                        Error      = $(if ($ok) { '' } else { 'El motor de voz no genero el audio.' })
+                    })
+                    $batch.RemoveAt(0)
+                }
+                $errorText = ''
+                break
+            } catch {
+                $errorText = $_.Exception.Message
+                if ($processes.ContainsKey($key)) {
+                    try { $processes[$key].Process.Kill() } catch { }
+                    $processes.Remove($key)
+                }
+            }
+        }
+
+        if ($errorText) {
+            foreach ($b in $batch) {
+                $sync.SynthDone.Enqueue(@{
+                    Generation = $b.Generation
+                    Index      = $b.Index
+                    Wav        = $b.Wav
+                    Ok         = $false
+                    Error      = $errorText
+                })
+            }
         }
     }
 
@@ -306,6 +413,16 @@ Start-BackgroundRunspace -Script $synthScript -Variables @{
         LengthScale     = ([double]$settings.LengthScale).ToString($invariant)
         NoiseScale      = ([double]$settings.NoiseScale).ToString($invariant)
         NoiseW          = ([double]$settings.NoiseW).ToString($invariant)
+        Engines         = $engines
+        Qwen            = @{
+            Python      = $qwenVoice.Python
+            Script      = $qwenVoice.Script
+            VoiceDir    = $qwenVoice.VoiceDir
+            HfHome      = $qwenVoice.HfHome
+            Log         = $qwenVoice.Log
+            Batch       = [Math]::Max(1, [int]$settings.QwenBatch)
+            IdleMinutes = ([double]$settings.QwenIdleMinutes).ToString($invariant)
+        }
     }
 }
 

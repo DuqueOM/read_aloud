@@ -64,6 +64,11 @@ function Get-ReadAloudSettings {
         PauseAfterHeading   = 0.30
         PauseTableRow       = 0.18
         MaxTmpAgeHours      = 6
+        EngineEs            = 'piper'
+        EngineEn            = 'piper'
+        QwenWorkDir         = ''
+        QwenBatch           = 4
+        QwenIdleMinutes     = 15
     }
 
     if (-not (Test-Path -LiteralPath $Paths.SettingsFile)) {
@@ -127,6 +132,35 @@ function Get-VoiceModelPath {
         Config  = ($model + '.json')
         Ready   = ((Test-Path -LiteralPath $model) -and (Test-Path -LiteralPath ($model + '.json')))
     }
+}
+
+function Get-QwenVoice {
+    # La voz afinada con Qwen3-TTS vive en la carpeta de trabajo de la voz
+    # personalizada (docs\voz-personalizada.md), con su propio entorno de
+    # Python y la cache del modelo base. Aqui solo se arman las rutas y se
+    # comprueba que esten.
+    param([hashtable]$Paths, [hashtable]$Settings)
+
+    $work = [string]$Settings.QwenWorkDir
+    $voice = @{
+        Python  = Join-Path $work '.venv_qwen\Scripts\python.exe'
+        Script  = Join-Path $Paths.LibDir 'servidor_qwen.py'
+        VoiceDir= Join-Path $work 'modelos\voz_app'
+        HfHome  = Join-Path $work 'modelos\hf'
+        Log     = Join-Path $Paths.RuntimeDir 'qwen.log'
+        Ready   = $false
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($work)) {
+        $voice.Ready = (
+            (Test-Path -LiteralPath $voice.Python) -and
+            (Test-Path -LiteralPath $voice.Script) -and
+            (Test-Path -LiteralPath (Join-Path $voice.VoiceDir 'lora.safetensors')) -and
+            (Test-Path -LiteralPath $voice.HfHome)
+        )
+    }
+
+    return $voice
 }
 
 function Test-PiperInstalled {
