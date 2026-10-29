@@ -42,6 +42,7 @@ argumentos.add_argument("--registro", required=True)
 argumentos.add_argument("--silencio", type=float, default=0.36, help="segundos de silencio al final")
 argumentos.add_argument("--inactivo", type=float, default=0.0, help="minutos sin ordenes antes de terminar; 0 es nunca")
 argumentos.add_argument("--lote", type=int, default=4, help="frases que Read Aloud puede mandar juntas")
+argumentos.add_argument("--marca", default="", help="archivo que otro paso deja mientras usa la tarjeta grafica")
 opciones = argumentos.parse_args()
 
 registro = open(opciones.registro, "a", encoding="utf-8", buffering=1)
@@ -85,9 +86,29 @@ CODIGOS_POR_SEGUNDO = 12.5
 # habia al cargar, y no con cero, porque Windows y el navegador siempre
 # ocupan algo, y porque en Windows la memoria que informa CUDA no coincide
 # exactamente con la de nvidia-smi; las diferencias, en cambio, si.
-REVISION_S = 30
+REVISION_S = 10
 QUIETO_ANTES_DE_CEDER_S = 60
 CEDER_SI_OTROS_GB = 1.5
+
+
+def tarjeta_pedida() -> bool:
+    """Si un paso pesado de la carpeta de trabajo dejo su marca (scripts/gpu.py)
+    y ese proceso sigue vivo. Entonces Read Aloud lee con Piper y este proceso
+    termina para dejarle la tarjeta entera."""
+    if not opciones.marca or not os.path.exists(opciones.marca):
+        return False
+    try:
+        pid = int(Path(opciones.marca).read_text(encoding="ascii").strip())
+    except (OSError, ValueError):
+        return False
+    import ctypes
+    proceso = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not proceso:
+        return False
+    codigo = ctypes.c_ulong()
+    ctypes.windll.kernel32.GetExitCodeProcess(proceso, ctypes.byref(codigo))
+    ctypes.windll.kernel32.CloseHandle(proceso)
+    return codigo.value == 259  # STILL_ACTIVE
 
 
 def memoria_de_otros_gb() -> float:
@@ -215,6 +236,9 @@ def main() -> None:
             quieto = time.monotonic() - ultima
             if opciones.inactivo > 0 and quieto >= opciones.inactivo * 60:
                 log("sin ordenes, termino para liberar la tarjeta grafica")
+                return
+            if tarjeta_pedida():
+                log("otro paso marco la tarjeta grafica como ocupada: termino para dejarsela")
                 return
             # Si al cargar ya habia otro programa usando la tarjeta, la base
             # baja cuando la suelta: asi se cede tambien la proxima vez.

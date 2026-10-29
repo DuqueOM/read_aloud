@@ -221,6 +221,7 @@ $synthScript = {
             '--silencio', $cfg.SentenceSilence
             '--inactivo', $q.IdleMinutes
             '--lote', $q.Batch
+            '--marca', ('"' + $q.BusyFile + '"')
         ) -join ' '
 
         $psi = New-Object Diagnostics.ProcessStartInfo
@@ -243,10 +244,35 @@ $synthScript = {
         return @{ Process = $process; Writer = $writer }
     }
 
+    function Test-GpuBusy {
+        # Si un paso pesado de la voz personalizada esta usando la tarjeta
+        # (deja su numero de proceso en el archivo). Compartir sus 8 GB con
+        # Qwen hacia esperar minutos cada frase. La marca de un proceso que ya
+        # no existe no cuenta.
+        param([string]$BusyFile)
+        if (-not (Test-Path -LiteralPath $BusyFile)) { return $false }
+        try {
+            $owner = [int]((Get-Content -LiteralPath $BusyFile -Raw -ErrorAction Stop).Trim())
+            return $null -ne (Get-Process -Id $owner -ErrorAction SilentlyContinue)
+        } catch {
+            return $false
+        }
+    }
+
     function Get-SynthKey {
         param([string]$Lang)
-        if ($cfg.Engines[$Lang] -eq 'qwen') { return 'qwen' }
-        return $Lang
+        if ($cfg.Engines[$Lang] -ne 'qwen') { return $Lang }
+        # Otro paso pesado tiene la tarjeta: se lee con Piper y, si Qwen esta
+        # abierto, se le cierra la entrada para que termine y la deje.
+        if (Test-GpuBusy -BusyFile $cfg.Qwen.BusyFile) {
+            if ($processes.ContainsKey('qwen')) {
+                try { $processes['qwen'].Writer.Close() } catch { }
+                $processes.Remove('qwen')
+                Write-SynthLog 'La tarjeta grafica esta ocupada por otro paso: se lee con Piper mientras tanto.'
+            }
+            return $Lang
+        }
+        return 'qwen'
     }
 
     function Get-BatchLimit {
@@ -464,6 +490,7 @@ Start-BackgroundRunspace -Script $synthScript -Variables @{
             VoiceDir    = $qwenVoice.VoiceDir
             HfHome      = $qwenVoice.HfHome
             Log         = $qwenVoice.Log
+            BusyFile    = $qwenVoice.BusyFile
             Batch       = [Math]::Max(1, [int]$settings.QwenBatch)
             IdleMinutes = ([double]$settings.QwenIdleMinutes).ToString($invariant)
         }

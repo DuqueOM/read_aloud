@@ -51,6 +51,13 @@ ninguna lectura espere esa carga, se queda abierto, y se cierra solo cuando
 otro programa empieza a usar 1.5 GB más de la tarjeta que cuando cargó, tras
 un minuto sin leer. La lectura siguiente lo vuelve a abrir.
 
+Mientras un paso pesado de la voz personalizada (transcribir, separar,
+entrenar) usa la tarjeta, deja su número de proceso en `gpu_ocupada`, en la
+carpeta de trabajo. Mientras ese proceso siga vivo, Read Aloud lee con Piper y
+Qwen se cierra para dejarle la tarjeta entera: compartir los 8 GB hacía
+esperar minutos cada frase. Al terminar el paso, la voz de Qwen vuelve sola en
+la lectura siguiente.
+
 En una RTX 5070 de portátil, una frase sola tarda 1.1 veces lo que dura, y
 dos juntas 0.54 veces y cuatro juntas 0.34 veces: más rápido que tiempo real.
 Por eso las dos primeras frases de cada lectura se generan juntas, y las

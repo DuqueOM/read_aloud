@@ -149,6 +149,10 @@ function Get-QwenVoice {
         VoiceDir= Join-Path $work 'modelos\voz_app'
         HfHome  = Join-Path $work 'modelos\hf'
         Log     = Join-Path $Paths.RuntimeDir 'qwen.log'
+        # Los pasos pesados de la carpeta de trabajo dejan aqui su numero de
+        # proceso mientras usan la tarjeta grafica (scripts\gpu.py); mientras
+        # tanto se lee con Piper (Test-GpuBusy, en read_aloud_daemon.ps1).
+        BusyFile= Join-Path $work 'gpu_ocupada'
         Ready   = $false
     }
 
