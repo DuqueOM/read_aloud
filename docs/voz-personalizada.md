@@ -83,8 +83,12 @@ exactas de [voz_personalizada/requisitos/](../voz_personalizada/requisitos):
 | `.venv_mejora` | La prueba de resemble-enhance, que no funciona con las librerías actuales |
 | `applio\.venv` | El entrenamiento, con [Applio](https://github.com/IAHispano/Applio) en una versión fija |
 
-Nada se instala fuera de la carpeta de trabajo. Los modelos que faltan se
-descargan la primera vez que cada paso los usa, y quedan en `modelos\`.
+Nada se instala fuera de la carpeta de trabajo, tampoco Python: los entornos
+usan uno propio de uv, en `herramientas\python`, así que actualizar o
+desinstalar el Python del equipo no los rompe. Cada paquete de las listas lleva
+su sha256, y el instalador no acepta uno que no coincida con lo que se probó.
+Los modelos que faltan se descargan la primera vez que cada paso los usa, y
+quedan en `modelos\`.
 
 ## 2. Configurar
 
@@ -359,7 +363,7 @@ datos\07_mejora\          Clips sin reverberacion y prueba a ciegas
 datos\08_final\           Conjunto final de entrenamiento
 progreso.html             Avance del lote
 modelos\                  Modelos descargados
-herramientas\             ffmpeg
+herramientas\             ffmpeg y el Python de los entornos (herramientas\python)
 .venv\, .venv_mejora\     Entornos de Python
 applio\                   Applio y su entorno
 ```

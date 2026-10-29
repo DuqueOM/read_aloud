@@ -10,11 +10,15 @@
 #
 # Necesita uv y git con git-lfs. Descarga unos 15 GB entre paquetes y modelos,
 # todo dentro de la carpeta de trabajo: nada se instala fuera de ella, y
-# borrarla deja el equipo como estaba.
+# borrarla deja el equipo como estaba. Eso incluye Python: los entornos usan
+# uno propio de uv, guardado en herramientas\python, y no el que tenga
+# instalado el equipo, que al actualizarse o desinstalarse los romperia.
 #
 # Las versiones de requisitos\ se probaron con PyTorch 2.11 y CUDA 12.8, que
 # es lo que piden las NVIDIA RTX 50. Las listas se instalan
-# con --no-deps: estan completas, y asi no entra ninguna version distinta.
+# con --no-deps: estan completas, y asi no entra ninguna version distinta. Y
+# con --require-hashes: cada paquete lleva su sha256, y uno que no coincida
+# con lo que se probo no se instala.
 
 [CmdletBinding()]
 param(
@@ -62,8 +66,8 @@ function New-Entorno {
         Write-Host "    ya existe: $Ruta" -ForegroundColor Gray
         return $ejecutable
     }
-    Invoke-Checked 'uv' @('venv', $Ruta, '--python', $Python)
-    Invoke-Checked 'uv' @('pip', 'install', '--python', $ejecutable, '--no-deps',
+    Invoke-Checked 'uv' @('venv', $Ruta, '--python', $Python, '--managed-python')
+    Invoke-Checked 'uv' @('pip', 'install', '--python', $ejecutable, '--no-deps', '--require-hashes',
                           '-r', (Join-Path $requisitos $Lista),
                           '--extra-index-url', $indicePytorch, '--index-strategy', 'unsafe-best-match')
     return $ejecutable
@@ -81,6 +85,10 @@ Write-Step "Carpeta de trabajo: $Trabajo"
 foreach ($carpeta in @('datos', 'modelos', 'herramientas', 'referencias\original')) {
     New-Item -ItemType Directory -Path (Join-Path $Trabajo $carpeta) -Force | Out-Null
 }
+# El Python de los entornos se descarga aqui, no en la carpeta de uv del
+# usuario: asi queda dentro de la carpeta de trabajo, como todo lo demas.
+$env:UV_PYTHON_INSTALL_DIR = Join-Path $Trabajo 'herramientas\python'
+
 $config = Join-Path $Trabajo 'voz.toml'
 if (-not (Test-Path -LiteralPath $config)) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'voz.ejemplo.toml') -Destination $config
