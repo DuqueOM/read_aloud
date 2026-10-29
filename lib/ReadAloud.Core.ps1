@@ -64,11 +64,12 @@ function Get-ReadAloudSettings {
         PauseAfterHeading   = 0.30
         PauseTableRow       = 0.18
         MaxTmpAgeHours      = 6
-        EngineEs            = 'piper'
-        EngineEn            = 'piper'
+        EngineEs            = 'auto'
+        EngineEn            = 'auto'
         QwenWorkDir         = ''
         QwenBatch           = 4
-        QwenIdleMinutes     = 15
+        QwenIdleMinutes     = 0
+        QwenMinVramGB       = 7
     }
 
     if (-not (Test-Path -LiteralPath $Paths.SettingsFile)) {
@@ -161,6 +162,49 @@ function Get-QwenVoice {
     }
 
     return $voice
+}
+
+function Get-NvidiaVramGB {
+    # Memoria de la tarjeta NVIDIA mas grande del equipo, en GB, o 0 si no hay
+    # ninguna. nvidia-smi viene con el controlador de NVIDIA; sin el, no hay
+    # tarjeta que pueda mover Qwen3-TTS.
+    $smi = Get-Command 'nvidia-smi' -ErrorAction SilentlyContinue
+    if (-not $smi) { return 0.0 }
+    try {
+        $mib = & $smi.Source '--query-gpu=memory.total' '--format=csv,noheader,nounits' 2>$null |
+            ForEach-Object { [double]($_.Trim()) } | Measure-Object -Maximum
+        if ($mib.Count -eq 0) { return 0.0 }
+        return $mib.Maximum / 1024.0
+    } catch {
+        return 0.0
+    }
+}
+
+function Resolve-VoiceEngine {
+    # Que motor lee un idioma. 'piper' siempre es Piper. 'qwen' y 'auto' usan
+    # la voz propia de Qwen3-TTS si esta instalada y hay una tarjeta NVIDIA con
+    # memoria suficiente; si no, Piper. La diferencia es solo el aviso: con
+    # 'qwen' se pidio esa voz y se explica en el log por que no se usa; con
+    # 'auto', la que se instala por defecto, quedarse con Piper es lo normal en
+    # un equipo sin esa voz o sin esa tarjeta.
+    param(
+        [string]$Requested,
+        [hashtable]$QwenVoice,
+        [double]$VramGB,
+        [double]$MinVramGB
+    )
+
+    $requested = ([string]$Requested).ToLowerInvariant()
+    if ($requested -ne 'qwen' -and $requested -ne 'auto') {
+        return @{ Engine = 'piper'; Reason = '' }
+    }
+    if (-not $QwenVoice.Ready) {
+        return @{ Engine = 'piper'; Reason = $(if ($requested -eq 'qwen') { 'no encontre la voz Qwen' } else { '' }) }
+    }
+    if ($VramGB -lt $MinVramGB) {
+        return @{ Engine = 'piper'; Reason = ('la tarjeta grafica tiene {0:N1} GB y Qwen pide {1} GB' -f $VramGB, $MinVramGB) }
+    }
+    return @{ Engine = 'qwen'; Reason = '' }
 }
 
 function Test-PiperInstalled {

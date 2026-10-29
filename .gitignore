@@ -11,3 +11,4 @@ read_aloud_piper/runtime/
 # Windows
 Thumbs.db
 desktop.ini
+__pycache__/

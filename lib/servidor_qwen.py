@@ -12,9 +12,11 @@ La voz es una carpeta con lo que deja el entrenamiento (ajuste.json,
 voz.safetensors y las capas LoRA de la epoca elegida, en lora.safetensors).
 El modelo base se toma de la cache de Hugging Face que se indique.
 
-El modelo ocupa unos 5 GB de memoria de video. Si no llega ninguna orden en
---inactivo minutos, el proceso termina y la libera; Read Aloud lo vuelve a
-abrir con la siguiente lectura.
+El modelo ocupa unos 5 GB de memoria de video. El proceso se queda abierto,
+para que ninguna lectura espere a que cargue, hasta que otro programa
+necesite la tarjeta grafica o pasen --inactivo minutos sin ordenes (0 es
+nunca). Entonces termina y la libera; Read Aloud lo vuelve a abrir con la
+siguiente lectura.
 
 Todo lo que no es el protocolo (avisos de las librerias, errores) va a
 --registro: si llegara a la salida, Read Aloud lo leeria como una ruta.
@@ -38,7 +40,7 @@ argumentos.add_argument("--voz", required=True, help="carpeta de la voz afinada"
 argumentos.add_argument("--hf-home", required=True, help="cache de Hugging Face con el modelo base")
 argumentos.add_argument("--registro", required=True)
 argumentos.add_argument("--silencio", type=float, default=0.36, help="segundos de silencio al final")
-argumentos.add_argument("--inactivo", type=float, default=15.0, help="minutos sin ordenes antes de terminar")
+argumentos.add_argument("--inactivo", type=float, default=0.0, help="minutos sin ordenes antes de terminar; 0 es nunca")
 argumentos.add_argument("--lote", type=int, default=4, help="frases que Read Aloud puede mandar juntas")
 opciones = argumentos.parse_args()
 
@@ -73,6 +75,24 @@ MARGEN_S = 0.05
 # repite una vez. 12.5 codigos por segundo.
 SEGUNDOS_POR_LETRA = 0.065
 CODIGOS_POR_SEGUNDO = 12.5
+
+
+# Cargar el modelo tarda unos 16 s, y esa espera se nota al pedir una lectura.
+# Por eso el proceso se queda abierto mientras nadie mas necesite la tarjeta:
+# cada REVISION_S mira cuanta memoria usan los demas programas, y si despues
+# de un rato sin leer usan CEDER_SI_OTROS_GB mas que al cargar, termina y se
+# la deja. La lectura siguiente lo vuelve a abrir. Se compara con lo que
+# habia al cargar, y no con cero, porque Windows y el navegador siempre
+# ocupan algo, y porque en Windows la memoria que informa CUDA no coincide
+# exactamente con la de nvidia-smi; las diferencias, en cambio, si.
+REVISION_S = 30
+QUIETO_ANTES_DE_CEDER_S = 60
+CEDER_SI_OTROS_GB = 1.5
+
+
+def memoria_de_otros_gb() -> float:
+    libre, total = torch.cuda.mem_get_info()
+    return (total - libre - torch.cuda.memory_reserved()) / 1e9
 
 
 def log(mensaje: str) -> None:
@@ -175,23 +195,36 @@ def leer_entrada(cola: queue.Queue) -> None:
 def main() -> None:
     inicio = time.perf_counter()
     qwen = cargar(Path(opciones.voz))
+    log(f"pesos listos en {time.perf_counter() - inicio:.1f} s")
     # El modelo chico se graba una vez por tamano de grupo; se hace aqui para
     # que ninguna lectura pague esa espera.
     for lote in sorted({1, min(2, opciones.lote), opciones.lote}):
         qwen.generate_custom_voice(text=["Hola."] * lote, language=["Spanish"] * lote, speaker=[VOZ] * lote,
                                    non_streaming_mode=True, max_new_tokens=40)
     log(f"modelo cargado en {time.perf_counter() - inicio:.1f} s")
+    otros_al_cargar = memoria_de_otros_gb()
+    log(f"memoria de la tarjeta en uso por otros al cargar: {otros_al_cargar:.1f} GB")
 
     cola: queue.Queue = queue.Queue()
     threading.Thread(target=leer_entrada, args=(cola,), daemon=True).start()
+    ultima = time.monotonic()
     while True:
         try:
-            linea = cola.get(timeout=opciones.inactivo * 60)
+            linea = cola.get(timeout=REVISION_S)
         except queue.Empty:
-            log("sin ordenes, termino para liberar la tarjeta grafica")
-            return
+            quieto = time.monotonic() - ultima
+            if opciones.inactivo > 0 and quieto >= opciones.inactivo * 60:
+                log("sin ordenes, termino para liberar la tarjeta grafica")
+                return
+            otros = memoria_de_otros_gb() - otros_al_cargar
+            if quieto >= QUIETO_ANTES_DE_CEDER_S and otros >= CEDER_SI_OTROS_GB:
+                log(f"otro programa usa {otros:.1f} GB mas de la tarjeta grafica: termino para dejarsela")
+                return
+            continue
         if linea is None:
             return
+        ultima = time.monotonic()
+        ordenes = []
         try:
             datos = json.loads(linea)
             ordenes = datos if isinstance(datos, list) else [datos]
@@ -200,7 +233,6 @@ def main() -> None:
             log(f"{len(ordenes)} frase(s) en {time.perf_counter() - inicio:.1f} s")
         except Exception as error:  # una orden mala no debe tumbar el proceso
             log(f"error: {error!r}")
-            ordenes = ordenes if "ordenes" in locals() else []
         # Una ruta por orden, como Piper, aunque haya fallado: Read Aloud
         # comprueba que el WAV exista.
         for orden in ordenes:

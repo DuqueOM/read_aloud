@@ -24,24 +24,32 @@ El archivo debe existir en `read_aloud_piper\voices`. Consulta las opciones en
 
 | Valor | Por defecto | Qué hace |
 |---|---|---|
-| `EngineEs` | `piper` | Motor del español: `piper` o `qwen` |
-| `EngineEn` | `piper` | Motor del inglés |
+| `EngineEs` | `auto` | Motor del español: `auto`, `piper` o `qwen` |
+| `EngineEn` | `auto` | Motor del inglés |
 | `QwenWorkDir` | vacío | Carpeta de trabajo de la voz propia ([voz-personalizada.md](voz-personalizada.md)) |
+| `QwenMinVramGB` | `7` | Memoria mínima de la tarjeta NVIDIA para usar Qwen |
 | `QwenBatch` | `4` | Frases que se generan juntas |
-| `QwenIdleMinutes` | `15` | Minutos sin leer tras los que Qwen se cierra |
+| `QwenIdleMinutes` | `0` | Minutos sin leer tras los que Qwen se cierra; `0` es nunca |
 
-Con `qwen`, el idioma se lee con una voz entrenada con
-[Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS). Lo hace `lib\servidor_qwen.py`,
-un proceso de Python que habla el mismo protocolo que Piper y que usa, de la
-carpeta de trabajo, el entorno `.venv_qwen`, la cache del modelo base en
-`modelos\hf` y la voz elegida en `modelos\voz_app` (`ajuste.json`,
-`voz.safetensors` y `lora.safetensors`). Si falta algo de eso, el idioma se lee
-con Piper y el motivo queda en `daemon.log`; lo que pasa dentro del servidor
-queda en `read_aloud_piper\runtime\qwen.log`.
+Read Aloud lee con Piper en cualquier equipo. Si además tienes una voz propia
+entrenada con [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS) y una tarjeta
+NVIDIA con al menos `QwenMinVramGB` de memoria, `auto` la usa; si falta
+cualquiera de las dos cosas, sigue con Piper sin que tengas que cambiar nada.
+`piper` fuerza Piper; `qwen` es igual que `auto`, pero deja en `daemon.log`
+por qué no se pudo usar Qwen. Si Qwen falla en medio de una lectura, la frase
+se lee con Piper, y si el proceso no responde ni al reabrirlo, el resto de la
+sesión también.
 
-Qwen necesita la tarjeta gráfica y ocupa unos 5 GB de su memoria mientras está
-abierto. Por eso se cierra solo tras `QwenIdleMinutes` sin leer, y la lectura
-siguiente espera a que vuelva a cargar.
+La voz la genera `lib\servidor_qwen.py`, un proceso de Python que habla el
+mismo protocolo que Piper y que usa, de la carpeta de trabajo, el entorno
+`.venv_qwen`, la cache del modelo base en `modelos\hf` y la voz elegida en
+`modelos\voz_app` (`ajuste.json`, `voz.safetensors` y `lora.safetensors`). Lo
+que pasa dentro queda en `read_aloud_piper\runtime\qwen.log`.
+
+Qwen tarda unos 16 s en cargar y ocupa unos 5 GB de la tarjeta. Para que
+ninguna lectura espere esa carga, se queda abierto, y se cierra solo cuando
+otro programa empieza a usar 1.5 GB más de la tarjeta que cuando cargó, tras
+un minuto sin leer. La lectura siguiente lo vuelve a abrir.
 
 En una RTX 5070 de portátil, una frase sola tarda 1.1 veces lo que dura, y
 dos juntas 0.54 veces y cuatro juntas 0.34 veces: más rápido que tiempo real.

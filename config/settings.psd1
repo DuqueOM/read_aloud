@@ -13,21 +13,25 @@
     VoiceEs = 'es_MX-claude-high'
     VoiceEn = 'en_US-lessac-medium'
 
-    # Motor de cada idioma: 'piper' o 'qwen'. 'qwen' lee con la voz propia
-    # entrenada con Qwen3-TTS (docs\voz-personalizada.md); necesita la tarjeta
-    # grafica y la carpeta de trabajo de esa voz. Si algo falta, se lee con la
-    # voz de Piper de arriba.
-    EngineEs = 'qwen'
-    EngineEn = 'qwen'
+    # Motor de cada idioma: 'auto', 'piper' o 'qwen'. Con 'auto' se lee con
+    # la voz propia entrenada con Qwen3-TTS (docs\voz-personalizada.md) si
+    # esta en QwenWorkDir y el equipo tiene una tarjeta NVIDIA de al menos
+    # QwenMinVramGB; si no, con la voz de Piper de arriba. 'piper' fuerza
+    # Piper. Si Qwen falla mientras lee, se sigue con Piper.
+    EngineEs = 'auto'
+    EngineEn = 'auto'
     QwenWorkDir = 'D:\voces\mi_voz'
+    QwenMinVramGB = 7
 
     # Frases que se generan juntas con Qwen: mas es mas rapido en total, pero
     # cada grupo tarda mas en estar listo.
     QwenBatch = 4
 
-    # Minutos sin leer tras los que Qwen se cierra y libera la memoria de la
-    # tarjeta grafica (unos 5 GB). La lectura siguiente espera a que cargue.
-    QwenIdleMinutes = 15
+    # Qwen tarda unos 16 s en cargar, asi que se queda abierto (ocupa unos
+    # 5 GB de la tarjeta grafica) y se cierra solo cuando otro programa
+    # necesita la tarjeta. Con un numero mayor que 0, tambien se cierra tras
+    # esos minutos sin leer.
+    QwenIdleMinutes = 0
 
     # Velocidad. Mas alto es mas lento. 1.00 es la velocidad base del modelo.
     LengthScale = 1.06
