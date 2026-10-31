@@ -1,18 +1,21 @@
 #
 # instalar.ps1
 # Prepara la carpeta de trabajo de una voz personalizada: los entornos de
-# Python con las versiones exactas que funcionaron, ffmpeg, Applio y los
-# modelos base. Ver docs\voz-personalizada.md.
+# Python con las versiones exactas que funcionaron, ffmpeg y los modelos base.
+# Ver docs\voz-personalizada.md.
 #
-#   .\instalar.ps1 -Trabajo D:\voces\mi_voz              Todo
-#   .\instalar.ps1 -Trabajo D:\voces\mi_voz -SinMejora   Sin la prueba de resemble-enhance
-#   .\instalar.ps1 -Trabajo D:\voces\mi_voz -SinApplio   Sin el entrenamiento
+#   .\instalar.ps1 -Trabajo D:\voces\mi_voz                Todo el proceso: preparar, revisar y entrenar
+#   .\instalar.ps1 -Trabajo D:\voces\mi_voz -SoloLectura   Solo lo que Read Aloud necesita para leer
+#                                                          con una voz ya entrenada (unos 9 GB)
+#   .\instalar.ps1 -Trabajo D:\voces\mi_voz -ConRvc        Ademas Applio, de la primera version (RVC)
+#   .\instalar.ps1 -Trabajo D:\voces\mi_voz -ConMejora     Ademas resemble-enhance, para repetir la prueba a ciegas
 #
-# Necesita uv y git con git-lfs. Descarga unos 15 GB entre paquetes y modelos,
-# todo dentro de la carpeta de trabajo: nada se instala fuera de ella, y
-# borrarla deja el equipo como estaba. Eso incluye Python: los entornos usan
-# uno propio de uv, guardado en herramientas\python, y no el que tenga
-# instalado el equipo, que al actualizarse o desinstalarse los romperia.
+# Necesita uv, y git con git-lfs para -ConRvc y -ConMejora. El proceso
+# completo descarga unos 25 GB entre paquetes y modelos, todo dentro de la
+# carpeta de trabajo: nada se instala fuera de ella, y borrarla deja el equipo
+# como estaba. Eso incluye Python: los entornos usan uno propio de uv, guardado
+# en herramientas\python, y no el que tenga instalado el equipo, que al
+# actualizarse o desinstalarse los romperia.
 #
 # Las versiones de requisitos\ se probaron con PyTorch 2.11 y CUDA 12.8, que
 # es lo que piden las NVIDIA RTX 50. Las listas se instalan
@@ -24,8 +27,9 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$Trabajo,
-    [switch]$SinMejora,
-    [switch]$SinApplio
+    [switch]$SoloLectura,
+    [switch]$ConRvc,
+    [switch]$ConMejora
 )
 
 $ErrorActionPreference = 'Stop'
@@ -73,13 +77,29 @@ function New-Entorno {
     return $ejecutable
 }
 
-foreach ($programa in @('uv', 'git')) {
+function Get-Modelos {
+    # Los modelos de Hugging Face se bajan ahora y no la primera vez que se
+    # usan: Read Aloud abre Qwen sin conexion (lib\servidor_qwen.py), asi
+    # que tienen que estar ya en modelos\hf.
+    param([string]$Python, [string[]]$Repos)
+    $env:HF_HOME = Join-Path $Trabajo 'modelos\hf'
+    foreach ($repo in $Repos) {
+        Write-Host "    $repo"
+        Invoke-Checked $Python @('-c', "from huggingface_hub import snapshot_download; snapshot_download('$repo')")
+    }
+}
+
+$programas = @('uv')
+if ($ConRvc -or $ConMejora) { $programas += 'git' }
+foreach ($programa in $programas) {
     if (-not (Get-Command $programa -ErrorAction SilentlyContinue)) {
         throw "Falta $programa. Instalalo y vuelve a correr este script."
     }
 }
-& git lfs version *> $null
-if ($LASTEXITCODE -ne 0) { throw 'Falta git-lfs: instalalo con "git lfs install".' }
+if ($ConRvc -or $ConMejora) {
+    & git lfs version *> $null
+    if ($LASTEXITCODE -ne 0) { throw 'Falta git-lfs: instalalo con "git lfs install".' }
+}
 
 Write-Step "Carpeta de trabajo: $Trabajo"
 foreach ($carpeta in @('datos', 'modelos', 'herramientas', 'referencias\original')) {
@@ -95,7 +115,20 @@ if (-not (Test-Path -LiteralPath $config)) {
     Write-Host '    creado voz.toml: editalo antes de empezar' -ForegroundColor Yellow
 }
 
-Write-Step 'Entorno principal: separacion, transcripcion, alineacion y cortes'
+Write-Step 'Entorno de Qwen3-TTS: entrenar la voz y leer con ella en Read Aloud'
+$qwen = New-Entorno (Join-Path $Trabajo '.venv_qwen') '3.12' 'qwen.txt'
+Get-Modelos $qwen @('Qwen/Qwen3-TTS-12Hz-1.7B-Base', 'Qwen/Qwen3-TTS-Tokenizer-12Hz')
+New-Item -ItemType Directory -Path (Join-Path $Trabajo 'modelos\voz_app') -Force | Out-Null
+
+if ($SoloLectura) {
+    Write-Step 'Listo para leer'
+    Write-Host "    Copia la voz entrenada (ajuste.json, voz.safetensors y lora.safetensors) a" -ForegroundColor Green
+    Write-Host "    $(Join-Path $Trabajo 'modelos\voz_app') y pon QwenWorkDir = '$Trabajo'" -ForegroundColor Green
+    Write-Host "    en config\settings.psd1. Ver docs\configuracion.md." -ForegroundColor Green
+    return
+}
+
+Write-Step 'Entorno principal: separacion, transcripcion, alineacion, cortes y medidas'
 $principal = New-Entorno (Join-Path $Trabajo '.venv') '3.12' 'principal.txt'
 
 # audio-separator y Whisper llaman a "ffmpeg" por su nombre. Se usa la copia
@@ -106,7 +139,11 @@ if (-not (Test-Path -LiteralPath $ffmpeg)) {
     Copy-Item -LiteralPath $origen.Trim() -Destination $ffmpeg
 }
 
-if (-not $SinMejora) {
+Write-Step 'Entorno de Qwen3-ASR: la segunda transcripcion de cada clip'
+$asr = New-Entorno (Join-Path $Trabajo '.venv_asr') '3.12' 'asr.txt'
+Get-Modelos $asr @('Qwen/Qwen3-ASR-1.7B')
+
+if ($ConMejora) {
     Write-Step 'Entorno de mejora: resemble-enhance, para la prueba a ciegas'
     # Python 3.11 y NumPy 1.26: resemble-enhance es de 2023 y falla con NumPy 2.
     $mejora = New-Entorno (Join-Path $Trabajo '.venv_mejora') '3.11' 'mejora.txt'
@@ -119,7 +156,7 @@ if (-not $SinMejora) {
     }
 }
 
-if (-not $SinApplio) {
+if ($ConRvc) {
     Write-Step 'Applio: entrenamiento de la voz con RVC'
     $applio = Join-Path $Trabajo 'applio'
     if (-not (Test-Path -LiteralPath (Join-Path $applio '.git'))) {
