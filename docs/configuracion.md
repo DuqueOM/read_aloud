@@ -40,6 +40,11 @@ por qué no se pudo usar Qwen. Si Qwen falla en medio de una lectura, la frase
 se lee con Piper, y si el proceso no responde ni al reabrirlo, el resto de la
 sesión también.
 
+Para instalar lo que la voz necesita en un equipo nuevo, con una voz ya
+entrenada, basta `voz_personalizada\instalar.ps1 -Trabajo D:\voces\mi_voz
+-SoloLectura` y copiar la voz a `modelos\voz_app`. Cómo entrenar una voz, en
+[voz-personalizada.md](voz-personalizada.md).
+
 La voz la genera `lib\servidor_qwen.py`, un proceso de Python que habla el
 mismo protocolo que Piper y que usa, de la carpeta de trabajo, el entorno
 `.venv_qwen`, la cache del modelo base en `modelos\hf` y la voz elegida en

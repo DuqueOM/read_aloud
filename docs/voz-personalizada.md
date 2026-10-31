@@ -1,72 +1,67 @@
 # Voz personalizada
 
 Esta guía explica cómo sacar una voz concreta de grabaciones donde habla junto
-a otras, como videos con varias personas, y convertirla en un conjunto de clips limpios
-para entrenar un modelo de voz. Todo corre en tu equipo.
+a otras, como videos con varias personas, entrenar con ella un modelo de texto a voz y
+leer con esa voz en Read Aloud. Todo corre en tu equipo.
 
 El código está en [voz_personalizada/](../voz_personalizada). Lo que pesa
 (grabaciones, audio, modelos y entornos de Python) vive fuera del
-repositorio, en una carpeta de trabajo por voz.
+repositorio, en una carpeta de trabajo por voz. Por qué el proceso es así está
+en el [registro de decisiones](adr/README.md).
 
-> **Estado:** documentado y probado hasta el conjunto final de entrenamiento.
-> El entrenamiento, la elección del punto de control y la integración con
-> Read Aloud se agregarán cuando terminen de validarse.
+> **Estado:** probado de punta a punta con una voz, la de la voz de prueba de las grabaciones
+> es_mx: 70 capítulos, 1438 clips revisados de oído y una voz que Read Aloud
+> ya usa. Falta comparar a ciegas los dos últimos entrenamientos (ver la
+> [ADR 0010](adr/0010-conjunto-final.md)) y generalizar los scripts de
+> [proceso_qwen/](../voz_personalizada/proceso_qwen), que todavía traen
+> fijas algunas cosas de esa voz.
 
 ## Uso responsable
 
 Clonar la voz de una persona, también cuando interpreta un papel,
 solo debe hacerse con su permiso o para uso estrictamente personal. No
-publiques ni compartas un modelo entrenado con una voz ajena sin
-autorización.
+publiques ni compartas un modelo ni un conjunto de datos hechos con una voz
+ajena sin autorización.
 
 ## Cómo funciona
 
 ```
 grabaciones
-  → 01 extraer el audio
-  → 02 separar la voz de la música y los efectos
-  → 03 transcribir con tiempos por palabra
-  → 03b afinar esos tiempos con alineación forzada
-  → 04 medir quién habla en cada momento
-  → 04a calibrar: convertir el parecido en probabilidad
-  → 04 cortar clips donde solo habla la voz buscada
-  → 05 revisar los clips de oído
-  → 06 armar el conjunto con los que conservaste
-  → 07 decidir con una prueba a ciegas si mejorarlo
-  → conjunto final de entrenamiento
+  → separar la voz de la música y los efectos         Mel-Band RoFormer
+  → transcribir con tiempos por palabra               Whisper large-v3
+  → afinar esos tiempos con alineación forzada        wav2vec2
+  → saber quién habla en cada momento                 WavLM Large + tus decisiones
+  → cortar clips de frases completas
+  → medir la calidad y transcribir cada clip dos veces   SQUIM, Whisper y Qwen3-ASR
+  → revisarlos de oído en una sola pasada, con su texto
+  → quedarse con los mejores 60 minutos, sin eco y nivelados
+  → entrenar Qwen3-TTS con LoRA y elegir la época a ciegas
+  → leer con esa voz en Read Aloud
 ```
 
-La idea central es cortar **entre palabras** y no donde hay silencio.
-Cuando dos personas hablan seguido no hay silencio entre ellas, pero sí un
-límite entre la última palabra de una y la primera de la otra. Por eso cada
-palabra se ubica con precisión de centésimas y recibe una probabilidad de ser
-de la voz buscada. Un clip es una racha de palabras suyas, y sus bordes se
-llevan al silencio real más cercano.
+Dos ideas lo atraviesan:
 
-### Qué aporta el modelo y qué no
-
-El modelo que se entrena es de conversión de voz: RVC. **Copia el timbre, no
-la expresión.** La entonación, el ritmo y la emoción vienen de la voz que
-recibe. Si el motor de origen lee de forma plana, la voz convertida también
-sonará plana. Para una voz expresiva, el motor de origen pesa tanto como el
-entrenamiento.
+- **El modelo aprende todo lo que hay en el clip:** el timbre, pero también la
+  entonación, las pausas, el ruido y los errores del texto. Por eso cada clip
+  es una frase completa, limpia y con su texto exacto.
+- **Tú eres el filtro final.** Las medidas ordenan y avisan; las decisiones
+  de oído deciden. Y las primeras decisiones entrenan el reconocedor de la voz.
 
 ## Qué necesitas
 
 - **Windows con una tarjeta NVIDIA de 8 GB o más.** Se probó en una RTX 5070
   Laptop de 8 GB, con PyTorch 2.11 y CUDA 12.8, que es lo que piden las
   NVIDIA RTX 50.
-- **[uv](https://docs.astral.sh/uv/), git y git-lfs.**
-- **Espacio en disco.** Unos 15 GB de entornos y modelos, más cerca de 1 GB
-  por cada 20 minutos de grabación.
-- **Grabaciones con mucha presencia de la voz.** Como referencia: 22 capítulos
-  de 22 minutos, donde la voz era la voz, dieron 31 minutos de
-  candidatos y 20 minutos tras la revisión. Una voz secundaria pide muchas
-  más grabaciones.
-- **Una referencia de la voz.** Uno o varios WAV con solo esa voz, unos
-  minutos en total, sacados de escenas limpias. Sirven para reconocerla. Cuanto
-  más variados sean el tono y la emoción, mejor la reconoce en todos sus
-  registros.
+- **[uv](https://docs.astral.sh/uv/).** Y git con git-lfs si vas a instalar
+  las herramientas de la primera versión (`-ConRvc`, `-ConMejora`).
+- **Espacio en disco:** unos 25 GB de entornos y modelos, y cerca de 1 GB por
+  capítulo de 25 minutos mientras se procesa.
+- **Muchas grabaciones de la voz.** Como referencia: con una voz que habla mucho, cada
+  capítulo de 25 minutos dio 1.4 minutos de candidatos y algo más de 1 minuto
+  conservado tras la revisión. Para una hora de voz hicieron falta los 70
+  capítulos de las grabaciones.
+- **Una referencia de la voz:** uno o varios WAV con solo esa voz, unos
+  minutos, sacados de escenas limpias. Sirve para la primera revisión.
 
 ## 1. Instalar
 
@@ -74,296 +69,366 @@ entrenamiento.
 .\voz_personalizada\instalar.ps1 -Trabajo D:\voces\mi_voz
 ```
 
-Crea la carpeta de trabajo con tres entornos de Python, todos con las versiones
-exactas de [voz_personalizada/requisitos/](../voz_personalizada/requisitos):
+Crea la carpeta de trabajo con tres entornos de Python, todos con las
+versiones exactas de [voz_personalizada/requisitos/](../voz_personalizada/requisitos)
+y el sha256 de cada paquete. El instalador no acepta un paquete que no
+coincida con lo que se probó.
 
-| Entorno | Para qué |
-|---|---|
-| `.venv` | Separación, transcripción, alineación y cortes |
-| `.venv_mejora` | La prueba de resemble-enhance, que no funciona con las librerías actuales |
-| `applio\.venv` | El entrenamiento, con [Applio](https://github.com/IAHispano/Applio) en una versión fija |
+| Entorno | Lista | Para qué |
+|---|---|---|
+| `.venv` | `principal.txt` | Separar, transcribir, alinear, reconocer la voz, cortar y medir |
+| `.venv_qwen` | `qwen.txt` | Entrenar con Qwen3-TTS, y leer con la voz en Read Aloud |
+| `.venv_asr` | `asr.txt` | La segunda transcripción, con Qwen3-ASR. Va aparte porque pide otra versión de transformers |
+
+También baja a `modelos\hf` los modelos de Hugging Face que se usan sin
+conexión: Qwen3-TTS 12Hz 1.7B Base, su tokenizador de audio y Qwen3-ASR 1.7B.
+El resto (Whisper, WavLM, wav2vec2, los separadores) se baja la primera vez
+que cada paso lo usa, también dentro de `modelos\`.
 
 Nada se instala fuera de la carpeta de trabajo, tampoco Python: los entornos
-usan uno propio de uv, en `herramientas\python`, así que actualizar o
-desinstalar el Python del equipo no los rompe. Cada paquete de las listas lleva
-su sha256, y el instalador no acepta uno que no coincida con lo que se probó.
-Los modelos que faltan se descargan la primera vez que cada paso los usa, y
-quedan en `modelos\`.
+usan uno propio de uv, en `herramientas\python`.
 
-## 2. Configurar
+Otras formas:
 
-Edita `voz.toml` en la carpeta de trabajo; el instalador lo crea a partir de
-[voz.ejemplo.toml](../voz_personalizada/voz.ejemplo.toml):
-
-| Valor | Qué es |
+| Opción | Qué instala |
 |---|---|
-| `nombre` | Nombre corto, sin espacios |
-| `idioma` | Idioma de las grabaciones, en dos letras: `es`, `en`... |
-| `origen` | Carpeta con las grabaciones, videos o audios |
-| `patron_episodio` | Cómo sacar el número de cada archivo; por defecto, el primer número del nombre |
-| `alineador` | Solo para idiomas que no estén en `comun.py` |
+| `-SoloLectura` | Solo lo que Read Aloud necesita para leer con una voz ya entrenada: `.venv_qwen` y el modelo base, unos 9 GB |
+| `-ConMejora` | Además resemble-enhance, para repetir la prueba a ciegas de la [ADR 0009](adr/0009-limpieza-del-audio.md) |
+| `-ConRvc` | Además Applio, para la primera versión, con RVC |
 
-Cada grabación recibe un identificador fijo por su número, `ep01`, `ep02`...
-Así se pueden agregar grabaciones después sin desordenar lo ya hecho.
+## 2. Preparar la carpeta de trabajo
 
-Pon la referencia en `referencias\original\`.
-
-## 3. Preparar las grabaciones
-
-Todos los pasos se corren desde la carpeta de trabajo:
+Copia los scripts del proceso a la carpeta de trabajo y corre todo desde ahí:
 
 ```powershell
 cd D:\voces\mi_voz
-$s = 'C:\ruta\a\read_aloud\voz_personalizada\scripts'
-.\.venv\Scripts\python.exe $s\02_separar_voz.py referencias
-.\.venv\Scripts\python.exe $s\lote.py
+Copy-Item C:\ruta\a\read_aloud\voz_personalizada\proceso_qwen\* .\scripts\
 ```
 
-El primero separa la voz de la referencia. Pasa por el mismo separador que
-las grabaciones: si no, sus huellas tendrían restos de música que los clips ya
-no tienen, y se compararían cosas distintas.
+Antes de empezar, ajusta lo que es de cada voz (la tabla está en
+[proceso_qwen/README.md](../voz_personalizada/proceso_qwen/README.md)): las
+carpetas donde caen las grabaciones, los nombres propios de las grabaciones y los
+capítulos duplicados.
 
-`lote.py` lleva cada grabación por los pasos 01 a 04: extraer, separar,
-transcribir, alinear y medir quién habla. Reparte el trabajo: la tarjeta
-gráfica separa y alinea mientras el procesador transcribe, así ninguno espera
-al otro. El avance se ve en `progreso.html`, que se recarga solo.
-
-Si mientras corre llegan más grabaciones a la carpeta de origen, las suma. No
-termina mientras haya una descarga de Chrome a medias.
-
-**Tiempo:** la transcripción manda, con casi un minuto por cada minuto de
-audio. Para 22 capítulos de 22 minutos, unas 8 horas.
-
-Cada paso también se puede correr suelto, para una sola grabación o para
-todas: `01_extraer.py ep03`, `03_transcribir.py`...
-
-## 4. Calibrar y cortar
+Pon la referencia de la voz en `referencias\original\` y sepárala con el mismo
+separador que las grabaciones:
 
 ```powershell
-.\.venv\Scripts\python.exe $s\04a_calibrar.py
-.\.venv\Scripts\python.exe $s\04_cortar.py
+.\.venv\Scripts\python.exe scripts\02_separar_voz.py referencias
 ```
 
-`04a_calibrar.py` convierte el parecido con la referencia en una probabilidad.
-Ajusta tres campanas a todas las ventanas de audio: dos para el resto de voces
-y una para la voz buscada. Revisa lo que imprime:
-
-- **El peso de la voz buscada.** Fue del 18 % al 22 % con una voz que habla mucho.
-  Por debajo del 5 % habla demasiado poco para separarla bien.
-- **Los umbrales.** Conviene recalibrar cada vez que se suman grabaciones. Con
-  más datos el ajuste es más fiable.
-
-`04_cortar.py` arma los clips con estas reglas:
-
-- Las palabras con más del 70 % de probabilidad son de la voz. Las de menos
-  del 30 % cortan el clip. Las intermedias se aceptan solo rodeadas de
-  palabras seguras: suele ser la misma voz gritando o susurrando.
-- Una pausa de más de 0,6 s separa dos clips.
-- Un clip dura de 1 a 12 s. Un tramo largo se parte por su pausa más larga,
-  nunca a mitad de frase.
-- **Cada borde cae en un silencio real**, al menos 25 dB por debajo del habla
-  del propio clip. Si no hay silencio cerca, se suelta la palabra del extremo
-  y se prueba con la siguiente.
-- Al final, la huella de voz del clip entero tiene que confirmar que es la voz
-  buscada.
-
-Cada clip se nombra por su instante de inicio, como `ep04_052310.wav`. Así
-conserva su nombre, y su decisión en la revisión, si se vuelve a cortar con
-otra calibración.
-
-## 5. Revisar
+## 3. Preparar las grabaciones
 
 ```powershell
-.\.venv\Scripts\python.exe $s\05_revision.py
+.\.venv\Scripts\python.exe scripts\lote.py
 ```
 
-Abre `datos\05_revision\revision.html` en el navegador. Los clips vienen
-ordenados de más a menos confianza, y cada uno suena al llegar a él:
+Lleva cada capítulo por cinco pasos: extraer el audio, separar la voz,
+transcribir, alinear las palabras y calcular las huellas de voz. Todos menos
+el primero usan la tarjeta, uno a la vez. Con dos a la vez no caben en 8 GB,
+Windows pasa memoria a la RAM y todo va mucho más lento.
+
+- **Cada capítulo recibe un identificador fijo** por el número de su nombre:
+  `ep01`, `ep02`... Entiende "Episode 22", "capítulo 1" y "42 - titulo...". Así
+  se pueden agregar capítulos después sin desordenar lo hecho.
+- **Suma las descargas que terminan mientras corre.** Chrome guarda una
+  descarga a medias como `.crdownload`; un `.mp4` ya está entero. Antes de
+  extraer cada video lo busca de nuevo, por si lo moviste de carpeta.
+- **El avance se ve en `progreso.html`**, que se recarga solo cada 15 s.
+- **Tiempo:** unos 6 minutos por capítulo; 70 capítulos, unas 8 horas.
+
+Mientras corre, Read Aloud lee con Piper (ver
+[Read Aloud y la tarjeta](#read-aloud-y-la-tarjeta)).
+
+## 4. La primera revisión
+
+El reconocedor de la voz aprende de tus decisiones, así que la primera vez
+hace falta una revisión con el método anterior, sobre unos 20 capítulos:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\04a_calibrar.py
+.\.venv\Scripts\python.exe scripts\04_cortar.py
+.\.venv\Scripts\python.exe C:\ruta\a\read_aloud\voz_personalizada\scripts\05_revision.py
+```
+
+`04_cortar.py` compara cada momento con la referencia (huellas ECAPA) y corta
+clips palabra por palabra. Revísalos en `datos\05_revision\revision.html`,
+conservando solo los de la voz sola, y exporta `decisiones.json` a
+`datos\05_revision\`. Con la voz de prueba fueron 717 clips, 516 conservados.
+
+## 5. Saber quién habla
+
+```powershell
+.\.venv\Scripts\python.exe scripts\21_hablante.py
+.\.venv\Scripts\python.exe scripts\24_curva_wavlm.py
+```
+
+`21_hablante.py` compara formas de reconocer la voz con tus decisiones, por
+episodios que no vio. `24_curva_wavlm.py` entrena con ellas el clasificador
+que se usa al cortar: WavLM Large, el que ganó (AUC 0.74 frente a 0.60 de las
+referencias con ECAPA). Por qué, en la [ADR 0007](adr/0007-reconocer-la-voz-con-wavlm.md).
+
+## 6. Cortar en frases completas
+
+```powershell
+.\.venv\Scripts\python.exe scripts\25_cortar_frases.py
+```
+
+Un clip son una o varias frases enteras de la voz, de hasta 15 s, con sus
+bordes en silencio. Quien dice cada frase se decide con la frase entera; una
+frase con un tramo de otra voz se descarta. Se quitan las canciones de entrada
+y salida. Por qué, en la [ADR 0006](adr/0006-clips-de-frases-completas.md).
+
+Cada clip se nombra por su capítulo y su instante de inicio, como
+`ep04_052310.wav`.
+
+## 7. Medir y transcribir cada clip
+
+```powershell
+Start-Process .\.venv\Scripts\python.exe scripts\29_preparar_revision.py -WindowStyle Hidden
+```
+
+Se lanza aparte, para que siga aunque se cierre la consola. Hace tres cosas,
+con el avance en `progreso.html`:
+
+1. **Mide cada clip** (`26_puntuar.py`): eco, calidad estimada (PESQ, SI-SDR y
+   STOI de TorchAudio-SQUIM), sonido en las pausas, ruido en los bordes y la
+   huella de voz. Con eso, un clasificador entrenado con tus decisiones da un
+   puntaje: la probabilidad de que conserves el clip (AUC 0.80).
+2. **Transcribe cada clip dos veces** (`27_transcribir_clips.py`), con Qwen3-ASR
+   y con Whisper, los dos con los nombres propios como contexto. Ver la
+   [ADR 0008](adr/0008-transcripcion.md).
+3. **Arma la página de revisión** (`28_revision.py`).
+
+Con 2094 clips tardó algo más de una hora.
+
+## 8. Revisar en una sola pasada
+
+Abre `datos\28_revision\revision.html` en el navegador. Los clips vienen de
+más a menos probables de conservar, y cada uno suena al llegar a él.
 
 | Tecla | Acción |
 |---|---|
-| `1` o `Enter` | Conservar |
+| `1` o `Enter` | Conservar con el texto que se ve |
 | `2` o `Supr` | Descartar |
+| `E` | Corregir el texto; `Enter` lo guarda y conserva el clip, `Esc` sale sin decidir |
 | `Espacio` | Repetir |
 | `Z` | Deshacer |
 | Flechas | Moverse sin decidir |
 
-Las decisiones se guardan solas en el navegador. Al terminar, **Exportar**
-descarga `decisiones.json`.
+Cada clip muestra:
 
-Qué descartar y qué no:
+- **Avisos en amarillo:** eco fuerte, sonido en las pausas, borde con ruido,
+  calidad baja, otra voz posible o lecturas distintas del texto.
+- **Lo que decidiste en la primera revisión**, si el clip cae sobre uno viejo.
+- **Las otras lecturas del texto**, si los motores no coinciden: un clic la
+  copia al texto.
 
-- **Descarta** el clip si se oye otra voz, aunque sea de fondo o breve, o si
-  hay música o efectos encima. También si suena distorsionado o metálico, o
-  si tiene eco marcado, como recuerdos, sueños o gimnasios. El modelo aprende
-  como parte de la voz todo lo que hay en el clip.
-- **Consérvalo** aunque la transcripción esté mal: RVC no usa el texto. Pero
-  un texto muy errado merece una escucha atenta, porque a veces Whisper se
-  equivoca porque hay algo más en el clip.
-- **Consérvalo** aunque la primera o la última palabra estén cortadas, si el
-  resto está limpio. Si pasa seguido, es un problema del corte; ver
-  [Problemas conocidos](#problemas-conocidos).
-- **Consérvalo** si solo tiene el ambiente normal de una habitación.
+Qué conservar:
 
-## 6. Armar el conjunto
+- **Solo la voz sola**, sin música, efectos, eco marcado ni otra voz, aunque
+  sea breve o de fondo.
+- **Solo frases completas**, que empiecen y terminen enteras.
+- **El texto tiene que decir exactamente lo que se oye**, con sus signos:
+  ¿pregunta?, ¡exclamación!, comas donde hace una pausa. Los nombres van como
+  suenan en la grabación. El modelo aprende la entonación de los signos.
 
-```powershell
-.\.venv\Scripts\python.exe $s\06_conjunto.py
-```
+Las decisiones se guardan solas en el navegador. Para cerrar y seguir otro
+día, abre la misma página en el mismo navegador. Se pierden si borras los
+datos del sitio o usas una ventana privada. **Exporta de vez en cuando:** el
+botón descarga `revision.json`, que es lo que lee el paso siguiente. Cópialo a
+`datos\28_revision\`.
 
-Toma `decisiones.json` de `datos\05_revision\` o, si no está, el más reciente
-de Descargas. Copia los clips conservados a `datos\06_conjunto\<nombre>` con
-un tratamiento mínimo:
-
-- recorta el silencio de los extremos, dejando 60 ms;
-- iguala el volumen;
-- limita los picos a −1 dB.
-
-No aplica reducción de ruido ni ecualización.
-
-## 7. Decidir la mejora con una prueba a ciegas
+## 9. Elegir el conjunto final
 
 ```powershell
-.\.venv\Scripts\python.exe $s\07a_sin_reverb.py
-.\.venv_mejora\Scripts\python.exe $s\07b_prueba.py
+.\.venv\Scripts\python.exe scripts\30_seleccion_final.py
 ```
 
-`07a_sin_reverb.py` quita la reverberación de todos los clips y mide cuánta
-tenía cada uno. `07b_prueba.py` elige ocho clips, empezando por los de más eco,
-y arma cuatro versiones de cada uno:
+De lo que conservaste quita los capítulos duplicados, los clips de menos de
+1 s y las tomas de más de una misma frase, y deja los mejores 60 minutos por
+calidad. Por qué y con qué medidas, en la
+[ADR 0010](adr/0010-conjunto-final.md). El detalle de cada clip quitado, con
+su motivo, queda en `datos\30_final\seleccion.json`.
 
-- original;
-- sin reverberación;
-- con resemble-enhance;
-- con las dos cosas.
-
-Todas van al mismo volumen y con letras al azar. Se escuchan en
-`datos\07_mejora\prueba\prueba.html`. Para cada clip se marca la mejor y las
-que suenan artificiales. La clave está en `clave.json`.
-
-La primera vez que se hizo este proceso ganó **solo quitar la reverberación**:
-
-- nunca sonó artificial;
-- fue la mejor en cuatro de los seis clips donde hubo preferencia.
-
-resemble-enhance sonó artificial en una de cada cuatro pruebas. Eso pesa
-mucho, porque el modelo aprendería esos defectos. Por eso
-`07c_conjunto_final.py` arma el conjunto con los clips sin reverberación:
+## 10. Entrenar
 
 ```powershell
-.\.venv\Scripts\python.exe $s\07c_conjunto_final.py
+Start-Process .\.venv\Scripts\python.exe scripts\32_entrenar_final.py -WindowStyle Hidden
 ```
 
-El resultado queda en `datos\08_final\<nombre>`. Con otra voz conviene repetir
-la prueba. Si gana otra versión, se cambia la carpeta de entrada de
-`07c_conjunto_final.py`.
+1. **Prepara el audio** (`31_conjunto_qwen.py`): quita el eco con el de-reverb
+   mono de anvuew, recorta el silencio de los extremos e iguala el volumen. Ver
+   la [ADR 0009](adr/0009-limpieza-del-audio.md).
+2. **Saca los códigos de audio** de Qwen3-TTS de cada clip.
+3. **Entrena dos voces** (`11b_entrenar_qwen.py`): con los 60 mejores minutos y
+   con todo lo conservado, para comparar si el corte por calidad ayuda.
 
-## 8. Entrenar y usar la voz
+El entrenamiento es LoRA sobre Qwen3-TTS 12Hz 1.7B Base, con la receta oficial
+corregida (tiene tres errores, ver la
+[ADR 0002](adr/0002-lora-y-correcciones-a-la-receta.md)): aprendizaje 3e-5,
+lote efectivo de 8, 8 épocas. Ningún clip que se solape con las 10 frases de
+validación entra al entrenamiento.
 
-*Pendiente de documentar.* Se agregarán:
+- **Tiempo:** unos 20 minutos por época con 60 minutos de voz.
+- **Se puede cortar.** Al final de cada época se guarda todo lo necesario para
+  seguir desde ahí. Si la computadora se apaga, vuelve a lanzar el mismo
+  comando: salta lo hecho y sigue desde la última época.
 
-- el entrenamiento con Applio, a precisión completa;
-- la prueba a ciegas para elegir el punto de control;
-- la elección del motor de origen;
-- la integración con Read Aloud.
+## 11. Elegir la voz
 
-## Decisiones y por qué
+```powershell
+.\.venv_qwen\Scripts\python.exe scripts\11c_probar_qwen.py --puntos puntos_v4_60 1 2 3
+.\.venv\Scripts\python.exe scripts\13_comparar.py "qwen_mi_voz_v4_60_e02=60 mejores, época 2" ...
+```
 
-| Decisión | Por qué |
-|---|---|
-| Separar la voz con Mel-Band RoFormer | Es el de mejor calidad medida para voces en audio-separator |
-| Whisper large-v3 en el procesador, a precisión completa | En 8 GB de tarjeta casi no cabe y fue 4 veces más lento, con el mismo resultado |
-| Alineación forzada con wav2vec2 | Whisper ubica las palabras con una o dos décimas de error, y en el borde de un clip eso deja entrar a otra voz |
-| Huellas ECAPA en ventanas de 1,5 s cada 0,25 s | Dan una curva continua de quién habla |
-| Calibración con tres campanas | El parecido no es una probabilidad: un 0,6 no significa 60 % |
-| Bordes en silencio relativo al clip | Bajo la música de algunas escenas queda un resto constante de −35 a −40 dBFS, así que un umbral fijo descartaría buenos clips o aceptaría malos |
-| Nombre del clip por su instante de inicio | Las decisiones de la revisión sobreviven a un nuevo corte |
-| Dereverb mono de anvuew | Los modelos estéreo no hacen nada con audio mono |
-| Sin resemble-enhance | Sonó artificial en la prueba a ciegas |
+`11c_probar_qwen.py` genera las 10 frases de validación, más dos en inglés,
+con cada época. `09e_prosodia.py` y `10c_medir.py` miden entonación, timbre y
+errores de texto. `13_comparar.py` arma la página de escucha
+(`datos\13_comparar\comparar.html`). Pon solo la voz real, la voz actual de
+la app y dos o tres candidatas: más versiones cansan y se distinguen peor.
+
+La época se elige con la validación como guía y de oído como decisión final
+([ADR 0003](adr/0003-elegir-la-epoca.md)). Con 20 minutos de voz y aprendizaje
+3e-5, la mejor fue la segunda; con 60 minutos, la validación también tocó
+fondo en la segunda.
+
+## 12. Leer con la voz en Read Aloud
+
+Copia la época elegida a la carpeta de la voz de la app:
+
+```powershell
+$p = 'D:\voces\mi_voz\datos\11_qwen\puntos_v4_60'
+$v = 'D:\voces\mi_voz\modelos\voz_app'
+Copy-Item "$p\ajuste.json", "$p\voz.safetensors" $v
+Copy-Item "$p\epoca_02.safetensors" "$v\lora.safetensors"
+```
+
+Y en `config\settings.psd1` de Read Aloud, apunta a la carpeta de trabajo:
+
+```powershell
+EngineEs = 'auto'
+EngineEn = 'auto'
+QwenWorkDir = 'D:\voces\mi_voz'
+```
+
+Reinicia el proceso residente. Con `auto`, la voz se usa si está instalada y
+hay una tarjeta NVIDIA de al menos 7 GB; si no, se lee con Piper. Todos los
+ajustes, en [configuracion.md](configuracion.md#voz-propia-con-qwen3-tts).
+
+Para usar en otro equipo una voz ya entrenada, basta con
+`instalar.ps1 -SoloLectura` y copiar esos tres archivos.
+
+### Read Aloud y la tarjeta
+
+La voz ocupa unos 5 GB de la tarjeta y se queda cargada, porque cargarla
+tarda unos 16 s. Mientras un paso pesado del proceso usa la tarjeta, deja una
+marca (`gpu_ocupada`, en la carpeta de trabajo). Mientras exista, Read Aloud
+lee con Piper y la voz le deja la tarjeta entera. Compartirla hacía esperar
+minutos cada frase. Ver la
+[ADR 0005](adr/0005-motor-automatico-y-tarjeta-compartida.md).
+
+## Herramientas
+
+| Para qué | Herramienta | Licencia |
+|---|---|---|
+| Separar la voz y quitar el eco | [audio-separator](https://github.com/nomadkaraoke/python-audio-separator), con Mel-Band RoFormer de voces y el de-reverb mono de anvuew | MIT el programa; cada modelo, la de su ficha |
+| Transcribir | [Whisper](https://github.com/openai/whisper) large-v3 | MIT |
+| Segunda transcripción | [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR) 1.7B | Apache-2.0 |
+| Alinear las palabras | [wav2vec2-large-xlsr-53-spanish](https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-spanish) | Ver su ficha |
+| Reconocer la voz | WavLM Large de [torchaudio](https://pytorch.org/audio); ECAPA de [SpeechBrain](https://speechbrain.github.io) para la primera revisión | Ver la ficha de cada modelo |
+| Estimar la calidad | TorchAudio-SQUIM | Ver torchaudio |
+| Modelo de voz | [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS) 12Hz 1.7B Base, afinado con [PEFT](https://github.com/huggingface/peft) | Apache-2.0 |
+| Entornos de Python | [uv](https://docs.astral.sh/uv/) | MIT o Apache-2.0 |
+
+Los modelos se bajan de sus fuentes oficiales y no van en el repositorio.
 
 ## Problemas conocidos
 
-**El modelo de reverberación devuelve el audio intacto.** Los modelos estéreo
-de audio-separator, aun los de mejor puntuación, no cambian un audio mono. Se
-comprobó agregando un eco artificial fuerte a un clip. Usa
-`dereverb_mel_band_roformer_mono_anvuew.ckpt`, que es el que usa
-`07a_sin_reverb.py`.
+**Un paso largo se corta al cerrar la sesión o la consola.** Lánzalo con
+`Start-Process`, como en los pasos 7 y 10. Los dos siguen donde quedaron si se
+vuelven a lanzar.
+
+**El lote no encuentra capítulos en una carpeta de WSL.** El acceso a
+`\\wsl.localhost` falla a veces por un rato. El lote los suma cuando la
+carpeta vuelve a responder.
 
 **Whisper falla con "expected scalar type Float but found Half".** Pasa al
-forzar media precisión con `.half()`. Usa precisión completa en el procesador,
-que además es más rápido en tarjetas de 8 GB.
+pasar todo el modelo a media precisión. Las LayerNorm tienen que quedar en
+float32, como hace `03_transcribir.py`. Y el modelo se pasa a media precisión
+antes de llevarlo a la tarjeta: si no, quedan reservados los 6 GB de float32 y
+el resto no cabe.
 
-**Muchos clips empiezan o terminan con sonido.** Si al revisar notas bordes
-sucios o palabras cortadas, mide la energía de los primeros y últimos 40 ms
-de cada clip. Los parámetros están comentados al inicio de `04_cortar.py`:
-`SNR_BORDE_DB` fija cuánto más bajo que el habla debe estar el borde, y
-`SILENCIO_MIN_S` el silencio mínimo. Un silencio mínimo de unos 120 ms evita
-confundirlo con el cierre de una consonante como la "t" o la "p".
+**El de-reverb devuelve el audio intacto.** Los modelos estéreo de
+audio-separator, aun los de mejor puntuación, no cambian un audio mono. Usa
+`dereverb_mel_band_roformer_mono_anvuew.ckpt`.
 
-**resemble-enhance no carga.** Es de 2023 y choca con las librerías actuales
-de cuatro maneras, que `07b_prueba.py` resuelve sin tocar el paquete:
+**El entrenamiento usa más de 8 GB.** Con 60 minutos de voz llega a 9.2 GB y
+Windows pasa una parte a la memoria compartida. Va más lento, pero el
+resultado es el mismo. No corras otros pasos que usen la tarjeta a la vez.
 
-- importa deepspeed, que en Windows no se instala con facilidad y que solo
-  usa para entrenar; el script registra módulos vacíos con esos nombres;
-- su configuración trae rutas de Linux, que se cambian por rutas de Windows;
-- necesita NumPy 1.26, pandas 2.2 y scipy 1.14, que es lo que fija
-  `requisitos\mejora.txt`;
-- sus pesos se bajan con git-lfs desde Hugging Face, y de eso se encarga el
-  instalador.
+**El texto de un clip trae un nombre escrito de varias formas.** Decide una
+forma, como suena en la grabación, y úsala siempre: el modelo aprende la
+pronunciación de lo que lee.
 
-**Applio entrena en media precisión.** Lo hace por defecto, y guarda su
-configuración en `%APPDATA%\Applio`. El instalador crea
-`applio\configuracion_voz.json`, que pide precisión completa. Para usarlo,
-define `APPLIO_CONFIG_FILE` con esa ruta antes de entrenar.
-
-**Applio no guarda los modelos de cada punto de control.** En la versión fija,
-la opción `--save-every-weights` viene activada por defecto, y pasarla la
-apaga. No la pases. Y si usas `--save-only-latest`, cada punto completo pisa
-al anterior, así que solo queda el último.
-
-**El entrenamiento se cae con "CUDA error: out of memory".** Pasa si otro
-proceso usa la tarjeta mientras se entrena, aunque sea poco. Con 8 GB, el
-entrenamiento a precisión completa la ocupa casi entera. No corras pasos que
-la usen mientras tanto: separar, alinear, quitar la reverberación. Ocultar la
-tarjeta con `CUDA_VISIBLE_DEVICES` no basta para audio-separator. Si se cae,
-se retoma desde el último punto completo, `G_*.pth` y `D_*.pth`, volviendo a
-lanzar el entrenamiento sin `--cleanup`.
-
-**El proceso de un paso no termina al cerrarlo.** Al buscar procesos para
-detenerlos, filtra por el nombre `python.exe` y por el script concreto. Un
-filtro amplio puede cerrar la consola desde la que trabajas.
+**Al buscar procesos para detenerlos, filtra por el script concreto.** Un
+filtro amplio por `python.exe` puede cerrar la voz de Read Aloud o la consola
+desde la que trabajas.
 
 ## Limpieza
 
-Al terminar, lo único que vale la pena conservar es el conjunto final y el
-modelo entrenado. Los entornos y los modelos se pueden borrar:
+Lo que vale la pena conservar:
 
-```powershell
-Remove-Item -Recurse -Force D:\voces\mi_voz\.venv, D:\voces\mi_voz\.venv_mejora, D:\voces\mi_voz\applio\.venv
-Remove-Item -Recurse -Force D:\voces\mi_voz\modelos, D:\voces\mi_voz\herramientas
-```
+- **El conjunto final**, listo para cualquier modelo futuro: los audios
+  limpios, su texto y su calidad. Con la voz de prueba quedó en `conjunto_mi_voz\`, con
+  un `LEEME.md` que explica cómo se hizo.
+- **La voz que usa Read Aloud:** `modelos\voz_app`, `.venv_qwen`,
+  `modelos\hf` (el modelo base y el tokenizador) y `herramientas\python`.
 
-Para repetir el proceso, el instalador los vuelve a crear iguales.
+Una vez elegida la voz, se puede borrar todo lo demás: `datos\01_audio` y
+`datos\02_voz` (casi todo el espacio), las grabaciones originales, `.venv`,
+`.venv_asr`, `modelos\whisper`, `modelos\torch` y los modelos de Qwen3-ASR,
+WavLM y wav2vec2 de `modelos\hf`. Para repetir el proceso, el instalador los
+vuelve a crear iguales.
 
 ## Carpeta de trabajo
 
 ```
-voz.toml                  Configuracion de la voz
-referencias\original\     La referencia, tal cual
+referencias\original\     La referencia de la voz, tal cual
 referencias\              La referencia con la voz separada
-datos\01_audio\           Audio de cada grabacion
+scripts\                  Copia de voz_personalizada\proceso_qwen
+datos\01_audio\           Audio de cada capitulo
 datos\02_voz\             Voz separada
 datos\03_transcripcion\   Palabras con sus tiempos, segun Whisper
 datos\03_alineado\        Los mismos tiempos, afinados
-datos\04_curvas\          Quien habla en cada momento, y la calibracion
-datos\04_cortes\          Clips candidatos e indice de cada grabacion
-datos\05_revision\        Pagina de revision y decisiones
-datos\06_conjunto\        Clips conservados
-datos\07_mejora\          Clips sin reverberacion y prueba a ciegas
-datos\08_final\           Conjunto final de entrenamiento
-progreso.html             Avance del lote
-modelos\                  Modelos descargados
-herramientas\             ffmpeg y el Python de los entornos (herramientas\python)
-.venv\, .venv_mejora\     Entornos de Python
-applio\                   Applio y su entorno
+datos\04_cortes\          Cortes de la primera revision
+datos\05_revision\        Pagina y decisiones de la primera revision
+datos\08_final\           Las 10 frases de validacion (y el primer conjunto)
+datos\09_comparar\        Esas frases dichas por la voz real
+datos\21_hablante\        Comparacion de formas de reconocer la voz
+datos\24_curvas\          Huellas de WavLM y el clasificador de quien habla
+datos\25_cortes\          Clips de frases completas
+datos\26_puntaje\         Medidas y puntaje de cada clip
+datos\27_textos\          Las dos transcripciones de cada clip
+datos\28_revision\        Pagina de revision y revision.json
+datos\30_final\           La seleccion final, con el motivo de cada quitado
+datos\31_final\           Los clips sin eco y nivelados
+datos\31_qwen\            Los codigos de Qwen de cada conjunto
+datos\11_qwen\            Validacion, referencia y cada entrenamiento
+conjunto_<voz>\           El conjunto final, para conservar
+progreso.html             Avance del paso en curso
+gpu_ocupada               Marca de la tarjeta ocupada, mientras dura un paso
+modelos\                  Modelos descargados, y voz_app, la voz de Read Aloud
+herramientas\             ffmpeg y el Python de los entornos
+.venv\, .venv_qwen\, .venv_asr\   Entornos de Python
 ```
+
+## La primera versión
+
+La primera voz se hizo con Piper y un modelo de conversión RVC, con los
+scripts generalizados de [voz_personalizada/scripts/](../voz_personalizada/scripts),
+que leen la configuración de `voz.toml`. RVC copia el timbre pero no la
+entonación, que sigue siendo la de Piper, y por eso se reemplazó (ver la
+[ADR 0001](adr/0001-qwen3-tts-en-vez-de-rvc.md)). Esos scripts siguen
+sirviendo para la primera revisión, y con `instalar.ps1 -ConRvc` se puede
+reproducir aquella versión entera.

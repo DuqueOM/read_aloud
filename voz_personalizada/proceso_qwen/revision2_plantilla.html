@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Revisión · voz de prueba</title>
+<style>
+  :root {
+    --fondo: #16161a; --panel: #1f1f25; --borde: #2e2e36; --texto: #e6e6ea;
+    --tenue: #8a8a94; --si: #4ade80; --no: #f87171; --acento: #60a5fa; --aviso: #fbbf24;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fondo); color: var(--texto);
+         font: 14px/1.45 "Segoe UI", system-ui, sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; background: var(--fondo);
+           border-bottom: 1px solid var(--borde); padding: 14px 24px; }
+  h1 { font-size: 16px; margin: 0 0 10px; font-weight: 600; }
+  .cifras { display: flex; gap: 28px; flex-wrap: wrap; align-items: baseline; }
+  .cifra b { font-size: 20px; font-variant-numeric: tabular-nums; }
+  .cifra span { color: var(--tenue); margin-left: 6px; }
+  .meta { height: 6px; background: var(--borde); border-radius: 3px; margin-top: 10px; overflow: hidden; }
+  .meta i { display: block; height: 100%; width: 0; background: var(--si); transition: width .2s; }
+  main { max-width: 1000px; margin: 0 auto; padding: 18px 24px 80px; }
+  .actual { background: var(--panel); border: 1px solid var(--borde); border-radius: 10px;
+            padding: 18px 20px; margin-bottom: 18px; }
+  .fila1 { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .id { font-size: 18px; font-weight: 600; }
+  .datos { color: var(--tenue); }
+  .marcas { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; min-height: 22px; }
+  .marca { font-size: 12px; padding: 2px 8px; border-radius: 10px; border: 1px solid #5c4a1a; color: var(--aviso); }
+  .marca.antes-si { border-color: #2f6b45; color: var(--si); }
+  .marca.antes-no { border-color: #7a3434; color: var(--no); }
+  textarea { width: 100%; margin-top: 12px; font: 17px/1.4 inherit; font-family: inherit; color: var(--texto);
+             background: #15151a; border: 1px solid var(--borde); border-radius: 7px; padding: 8px 10px; resize: vertical; }
+  textarea:focus { outline: none; border-color: var(--acento); }
+  .alternativas { margin-top: 6px; color: var(--tenue); font-size: 13px; }
+  .alternativas button { font-size: 13px; padding: 2px 8px; margin: 3px 6px 0 0; text-align: left; }
+  .botones { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  button { font: inherit; border: 1px solid var(--borde); background: #2a2a32; color: var(--texto);
+           padding: 8px 14px; border-radius: 7px; cursor: pointer; }
+  button:hover { background: #34343d; }
+  button.si { border-color: #2f6b45; } button.no { border-color: #7a3434; }
+  kbd { font: 12px ui-monospace, Consolas, monospace; background: #2a2a32; border: 1px solid var(--borde);
+        border-radius: 4px; padding: 1px 5px; color: var(--tenue); }
+  .ayuda { color: var(--tenue); margin-top: 12px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; color: var(--tenue); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid var(--borde); }
+  td { padding: 6px 8px; border-bottom: 1px solid #222228; font-variant-numeric: tabular-nums; }
+  tr { cursor: pointer; }
+  tr:hover td { background: #1c1c22; }
+  tr.sel td { background: #1d2738; }
+  tr.si td:first-child { box-shadow: inset 3px 0 var(--si); }
+  tr.no td:first-child { box-shadow: inset 3px 0 var(--no); }
+  tr.no td { color: var(--tenue); }
+  td.frase { color: #c9c9d0; max-width: 480px; }
+  .barra { width: 70px; height: 6px; background: var(--borde); border-radius: 3px; display: inline-block;
+           vertical-align: middle; margin-right: 8px; overflow: hidden; }
+  .barra i { display: block; height: 100%; background: var(--acento); }
+  .estado.si { color: var(--si); } .estado.no { color: var(--no); }
+  @media (max-width: 640px) { header, main { padding-left: 16px; padding-right: 16px; } td.frase { max-width: 200px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Revisión de clips · una sola pasada</h1>
+  <div class="cifras">
+    <div class="cifra"><b id="conservadas">0:00</b><span id="meta-texto">conservado</span></div>
+    <div class="cifra"><b id="revisadas">0</b><span id="de">de 0 revisados</span></div>
+    <div class="cifra"><b id="descartadas">0</b><span>descartados</span></div>
+    <div class="cifra"><b id="corregidos">0</b><span>textos corregidos</span></div>
+    <button id="exportar">Exportar revisión</button>
+  </div>
+  <div class="meta"><i id="progreso"></i></div>
+</header>
+
+<main>
+  <section class="actual">
+    <div class="fila1">
+      <div class="id" id="actual-id">—</div>
+      <div class="datos" id="actual-datos"></div>
+    </div>
+    <div class="marcas" id="marcas"></div>
+    <audio id="audio" controls style="width:100%; margin-top:12px"></audio>
+    <textarea id="texto" rows="2" spellcheck="false"></textarea>
+    <div class="alternativas" id="alternativas"></div>
+    <div class="botones">
+      <button class="si" id="b-si">Conservar <kbd>1</kbd></button>
+      <button class="no" id="b-no">Descartar <kbd>2</kbd></button>
+      <button id="b-rep">Repetir <kbd>Espacio</kbd></button>
+      <button id="b-des">Deshacer <kbd>Z</kbd></button>
+      <button id="b-edi">Corregir texto <kbd>E</kbd></button>
+    </div>
+    <div class="ayuda">
+      Conserva solo clips donde habla la voz sola, sin música, ruido, eco ni otra voz, y
+      donde la frase está completa. El texto tiene que decir exactamente lo que se oye,
+      con sus signos: <b>¿</b>pregunta<b>?</b>, <b>¡</b>exclamación<b>!</b>, comas donde hace una pausa.
+      Para corregirlo pulsa <kbd>E</kbd>, escribe y pulsa <kbd>Enter</kbd>: se guarda y el clip
+      queda conservado. <kbd>Esc</kbd> sale del texto sin decidir.
+      Las marcas amarillas son avisos automáticos; "antes" es lo que decidiste en la primera revisión.
+    </div>
+  </section>
+
+  <table>
+    <thead><tr><th>#</th><th>Lo que dice</th><th>Capítulo</th><th>Duración</th><th>Puntaje</th><th>Estado</th></tr></thead>
+    <tbody id="lista"></tbody>
+  </table>
+</main>
+
+<script>
+const CLIPS = /*DATOS*/[];
+const META_S = /*META*/3600;
+const CLAVE = 'mi_voz_revision_v3';
+
+let estado = { decisiones: {}, textos: {} };
+try { estado = Object.assign(estado, JSON.parse(localStorage.getItem(CLAVE) || '{}')); } catch (e) {}
+const historial = [];
+let sel = 0;
+
+const audio = document.getElementById('audio');
+const lista = document.getElementById('lista');
+const caja = document.getElementById('texto');
+
+const mmss = s => { const m = Math.floor(s / 60), r = Math.round(s % 60); return m + ':' + String(r).padStart(2, '0'); };
+const guardar = () => { try { localStorage.setItem(CLAVE, JSON.stringify(estado)); } catch (e) {} };
+const textoDe = c => estado.textos[c.id] ?? c.texto;
+
+function pintarLista() {
+  lista.innerHTML = '';
+  CLIPS.forEach((c, i) => {
+    const tr = document.createElement('tr');
+    tr.id = 'f' + i;
+    tr.innerHTML = `<td>${i + 1}</td><td class="frase"></td><td>${c.ep}</td><td>${c.dur.toFixed(1)} s</td>` +
+      `<td><span class="barra"><i style="width:${(c.puntaje * 100).toFixed(0)}%"></i></span>${Math.round(c.puntaje * 100)}</td>` +
+      `<td class="estado"></td>`;
+    tr.onclick = () => seleccionar(i, true);
+    lista.appendChild(tr);
+  });
+  CLIPS.forEach((_, i) => pintarFila(i));
+}
+
+function pintarFila(i) {
+  const tr = document.getElementById('f' + i), c = CLIPS[i], d = estado.decisiones[c.id];
+  tr.classList.toggle('si', d === 'si'); tr.classList.toggle('no', d === 'no'); tr.classList.toggle('sel', i === sel);
+  tr.querySelector('.frase').textContent = textoDe(c);
+  const celda = tr.lastChild;
+  celda.className = 'estado' + (d ? ' ' + d : '');
+  celda.textContent = d === 'si' ? 'conservado' : d === 'no' ? 'descartado' : '';
+}
+
+function pintarCifras() {
+  let seg = 0, rev = 0, des = 0;
+  CLIPS.forEach(c => { const d = estado.decisiones[c.id]; if (d) rev++; if (d === 'si') seg += c.dur; if (d === 'no') des++; });
+  document.getElementById('conservadas').textContent = mmss(seg);
+  document.getElementById('meta-texto').textContent = 'conservado, meta ' + mmss(META_S);
+  document.getElementById('revisadas').textContent = rev;
+  document.getElementById('de').textContent = 'de ' + CLIPS.length + ' revisados';
+  document.getElementById('descartadas').textContent = des;
+  document.getElementById('corregidos').textContent = Object.keys(estado.textos).length;
+  document.getElementById('progreso').style.width = Math.min(100, seg / META_S * 100) + '%';
+}
+
+function seleccionar(i, reproducir) {
+  if (i < 0 || i >= CLIPS.length) return;
+  const anterior = sel; sel = i;
+  pintarFila(anterior); pintarFila(sel);
+  const c = CLIPS[sel];
+  document.getElementById('actual-id').textContent = c.id;
+  document.getElementById('actual-datos').textContent =
+    `${c.ep} · minuto ${mmss(c.inicio)} · ${c.dur.toFixed(1)} s · puntaje ${Math.round(c.puntaje * 100)}`;
+  const marcas = document.getElementById('marcas');
+  marcas.innerHTML = '';
+  if (c.antes) {
+    const m = document.createElement('span');
+    m.className = 'marca antes-' + c.antes;
+    m.textContent = c.antes === 'si' ? 'antes: conservado' : 'antes: descartado';
+    marcas.appendChild(m);
+  }
+  c.marcas.forEach(t => { const m = document.createElement('span'); m.className = 'marca'; m.textContent = t; marcas.appendChild(m); });
+  caja.value = textoDe(c);
+  const alt = document.getElementById('alternativas');
+  alt.innerHTML = '';
+  if (c.alternativas.length) {
+    alt.appendChild(document.createTextNode('Otras lecturas: '));
+    c.alternativas.forEach(a => {
+      const b = document.createElement('button');
+      b.textContent = a.texto; b.title = a.fuente;
+      b.onclick = () => { caja.value = a.texto; caja.focus(); };
+      alt.appendChild(b);
+    });
+  }
+  audio.src = c.ruta; audio.load();
+  if (reproducir) audio.play().catch(() => {});
+  document.getElementById('f' + sel).scrollIntoView({ block: 'nearest' });
+}
+
+function siguientePendiente(desde) {
+  for (let i = desde + 1; i < CLIPS.length; i++) if (!estado.decisiones[CLIPS[i].id]) return i;
+  return Math.min(desde + 1, CLIPS.length - 1);
+}
+
+function decidir(valor) {
+  const c = CLIPS[sel];
+  historial.push({ i: sel, decision: estado.decisiones[c.id], texto: estado.textos[c.id] });
+  estado.decisiones[c.id] = valor;
+  const escrito = caja.value.trim().replace(/\s+/g, ' ');
+  if (valor === 'si' && escrito !== c.texto) estado.textos[c.id] = escrito; else if (valor === 'si') delete estado.textos[c.id];
+  guardar(); pintarFila(sel); pintarCifras();
+  caja.blur();
+  seleccionar(siguientePendiente(sel), true);
+}
+
+function deshacer() {
+  const h = historial.pop();
+  if (!h) return;
+  const c = CLIPS[h.i];
+  if (h.decision) estado.decisiones[c.id] = h.decision; else delete estado.decisiones[c.id];
+  if (h.texto !== undefined) estado.textos[c.id] = h.texto; else delete estado.textos[c.id];
+  guardar(); pintarFila(h.i); pintarCifras();
+  seleccionar(h.i, true);
+}
+
+function exportar() {
+  const datos = { generado: new Date().toISOString(), decisiones: estado.decisiones, textos: estado.textos };
+  const blob = new Blob([JSON.stringify(datos, null, 1)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'revision.json'; a.click();
+}
+
+document.getElementById('b-si').onclick = () => decidir('si');
+document.getElementById('b-no').onclick = () => decidir('no');
+document.getElementById('b-rep').onclick = () => { audio.currentTime = 0; audio.play(); };
+document.getElementById('b-des').onclick = deshacer;
+document.getElementById('b-edi').onclick = () => caja.focus();
+document.getElementById('exportar').onclick = exportar;
+
+caja.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); decidir('si'); }
+  else if (e.key === 'Escape') { e.preventDefault(); caja.blur(); }
+});
+
+document.addEventListener('keydown', e => {
+  if (e.target === caja) return;
+  if (e.key === '1' || e.key === 'Enter') { e.preventDefault(); decidir('si'); }
+  else if (e.key === '2' || e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); decidir('no'); }
+  else if (e.key === ' ') { e.preventDefault(); audio.currentTime = 0; audio.play(); }
+  else if (e.key === 'e' || e.key === 'E') { e.preventDefault(); caja.focus(); caja.setSelectionRange(caja.value.length, caja.value.length); }
+  else if (e.key === 'ArrowDown') { e.preventDefault(); seleccionar(sel + 1, true); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); seleccionar(sel - 1, true); }
+  else if (e.key === 'z' || e.key === 'Z') { e.preventDefault(); deshacer(); }
+});
+
+pintarLista();
+pintarCifras();
+seleccionar(siguientePendiente(-1), false);
+</script>
+</body>
+</html>

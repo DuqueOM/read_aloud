@@ -158,10 +158,19 @@ Los casos frecuentes y su solución están en
 
 ## Voz personalizada
 
-[docs/voz-personalizada.md](docs/voz-personalizada.md) explica, paso a paso,
-cómo sacar una voz concreta de grabaciones donde habla junto a otras y
-preparar con ella un conjunto limpio para entrenar un modelo de voz. El código
-está en `voz_personalizada/`.
+Además de las voces de Piper, Read Aloud puede leer con una voz propia
+entrenada con [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS). Esa voz
+necesita una tarjeta NVIDIA de al menos 7 GB y su propia instalación. Con el
+ajuste por defecto, `auto`, se usa solo si las dos cosas están; si no, se lee
+con Piper como siempre.
+
+- [docs/voz-personalizada.md](docs/voz-personalizada.md) explica, paso a paso,
+  cómo sacar una voz de grabaciones donde habla junto a otras, entrenarla y
+  usarla en Read Aloud. El código está en `voz_personalizada/`.
+- [docs/configuracion.md](docs/configuracion.md#voz-propia-con-qwen3-tts)
+  tiene los ajustes de la voz propia.
+- [docs/adr/](docs/adr/README.md) reúne las decisiones importantes del proceso
+  y por qué se tomaron.
 
 ## Estructura del repositorio
 
@@ -176,7 +185,10 @@ config/settings.psd1        Ajustes
 config/terms_es.tsv         Diccionario de pronunciacion
 lib/ReadAloud.Core.ps1      Rutas, audio y comunicacion
 lib/ReadAloud.Text.ps1      Idioma, segmentacion y normalizacion
+lib/servidor_qwen.py        Proceso de la voz propia (Qwen3-TTS)
+lib/qwen_rapido.py          Generacion en tiempo real de Qwen3-TTS
 docs/                       Documentacion
+docs/adr/                   Registro de decisiones
 voz_personalizada/          Proceso para crear una voz propia
 read_aloud_piper/           Motor y voces (lo crea setup.ps1)
 ```
@@ -187,5 +199,10 @@ El motor de voz es [Piper](https://github.com/rhasspy/piper), de Rhasspy, con
 licencia MIT. Las voces vienen de
 [rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices) y cada una
 tiene su propia licencia, indicada en su ficha.
+
+La voz propia usa [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS) y
+[Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR), de Qwen, con licencia
+Apache-2.0. Las demás herramientas del proceso están en
+[docs/voz-personalizada.md](docs/voz-personalizada.md#herramientas).
 
 Este repositorio contiene únicamente los scripts que orquestan todo eso.
