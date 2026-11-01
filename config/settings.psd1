@@ -27,11 +27,17 @@
     # cada grupo tarda mas en estar listo.
     QwenBatch = 4
 
-    # Qwen tarda unos 16 s en cargar, asi que se queda abierto (ocupa unos
-    # 5 GB de la tarjeta grafica) y se cierra solo cuando otro programa
-    # necesita la tarjeta. Con un numero mayor que 0, tambien se cierra tras
-    # esos minutos sin leer.
+    # Qwen tarda unos 20 s en cargar, asi que se queda abierto (ocupa unos
+    # 5 GB de la tarjeta grafica y 2.3 GB de RAM) y se cierra solo cuando otro
+    # programa necesita la tarjeta. Con un numero mayor que 0, tambien se
+    # cierra tras esos minutos sin leer, y entonces espera a la lectura
+    # siguiente para volver a cargar.
     QwenIdleMinutes = 0
+
+    # Si Qwen cedio la tarjeta, se vuelve a cargar en cuanto queden libres
+    # QwenReopenFreeGB, para que la lectura siguiente no espere la carga.
+    QwenReopen = $true
+    QwenReopenFreeGB = 6
 
     # Velocidad. Mas alto es mas lento. 1.00 es la velocidad base del modelo.
     LengthScale = 1.06

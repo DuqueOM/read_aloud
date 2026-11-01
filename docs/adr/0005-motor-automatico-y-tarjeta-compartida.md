@@ -49,6 +49,8 @@ Hubo dos problemas más en el uso real:
 - El repositorio funciona igual que antes en cualquier equipo. La voz propia
   es un agregado.
 - Mientras se procesa o entrena una voz, Read Aloud lee con Piper. Al terminar
-  vuelve a Qwen en la lectura siguiente, con unos 16 s de carga.
+  vuelve a Qwen en la lectura siguiente, con unos 16 s de carga. (Cambiado
+  por la [0011](0011-recargar-qwen-y-reposo.md): ahora se vuelve a cargar
+  solo, en cuanto la tarjeta queda libre.)
 - Qwen ocupa unos 5 GB de la tarjeta mientras el lector está abierto, salvo
   que otro programa la pida.

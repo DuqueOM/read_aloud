@@ -84,6 +84,10 @@ def main() -> None:
     lista = ([(f"es{f['n']}", "Spanish", f["texto"]) for f in frases]
              + [(f"en{n}", "English", t) for n, t in enumerate(INGLES, 1)])
 
+    # Ocupa la tarjeta: Read Aloud lee con Piper mientras tanto.
+    sys.path.insert(0, str(Path(__file__).parent))
+    import gpu
+    gpu.ocupar()
     qwen = preparar()
     tiempos = {}
     for epoca in epocas:

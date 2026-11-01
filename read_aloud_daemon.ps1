@@ -129,6 +129,9 @@ $sync = [hashtable]::Synchronized(@{})
 $sync.Requests  = New-Object 'Collections.Concurrent.ConcurrentQueue[string]'
 $sync.SynthJobs = New-Object 'Collections.Concurrent.ConcurrentQueue[object]'
 $sync.SynthDone = New-Object 'Collections.Concurrent.ConcurrentQueue[object]'
+# Despierta al hilo de sintesis cuando hay trabajo, para que no tenga que mirar
+# la cola cada pocos milisegundos mientras no hay nada que leer.
+$sync.SynthSignal = New-Object Threading.AutoResetEvent($false)
 $sync.Generation = 0
 $sync.Stopping = $false
 
@@ -178,7 +181,13 @@ $pipeScript = {
 
             # Un cliente puede mandar varias ordenes seguidas antes de cerrar.
             while ($null -ne ($line = $reader.ReadLine())) {
-                if ($line.Trim() -ne '') { $sync.Requests.Enqueue($line) }
+                if ($line.Trim() -ne '') {
+                    $sync.Requests.Enqueue($line)
+                    # El pulso de la ventana puede estar en su ritmo de reposo.
+                    if ($sync.Dispatcher) {
+                        try { [void]$sync.Dispatcher.BeginInvoke([Windows.Threading.DispatcherPriority]::Normal, $sync.WakeUi) } catch { }
+                    }
+                }
             }
         } catch {
             Start-Sleep -Milliseconds 50
@@ -419,11 +428,67 @@ $synthScript = {
         return $created
     }
 
+    # Codigos con los que termina lib\servidor_qwen.py.
+    # 0: se le cerro la entrada; 4 y 5: cedio la tarjeta; 3: --inactivo.
+    $qwenIdleExit = 3
+    $qwenCleanExits = @(0, 3, 4, 5)
+    $qwenWatch = @{ Next = [DateTime]::UtcNow; LastExit = $null; Failures = 0 }
+
+    function Get-NvidiaFreeGB {
+        if (-not $cfg.Qwen.Smi) { return [double]::MaxValue }
+        try {
+            $mib = & $cfg.Qwen.Smi '--query-gpu=memory.free' '--format=csv,noheader,nounits' 2>$null |
+                ForEach-Object { [double]($_.Trim()) } | Measure-Object -Maximum
+            if ($mib.Count -eq 0) { return 0.0 }
+            return $mib.Maximum / 1024.0
+        } catch {
+            return 0.0
+        }
+    }
+
+    function Restore-QwenProcess {
+        # Si el servidor de Qwen cedio la tarjeta (a un paso pesado o a otro
+        # programa), se vuelve a abrir en cuanto queda libre, sin esperar a la
+        # proxima lectura: asi esa lectura no paga los 20 s de carga. Si
+        # termino por --inactivo, se espera a la lectura, que para eso se
+        # pidio. Un servidor que se cae al cargar se reintenta cada vez mas
+        # espaciado, para no ocupar la tarjeta en vano.
+        if (-not $cfg.Qwen.Reopen) { return }
+        if (-not ($cfg.Engines.Values -contains 'qwen')) { return }
+        if ($processes.ContainsKey('qwen')) {
+            $current = $processes['qwen'].Process
+            if (-not $current.HasExited) {
+                if (([DateTime]::Now - $current.StartTime).TotalMinutes -gt 2) { $qwenWatch.Failures = 0 }
+                return
+            }
+            $processes.Remove('qwen')
+            $qwenWatch.LastExit = $current.ExitCode
+            if ($qwenCleanExits -contains $current.ExitCode) {
+                $qwenWatch.Failures = 0
+            } else {
+                $qwenWatch.Failures = [Math]::Min(6, $qwenWatch.Failures + 1)
+                $qwenWatch.Next = [DateTime]::UtcNow.AddSeconds(30 * [Math]::Pow(2, $qwenWatch.Failures))
+                Write-SynthLog "El servidor de Qwen termino con el codigo $($current.ExitCode)."
+                return
+            }
+        }
+        if ($qwenWatch.LastExit -eq $qwenIdleExit) { return }
+        if (Test-GpuBusy -BusyFile $cfg.Qwen.BusyFile) { return }
+        if ((Get-NvidiaFreeGB) -lt $cfg.Qwen.ReopenFreeGB) { return }
+        $qwenWatch.LastExit = $null
+        $processes['qwen'] = New-QwenProcess
+        Write-SynthLog 'La tarjeta grafica quedo libre: se vuelve a cargar la voz Qwen.'
+    }
+
     while (-not $sync.Stopping) {
         $job = $null
 
         if (-not $sync.SynthJobs.TryDequeue([ref]$job)) {
-            Start-Sleep -Milliseconds 15
+            if ([DateTime]::UtcNow -ge $qwenWatch.Next) {
+                $qwenWatch.Next = [DateTime]::UtcNow.AddSeconds(30)
+                Restore-QwenProcess
+            }
+            [void]$sync.SynthSignal.WaitOne(5000)
             continue
         }
 
@@ -493,6 +558,9 @@ Start-BackgroundRunspace -Script $synthScript -Variables @{
             BusyFile    = $qwenVoice.BusyFile
             Batch       = [Math]::Max(1, [int]$settings.QwenBatch)
             IdleMinutes = ([double]$settings.QwenIdleMinutes).ToString($invariant)
+            Reopen      = [bool]$settings.QwenReopen
+            ReopenFreeGB= [double]$settings.QwenReopenFreeGB
+            Smi         = $(if ($vramGB -gt 0) { (Get-Command 'nvidia-smi' -ErrorAction SilentlyContinue).Source } else { '' })
         }
     }
 }
@@ -1381,6 +1449,7 @@ function Start-Speaking {
 
         $index++
     }
+    [void]$sync.SynthSignal.Set()
 
     Update-Offsets
     Build-TextPanel
@@ -1645,9 +1714,16 @@ $window.Add_Closing({
 
 # --------------------------------------------------------------------------
 # Pulso: 60 ms. Atiende ordenes, recoge audio generado y refresca la barra.
+# Sin nada que leer ni mostrar baja a 250 ms, para no despertar el procesador
+# 16 veces por segundo en vano; la tuberia lo vuelve a 60 ms en cuanto llega
+# una orden, asi que la lectura no espera ese cuarto de segundo.
 # --------------------------------------------------------------------------
+$pulseBusy = [timespan]::FromMilliseconds(60)
+$pulseIdle = [timespan]::FromMilliseconds(250)
 $timer = New-Object Windows.Threading.DispatcherTimer
-$timer.Interval = [timespan]::FromMilliseconds(60)
+$timer.Interval = $pulseBusy
+$sync.WakeUi = [Action]{ if ($timer.Interval -ne $pulseBusy) { $timer.Interval = $pulseBusy } }
+$sync.Dispatcher = [Windows.Threading.Dispatcher]::CurrentDispatcher
 
 $timer.Add_Tick({
     # 1. Ordenes que llegaron por la tuberia.
@@ -1773,6 +1849,13 @@ $timer.Add_Tick({
             $ui.BufferBar.Width = 170.0 * [Math]::Min(1.0, $readyDuration / $state.Total)
         }
     }
+
+    # 5. Ritmo del pulso.
+    $idle = (-not $window.IsVisible) -and (-not $state.IsPlaying) -and
+            $sync.Requests.IsEmpty -and $sync.SynthDone.IsEmpty
+    $pulse = $pulseBusy
+    if ($idle) { $pulse = $pulseIdle }
+    if ($timer.Interval -ne $pulse) { $timer.Interval = $pulse }
 })
 
 $timer.Start()
@@ -1793,6 +1876,7 @@ if (-not $NoWarmup) {
         })
         $warmIndex++
     }
+    [void]$sync.SynthSignal.Set()
 }
 
 Write-DaemonLog 'Proceso residente listo.'
@@ -1801,6 +1885,7 @@ try {
     [Windows.Threading.Dispatcher]::Run()
 } finally {
     $sync.Stopping = $true
+    [void]$sync.SynthSignal.Set()
 
     Save-PlayerState
 

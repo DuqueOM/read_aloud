@@ -267,7 +267,9 @@ Start-Process .\.venv\Scripts\python.exe scripts\32_entrenar_final.py -WindowSty
 El entrenamiento es LoRA sobre Qwen3-TTS 12Hz 1.7B Base, con la receta oficial
 corregida (tiene tres errores, ver la
 [ADR 0002](adr/0002-lora-y-correcciones-a-la-receta.md)): aprendizaje 3e-5,
-lote efectivo de 8, 8 épocas. Ningún clip que se solape con las 10 frases de
+lote efectivo de 8, hasta 8 épocas. Se para antes si la validación empeora dos
+épocas seguidas (`--paciencia 2`): con 60 minutos tocó fondo en la segunda y
+las siguientes solo empeoraban. Ningún clip que se solape con las 10 frases de
 validación entra al entrenamiento.
 
 - **Tiempo:** unos 20 minutos por época con 60 minutos de voz.
@@ -292,6 +294,12 @@ La época se elige con la validación como guía y de oído como decisión final
 ([ADR 0003](adr/0003-elegir-la-epoca.md)). Con 20 minutos de voz y aprendizaje
 3e-5, la mejor fue la segunda; con 60 minutos, la validación también tocó
 fondo en la segunda.
+
+La validación no siempre separa lo que el oído sí. Las dos voces finales, con
+los 60 mejores minutos y con todo lo conservado, quedaron en 2.814 y 2.812 en
+la época 2, y aun así la de 60 minutos ganó con claridad a ciegas
+([ADR 0010](adr/0010-conjunto-final.md)). Es la que usa la app desde el 1 de
+noviembre de 2026.
 
 ## 12. Leer con la voz en Read Aloud
 
@@ -322,11 +330,14 @@ Para usar en otro equipo una voz ya entrenada, basta con
 ### Read Aloud y la tarjeta
 
 La voz ocupa unos 5 GB de la tarjeta y se queda cargada, porque cargarla
-tarda unos 16 s. Mientras un paso pesado del proceso usa la tarjeta, deja una
+tarda unos 20 s, y hasta un minuto si Windows no tiene las librerías en la
+cache del disco. Mientras un paso pesado del proceso usa la tarjeta, deja una
 marca (`gpu_ocupada`, en la carpeta de trabajo). Mientras exista, Read Aloud
 lee con Piper y la voz le deja la tarjeta entera. Compartirla hacía esperar
-minutos cada frase. Ver la
-[ADR 0005](adr/0005-motor-automatico-y-tarjeta-compartida.md).
+minutos cada frase. Cuando la marca desaparece, la voz se vuelve a cargar
+sola, sin esperar a la lectura siguiente. Ver las ADR
+[0005](adr/0005-motor-automatico-y-tarjeta-compartida.md) y
+[0011](adr/0011-recargar-qwen-y-reposo.md).
 
 ## Herramientas
 

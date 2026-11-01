@@ -70,6 +70,8 @@ function Get-ReadAloudSettings {
         QwenBatch           = 4
         QwenIdleMinutes     = 0
         QwenMinVramGB       = 7
+        QwenReopen          = $true
+        QwenReopenFreeGB    = 6
     }
 
     if (-not (Test-Path -LiteralPath $Paths.SettingsFile)) {

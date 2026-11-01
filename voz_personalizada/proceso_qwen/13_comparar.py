@@ -1,10 +1,11 @@
 """Pagina corta de escucha: la voz real, la voz actual de la app y candidatas.
 
 Cada frase muestra solo tres cosas: lo que dijo la voz real, como lo lee hoy Read
-Aloud (Piper tal cual) y las candidatas que se pasen, todo al mismo volumen.
-Las candidatas son versiones de datos/10_motores/audio, con su etiqueta:
+Aloud y las candidatas que se pasen, todo al mismo volumen. La voz de la app
+es Piper tal cual, o con --app la version que se indique. Las candidatas son
+versiones de datos/10_motores/audio, con su etiqueta:
 
-    python scripts/13_comparar.py qwen_mi_voz_e01="Entrenado v1, época 1" qwen_mi_voz_v2_e03="Entrenado v2, época 3"
+    python scripts/13_comparar.py --app qwen_mi_voz_v2_e02 qwen_mi_voz_v4_60_e02="60 mejores, época 2"
 
 Escribe datos/13_comparar/comparar.html.
 """
@@ -39,7 +40,13 @@ def igualar(origen: Path, destino: Path) -> None:
 
 
 def main() -> None:
-    candidatas = [a.split("=", 1) for a in sys.argv[1:]]
+    argumentos = sys.argv[1:]
+    # Con --app VERSION, la voz actual de la app es esa version de
+    # datos/10_motores/audio (la app ya no lee con Piper tal cual).
+    app_version = None
+    if argumentos[:1] == ["--app"]:
+        app_version, argumentos = argumentos[1], argumentos[2:]
+    candidatas = [a.split("=", 1) for a in argumentos]
     audio_dir = SALIDA / "audio"
     audio_dir.mkdir(parents=True, exist_ok=True)
 
@@ -51,6 +58,8 @@ def main() -> None:
 
     bloques = {"es": [], "en": []}
     for clave, texto, real, app in frases:
+        if app_version:
+            app = MOTORES / f"{clave}_{app_version}.wav"
         filas = []
         for etiqueta, origen, clase in ([("Voz real", real, "real")] if real else []) + \
                 [("Voz actual de la app", app, "app")] + \

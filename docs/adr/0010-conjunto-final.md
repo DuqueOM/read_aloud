@@ -1,7 +1,6 @@
 # 0010. Entrenar con los 60 mejores minutos
 
-- **Estado:** propuesta. Se acepta o se cambia según la comparación a ciegas de
-  los dos entrenamientos.
+- **Estado:** aceptada, tras la comparación a ciegas del 1 de noviembre de 2026
 - **Fecha:** 31 de octubre de 2026
 
 ## Contexto
@@ -69,6 +68,24 @@ validación, la misma semilla y el aprendizaje de la
 [0003](0003-elegir-la-epoca.md). Se comparan a ciegas con la voz real. Si
 gana `todos`, esta decisión se reemplaza: más datos pesaron más que la
 calidad.
+
+## Resultado
+
+| Época | `mejores60` | `todos` |
+|---|---|---|
+| 1 | 2.840 | 2.823 |
+| 2 | **2.814** | **2.812** |
+| 3 | 2.839 | 2.834 |
+| 4 | 2.931 | 2.904 |
+
+(Validación: menos es mejor. La voz anterior de la app, con 20 minutos, quedó
+en 2.819.) `todos` paró en la época 4, por empeorar dos seguidas; `mejores60`
+se cortó en la 6.
+
+Por la validación, las dos épocas 2 empatan: 0.002 de diferencia está dentro
+del ruido de 10 frases. A ciegas, el usuario eligió `mejores60` "con
+diferencia", frente a `todos` y frente a la voz anterior. **Pesó más la calidad
+que los 14 minutos de más.** La época 2 de `mejores60` es la voz de la app.
 
 ## Consecuencias
 

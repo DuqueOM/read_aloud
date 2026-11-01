@@ -29,6 +29,9 @@ PRINCIPAL = RAIZ / ".venv" / "Scripts" / "python.exe"
 QWEN = RAIZ / ".venv_qwen" / "Scripts" / "python.exe"
 EPOCAS = "8"
 APRENDIZAJE = "3e-5"
+# Con 60 minutos, la validacion toco fondo en la epoca 2 y subio en cada una
+# de las siguientes: se para cuando empeora dos epocas seguidas.
+PACIENCIA = "2"
 PASOS = [
     ("Audio sin eco y volumen igualado", PRINCIPAL, ["31_conjunto_qwen.py", "audio"]),
     ("Códigos de audio de Qwen3-TTS", QWEN, ["31_conjunto_qwen.py", "codigos"]),
@@ -51,7 +54,7 @@ def hecho(argumentos) -> bool:
         return all((datos / "31_qwen" / c / "entrenamiento.jsonl").exists() for c in ("mejores60", "todos"))
     puntos = datos / "11_qwen" / argumentos[argumentos.index("--salida") + 1]
     registro = json.loads((puntos / "registro.json").read_text(encoding="utf-8")) if (puntos / "registro.json").exists() else []
-    if len(registro) >= int(EPOCAS):
+    if len(registro) >= int(EPOCAS) or (puntos / "terminado.json").exists():
         return True
     # El primer entrenamiento empezo antes de que se pudiera retomar: si se
     # corto, lo que guardo alcanza, porque su validacion ya habia tocado fondo
@@ -71,7 +74,7 @@ def main() -> None:
             marcar(estado, "estado", "listo", nombre)
             continue
         if argumentos[0] == "11b_entrenar_qwen.py":
-            argumentos = argumentos + ["--reanudar"]
+            argumentos = argumentos + ["--reanudar", "--paciencia", PACIENCIA]
         marcar(estado, "estado", "en curso", nombre, f"Empieza: {nombre}")
         ok = revision.correr(python, argumentos, estado, nombre)
         marcar(estado, "estado", "listo" if ok else "con error", nombre, f"{nombre}: {'listo' if ok else 'con error'}")

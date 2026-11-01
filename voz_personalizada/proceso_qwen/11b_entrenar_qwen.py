@@ -173,6 +173,8 @@ def main() -> None:
                             help="carpeta con entrenamiento.jsonl y validacion.jsonl (31_conjunto_qwen.py)")
     argumentos.add_argument("--reanudar", action="store_true",
                             help="seguir despues de la ultima epoca guardada, si la hay")
+    argumentos.add_argument("--paciencia", type=int, default=0,
+                            help="parar cuando la validacion empeore esta cantidad de epocas seguidas; 0 es nunca")
     a = argumentos.parse_args()
     EPOCAS, APRENDIZAJE = a.epocas, a.aprendizaje
     datos = Path(a.datos)
@@ -301,6 +303,21 @@ def main() -> None:
                              "torch": torch.get_rng_state(), "cuda": torch.cuda.get_rng_state()}},
                    reanudar.with_suffix(".tmp"))
         os.replace(reanudar.with_suffix(".tmp"), reanudar)
+
+        # Pasado su mejor punto, el modelo memoriza: la validacion sube epoca
+        # tras epoca. Cada epoca queda guardada, asi que parar no pierde nada.
+        mejor = min(f["validacion"] for f in registro)
+        peores = 0
+        for f in reversed(registro):
+            if f["validacion"] <= mejor:
+                break
+            peores += 1
+        if a.paciencia and peores >= a.paciencia:
+            print(f"la validacion empeoro {peores} epocas seguidas: termina en la epoca {epoca}", flush=True)
+            break
+
+    # Terminado, completo o por la paciencia: al relanzar no hay que seguir.
+    (PUNTOS / "terminado.json").write_text(json.dumps({"epocas": len(registro)}), encoding="utf-8")
 
 
 if __name__ == "__main__":

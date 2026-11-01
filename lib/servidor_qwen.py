@@ -15,8 +15,8 @@ El modelo base se toma de la cache de Hugging Face que se indique.
 El modelo ocupa unos 5 GB de memoria de video. El proceso se queda abierto,
 para que ninguna lectura espere a que cargue, hasta que otro programa
 necesite la tarjeta grafica o pasen --inactivo minutos sin ordenes (0 es
-nunca). Entonces termina y la libera; Read Aloud lo vuelve a abrir con la
-siguiente lectura.
+nunca). Entonces termina y la libera. Read Aloud lo vuelve a abrir en cuanto
+la tarjeta queda libre, o con la siguiente lectura si termino por --inactivo.
 
 Todo lo que no es el protocolo (avisos de las librerias, errores) va a
 --registro: si llegara a la salida, Read Aloud lo leeria como una ruta.
@@ -78,7 +78,9 @@ SEGUNDOS_POR_LETRA = 0.065
 CODIGOS_POR_SEGUNDO = 12.5
 
 
-# Cargar el modelo tarda unos 16 s, y esa espera se nota al pedir una lectura.
+# Cargar el modelo tarda unos 20 s (16 desde que las librerias estan
+# importadas), y hasta un minuto si el disco no las tiene en la cache; esa
+# espera se nota al pedir una lectura.
 # Por eso el proceso se queda abierto mientras nadie mas necesite la tarjeta:
 # cada REVISION_S mira cuanta memoria usan los demas programas, y si despues
 # de un rato sin leer usan CEDER_SI_OTROS_GB mas que al cargar (o que lo menos
@@ -89,6 +91,13 @@ CODIGOS_POR_SEGUNDO = 12.5
 REVISION_S = 10
 QUIETO_ANTES_DE_CEDER_S = 60
 CEDER_SI_OTROS_GB = 1.5
+# Con que codigo termina, para que Read Aloud sepa si volver a abrirlo cuando
+# la tarjeta quede libre (si cedio) o esperar a la siguiente lectura (si fue
+# por --inactivo).
+SALIDA_ENTRADA_CERRADA = 0
+SALIDA_INACTIVO = 3
+SALIDA_MARCA = 4
+SALIDA_OTRO_PROGRAMA = 5
 
 
 def tarjeta_pedida() -> bool:
@@ -213,7 +222,7 @@ def leer_entrada(cola: queue.Queue) -> None:
     cola.put(None)
 
 
-def main() -> None:
+def main() -> int:
     inicio = time.perf_counter()
     qwen = cargar(Path(opciones.voz))
     log(f"pesos listos en {time.perf_counter() - inicio:.1f} s")
@@ -236,10 +245,10 @@ def main() -> None:
             quieto = time.monotonic() - ultima
             if opciones.inactivo > 0 and quieto >= opciones.inactivo * 60:
                 log("sin ordenes, termino para liberar la tarjeta grafica")
-                return
+                return SALIDA_INACTIVO
             if tarjeta_pedida():
                 log("otro paso marco la tarjeta grafica como ocupada: termino para dejarsela")
-                return
+                return SALIDA_MARCA
             # Si al cargar ya habia otro programa usando la tarjeta, la base
             # baja cuando la suelta: asi se cede tambien la proxima vez.
             ahora = memoria_de_otros_gb()
@@ -247,10 +256,10 @@ def main() -> None:
             otros = ahora - otros_al_cargar
             if quieto >= QUIETO_ANTES_DE_CEDER_S and otros >= CEDER_SI_OTROS_GB:
                 log(f"otro programa usa {otros:.1f} GB mas de la tarjeta grafica: termino para dejarsela")
-                return
+                return SALIDA_OTRO_PROGRAMA
             continue
         if linea is None:
-            return
+            return SALIDA_ENTRADA_CERRADA
         ultima = time.monotonic()
         ordenes = []
         try:
@@ -269,4 +278,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

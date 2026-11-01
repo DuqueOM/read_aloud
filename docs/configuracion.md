@@ -30,6 +30,8 @@ El archivo debe existir en `read_aloud_piper\voices`. Consulta las opciones en
 | `QwenMinVramGB` | `7` | Memoria mínima de la tarjeta NVIDIA para usar Qwen |
 | `QwenBatch` | `4` | Frases que se generan juntas |
 | `QwenIdleMinutes` | `0` | Minutos sin leer tras los que Qwen se cierra; `0` es nunca |
+| `QwenReopen` | `$true` | Volver a cargar Qwen en cuanto la tarjeta queda libre, tras cederla |
+| `QwenReopenFreeGB` | `6` | Memoria libre de la tarjeta que hace falta para volver a cargarlo |
 
 Read Aloud lee con Piper en cualquier equipo. Si además tienes una voz propia
 entrenada con [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS) y una tarjeta
@@ -51,17 +53,20 @@ mismo protocolo que Piper y que usa, de la carpeta de trabajo, el entorno
 `modelos\voz_app` (`ajuste.json`, `voz.safetensors` y `lora.safetensors`). Lo
 que pasa dentro queda en `read_aloud_piper\runtime\qwen.log`.
 
-Qwen tarda unos 16 s en cargar y ocupa unos 5 GB de la tarjeta. Para que
-ninguna lectura espere esa carga, se queda abierto, y se cierra solo cuando
-otro programa empieza a usar 1.5 GB más de la tarjeta que cuando cargó, tras
-un minuto sin leer. La lectura siguiente lo vuelve a abrir.
+Qwen tarda unos 20 s en cargar (hasta un minuto si Windows no tiene sus
+librerías en la cache del disco) y ocupa unos 5 GB de la tarjeta y 2.3 GB de
+RAM. Para que ninguna lectura espere esa carga, se abre con el proceso
+residente y se queda abierto. Se cierra solo cuando otro programa empieza a
+usar 1.5 GB más de la tarjeta que cuando cargó, tras un minuto sin leer, y se
+vuelve a cargar en cuanto la tarjeta tiene `QwenReopenFreeGB` libres. Si se
+cerró por `QwenIdleMinutes`, en cambio, espera a la lectura siguiente.
 
 Mientras un paso pesado de la voz personalizada (transcribir, separar,
 entrenar) usa la tarjeta, deja su número de proceso en `gpu_ocupada`, en la
 carpeta de trabajo. Mientras ese proceso siga vivo, Read Aloud lee con Piper y
 Qwen se cierra para dejarle la tarjeta entera: compartir los 8 GB hacía
-esperar minutos cada frase. Al terminar el paso, la voz de Qwen vuelve sola en
-la lectura siguiente.
+esperar minutos cada frase. Al terminar el paso, la voz de Qwen se vuelve a
+cargar sola, en los 30 s siguientes.
 
 En una RTX 5070 de portátil, una frase sola tarda 1.1 veces lo que dura, y
 dos juntas 0.54 veces y cuatro juntas 0.34 veces: más rápido que tiempo real.

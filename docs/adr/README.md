@@ -21,4 +21,5 @@ Laptop de 8 GB.
 | [0007](0007-reconocer-la-voz-con-wavlm.md) | Reconocer la voz con WavLM y las decisiones del usuario | Aceptada |
 | [0008](0008-transcripcion.md) | Whisper en la tarjeta a media precisión, y una segunda lectura con Qwen3-ASR | Aceptada |
 | [0009](0009-limpieza-del-audio.md) | Quitar el eco, pero no "mejorar" la voz | Aceptada |
-| [0010](0010-conjunto-final.md) | Entrenar con los 60 mejores minutos | Propuesta: falta la comparación a ciegas |
+| [0010](0010-conjunto-final.md) | Entrenar con los 60 mejores minutos | Aceptada |
+| [0011](0011-recargar-qwen-y-reposo.md) | Volver a cargar Qwen en cuanto la tarjeta queda libre, y un reposo sin sondeo | Aceptada |
