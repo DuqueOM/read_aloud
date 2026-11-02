@@ -69,6 +69,9 @@ Estos sirvieron con la voz de prueba y no hacen falta para una voz nueva:
 - `22_textos.py comparar` comparó los transcriptores con las correcciones
   del usuario; los demás pasos solo usan su contexto y su normalización.
 
+Los experimentos anteriores (RVC, la comparación de motores con Chatterbox,
+la primera segmentación) están en [../historia](../historia).
+
 ## Marca de la tarjeta ocupada
 
 Los pasos que usan la tarjeta llaman a `gpu.ocupar()`, que deja el archivo
