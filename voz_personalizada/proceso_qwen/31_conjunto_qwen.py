@@ -22,6 +22,12 @@ Pasos, en entornos distintos:
         Convierte cada clip en los codigos de audio de Qwen3-TTS, como
         11a_datos_qwen.py, y escribe datos/31_qwen/<conjunto>/entrenamiento.jsonl
         y validacion.jsonl.
+
+    .venv_qwen/Scripts/python.exe scripts/31_conjunto_qwen.py mejores45
+        Los 45 minutos de mas calidad de entre los 60, con los codigos que ya
+        saco el paso anterior. A ciegas, los 60 mejores le ganaron con claridad
+        a los 74 de todo lo conservado; este conjunto mide si recortar mas
+        sigue ayudando.
 """
 
 import importlib.util
@@ -140,7 +146,27 @@ def codigos() -> None:
         print(f"{nombre}: {len(lineas)} clips, {minutos:.1f} min", flush=True)
 
 
+def mejores45() -> None:
+    elegidos = sorted(conjuntos()["mejores60"], key=lambda c: -c["calidad"])
+    claves, total = set(), 0.0
+    for c in elegidos:
+        if total + c["duracion"] <= 45 * 60:
+            claves.add(c["clave"])
+            total += c["duracion"]
+    origen, carpeta = SALIDA / "mejores60", SALIDA / "mejores45"
+    lineas = [l for l in (origen / "entrenamiento.jsonl").read_text(encoding="utf-8").splitlines()
+              if Path(json.loads(l)["audio"]).stem in claves]
+    assert len(lineas) == len(claves)
+    carpeta.mkdir(parents=True, exist_ok=True)
+    (carpeta / "entrenamiento.jsonl").write_text("\n".join(lineas) + "\n", encoding="utf-8")
+    (carpeta / "validacion.jsonl").write_text((origen / "validacion.jsonl").read_text(encoding="utf-8"),
+                                              encoding="utf-8")
+    print(f"mejores45: {len(lineas)} clips, {total / 60:.1f} min, calidad del peor "
+          f"{min(c['calidad'] for c in elegidos if c['clave'] in claves):.2f}", flush=True)
+
+
 if __name__ == "__main__":
-    import gpu
-    gpu.ocupar()
-    {"audio": audio, "codigos": codigos}[sys.argv[1]]()
+    if sys.argv[1] != "mejores45":  # ese no usa la tarjeta
+        import gpu
+        gpu.ocupar()
+    {"audio": audio, "codigos": codigos, "mejores45": mejores45}[sys.argv[1]]()

@@ -63,6 +63,10 @@ def hecho(argumentos) -> bool:
 
 
 def main() -> None:
+    # La marca queda puesta toda la cadena: si cada paso pusiera la suya, entre
+    # uno y otro Read Aloud volveria a cargar la voz para soltarla al minuto.
+    import gpu
+    gpu.ocupar()
     estado = nuevo("Voz de la voz de prueba · entrenamiento final", [p[0] for p in PASOS], ["estado"], finales=[])
     estado["filas"] = "Paso"
     estado["nota"] = ("Dos entrenamientos para comparar a ciegas: los 60 mejores minutos contra todo lo que "

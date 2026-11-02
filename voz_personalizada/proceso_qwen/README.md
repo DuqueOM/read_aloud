@@ -35,6 +35,8 @@ Copy-Item C:\ruta\a\read_aloud\voz_personalizada\proceso_qwen\* .\scripts\
 | 7 | `30_seleccion_final.py` | `.venv` | Quita duplicados, clips cortos y tomas de más, y deja los mejores 60 minutos |
 | 8 | `32_entrenar_final.py` | `.venv` (lanza los demás) | Quita el eco, iguala el volumen y saca los códigos de Qwen (`31`), y entrena (`11b`) con los 60 mejores minutos y con todo lo conservado |
 | 9 | `11c_probar_qwen.py`, `09e_prosodia.py`, `10c_medir.py`, `13_comparar.py` | `.venv_qwen`, `applio\.venv`*, `.venv` | Genera las frases de prueba con cada época, mide entonación, timbre y errores de texto, y arma la comparación a ciegas con la voz real |
+| 10 | `33_ronda5.py` (opcional) | `.venv` (lanza los demás) | Más entrenamientos para afinar: los 45 mejores minutos (`31_conjunto_qwen.py mejores45`) y los 60 con aprendizaje más lento, con un punto a mitad de cada época |
+| 11 | `34_votacion.py` | `.venv` (lanza los demás) | Para decidir entre voces parecidas: dos tomas por voz de 20 frases (10 de validación y 10 como las de la app, preparadas por `34_frases.ps1` igual que en Read Aloud), errores de lectura y timbre medidos, y votación a ciegas en `datos\34_votacion\votar.html` |
 
 \* `09e_prosodia.py` usaba librosa del entorno de Applio; corre igual en `.venv`.
 

@@ -301,6 +301,15 @@ la época 2, y aun así la de 60 minutos ganó con claridad a ciegas
 ([ADR 0010](adr/0010-conjunto-final.md)). Es la que usa la app desde el 1 de
 noviembre de 2026.
 
+Cuando las candidatas se parecen tanto que unas frases ganan con una y otras
+con otra, usa la votación a ciegas: `.\.venv\Scripts\python.exe
+scripts\34_votacion.py` genera dos tomas por voz de 20 frases (las 10 de
+validación y 10 como las que lee Read Aloud), mide errores de lectura y timbre, y
+abre `datos\34_votacion\votar.html`. Las voces se cambian en la lista `VOCES`
+del script. Con ella, dos entrenamientos más (45 mejores minutos, y los 60 con
+aprendizaje más lento) empataron con la voz de la app
+([ADR 0012](adr/0012-quinta-ronda-y-votacion.md)).
+
 ## 12. Leer con la voz en Read Aloud
 
 Copia la época elegida a la carpeta de la voz de la app:

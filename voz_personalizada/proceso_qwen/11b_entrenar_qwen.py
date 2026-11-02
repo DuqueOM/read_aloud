@@ -175,6 +175,8 @@ def main() -> None:
                             help="seguir despues de la ultima epoca guardada, si la hay")
     argumentos.add_argument("--paciencia", type=int, default=0,
                             help="parar cuando la validacion empeore esta cantidad de epocas seguidas; 0 es nunca")
+    argumentos.add_argument("--medias", action="store_true",
+                            help="guardar y validar tambien a mitad de cada epoca (epoca_01_5 es la mitad de la 2)")
     a = argumentos.parse_args()
     EPOCAS, APRENDIZAJE = a.epocas, a.aprendizaje
     datos = Path(a.datos)
@@ -267,10 +269,15 @@ def main() -> None:
     if primera == 1:
         print(f"epoca 0  validacion {validar():.4f}", flush=True)
     modelo.talker.train()
+    def guardar_capas(nombre):
+        estado = {k: v.detach().cpu().contiguous() for k, v in get_peft_model_state_dict(modelo.talker).items()}
+        save_file(estado, PUNTOS / f"epoca_{nombre}.safetensors")
+
     for epoca in range(primera, EPOCAS + 1):
         inicio = time.time()
         random.shuffle(entrenamiento)
         acumulado = []
+        pasos_aqui = 0
         for n in range(0, len(entrenamiento), LOTE):
             if n % (LOTE * 20) == 0:
                 avance(f"época {epoca} de {EPOCAS}, clips", n, len(entrenamiento))
@@ -285,6 +292,17 @@ def main() -> None:
                 planificador.step()
                 optimizador.zero_grad(set_to_none=True)
                 paso += 1
+                pasos_aqui += 1
+                # Con 60 minutos, la mejor fue siempre la epoca 2, y entre una
+                # epoca y otra la validacion salta: la mitad deja ver si el
+                # mejor punto cae en medio.
+                if a.medias and pasos_aqui == pasos_epoca // 2:
+                    val = validar()
+                    registro.append({"epoca": epoca - 0.5, "entrenamiento": float(np.mean(acumulado)),
+                                     "validacion": val, "segundos": round(time.time() - inicio)})
+                    print(f"epoca {epoca - 0.5}  validacion {val:.4f}", flush=True)
+                    guardar_capas(f"{epoca - 1:02d}_5")
+                    (PUNTOS / "registro.json").write_text(json.dumps(registro, indent=1), encoding="utf-8")
 
         val = validar()
         fila = {"epoca": epoca, "entrenamiento": float(np.mean(acumulado)), "validacion": val,
@@ -292,8 +310,7 @@ def main() -> None:
         registro.append(fila)
         print(f"epoca {epoca}  entrenamiento {fila['entrenamiento']:.4f}  validacion {val:.4f}  "
               f"{fila['segundos']} s  {fila['memoria_gb']} GB", flush=True)
-        estado = {k: v.detach().cpu().contiguous() for k, v in get_peft_model_state_dict(modelo.talker).items()}
-        save_file(estado, PUNTOS / f"epoca_{epoca:02d}.safetensors")
+        guardar_capas(f"{epoca:02d}")
         (PUNTOS / "registro.json").write_text(json.dumps(registro, indent=1), encoding="utf-8")
         # Primero a un temporal: si se corta la luz justo al escribir, el
         # guardado anterior sigue entero.
@@ -306,12 +323,10 @@ def main() -> None:
 
         # Pasado su mejor punto, el modelo memoriza: la validacion sube epoca
         # tras epoca. Cada epoca queda guardada, asi que parar no pierde nada.
-        mejor = min(f["validacion"] for f in registro)
-        peores = 0
-        for f in reversed(registro):
-            if f["validacion"] <= mejor:
-                break
-            peores += 1
+        # Se cuentan las epocas enteras despues del mejor punto, que puede ser
+        # una mitad.
+        mejor = min(registro, key=lambda f: f["validacion"])["epoca"]
+        peores = sum(1 for f in registro if f["epoca"] == int(f["epoca"]) and f["epoca"] > mejor)
         if a.paciencia and peores >= a.paciencia:
             print(f"la validacion empeoro {peores} epocas seguidas: termina en la epoca {epoca}", flush=True)
             break

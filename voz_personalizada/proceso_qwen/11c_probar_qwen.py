@@ -16,6 +16,7 @@ Corre en el entorno de Qwen:
     .venv_qwen/Scripts/python.exe scripts/11c_probar_qwen.py --puntos puntos_v2 2 4 6
 
 Las versiones de una salida distinta de "puntos" llevan su nombre: qwen_mi_voz_v2_e04.
+Un punto de mitad de epoca se pide como 1.5, y queda como qwen_mi_voz_v2_e01_5.
 """
 
 import json
@@ -71,6 +72,12 @@ def preparar():
     return qwen
 
 
+def nombre_epoca(epoca: str) -> str:
+    """"2" es epoca_02, y "1.5", el punto de mitad de la epoca 2, epoca_01_5."""
+    entera, _, fraccion = epoca.partition(".")
+    return f"{int(entera):02d}" + (f"_{fraccion}" if fraccion.strip("0") else "")
+
+
 def main() -> None:
     global PUNTOS
     argumentos = sys.argv[1:]
@@ -79,7 +86,7 @@ def main() -> None:
         PUNTOS = PUNTOS.parent / argumentos[1]
         prefijo += "_" + argumentos[1].removeprefix("puntos_")
         argumentos = argumentos[2:]
-    epocas = [int(e) for e in argumentos]
+    epocas = [nombre_epoca(e) for e in argumentos]
     frases = json.loads((RAIZ / "datos" / "09_comparar" / "frases.json").read_text(encoding="utf-8"))
     lista = ([(f"es{f['n']}", "Spanish", f["texto"]) for f in frases]
              + [(f"en{n}", "English", t) for n, t in enumerate(INGLES, 1)])
@@ -92,10 +99,10 @@ def main() -> None:
     tiempos = {}
     for epoca in epocas:
         # La epoca 0 es el modelo base: las capas LoRA recien creadas no cambian nada.
-        if epoca:
-            estado = load_file(PUNTOS / f"epoca_{epoca:02d}.safetensors")
+        if epoca != "00":
+            estado = load_file(PUNTOS / f"epoca_{epoca}.safetensors")
             set_peft_model_state_dict(qwen.model.talker, {k: v.to(qwen.model.device) for k, v in estado.items()})
-        version = f"{prefijo}_e{epoca:02d}"
+        version = f"{prefijo}_e{epoca}"
         for clave, idioma, texto in lista:
             torch.manual_seed(SEMILLA)
             torch.cuda.synchronize()
@@ -114,7 +121,7 @@ def main() -> None:
             torch.manual_seed(SEMILLA)
             wavs, sr = qwen.generate_custom_voice(text=texto, language=idioma, speaker=VOZ, instruct=indicacion,
                                                     non_streaming_mode=True)
-            sf.write(SALIDA / f"{clave}_{prefijo}_e{epocas[-1]:02d}_{nombre}.wav",
+            sf.write(SALIDA / f"{clave}_{prefijo}_e{epocas[-1]}_{nombre}.wav",
                      np.asarray(wavs[0], dtype=np.float32), sr)
     (RAIZ / "datos" / "11_qwen" / "tiempos.json").write_text(json.dumps(tiempos, indent=1), encoding="utf-8")
 
