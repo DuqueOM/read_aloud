@@ -17,11 +17,15 @@
 # en herramientas\python, y no el que tenga instalado el equipo, que al
 # actualizarse o desinstalarse los romperia.
 #
-# Las versiones de requisitos\ se probaron con PyTorch 2.11 y CUDA 12.8, que
-# es lo que piden las NVIDIA RTX 50. Las listas se instalan
-# con --no-deps: estan completas, y asi no entra ninguna version distinta. Y
-# con --require-hashes: cada paquete lleva su sha256, y uno que no coincida
-# con lo que se probo no se instala.
+# Los tres entornos del proceso (principal, Qwen3-TTS y Qwen3-ASR) salen de
+# uv.lock, un grupo de pyproject.toml cada uno: versiones exactas, probadas con
+# PyTorch 2.11 y CUDA 12.8, que es lo que piden las tarjetas NVIDIA de la
+# RTX 50, y el sha256 de cada paquete; uno que no coincida no se instala.
+# Volver a correr el script deja cada entorno igual al lock, aunque se haya
+# tocado a mano.
+#
+# Los opcionales, Applio y resemble-enhance, siguen con sus listas de
+# requisitos\: tambien completas y con sha256, instaladas con --no-deps.
 
 [CmdletBinding()]
 param(
@@ -62,7 +66,22 @@ function Invoke-Checked {
     }
 }
 
+function Sync-Entorno {
+    # Crea o pone al dia un entorno con un grupo de uv.lock. --frozen usa el
+    # lock tal cual, sin volver a resolver nada.
+    param([string]$Ruta, [string]$Grupo)
+    $env:UV_PROJECT_ENVIRONMENT = $Ruta
+    try {
+        Invoke-Checked 'uv' @('sync', '--project', $PSScriptRoot, '--frozen', '--no-default-groups',
+                              '--group', $Grupo, '--managed-python')
+    } finally {
+        Remove-Item Env:\UV_PROJECT_ENVIRONMENT
+    }
+    return Join-Path $Ruta 'Scripts\python.exe'
+}
+
 function New-Entorno {
+    # Para los opcionales, con su lista completa de requisitos\.
     param([string]$Ruta, [string]$Python, [string]$Lista)
 
     $ejecutable = Join-Path $Ruta 'Scripts\python.exe'
@@ -116,7 +135,7 @@ if (-not (Test-Path -LiteralPath $config)) {
 }
 
 Write-Step 'Entorno de Qwen3-TTS: entrenar la voz y leer con ella en Read Aloud'
-$qwen = New-Entorno (Join-Path $Trabajo '.venv_qwen') '3.12' 'qwen.txt'
+$qwen = Sync-Entorno (Join-Path $Trabajo '.venv_qwen') 'qwen'
 Get-Modelos $qwen @('Qwen/Qwen3-TTS-12Hz-1.7B-Base', 'Qwen/Qwen3-TTS-Tokenizer-12Hz')
 New-Item -ItemType Directory -Path (Join-Path $Trabajo 'modelos\voz_app') -Force | Out-Null
 
@@ -129,7 +148,7 @@ if ($SoloLectura) {
 }
 
 Write-Step 'Entorno principal: separacion, transcripcion, alineacion, cortes y medidas'
-$principal = New-Entorno (Join-Path $Trabajo '.venv') '3.12' 'principal.txt'
+$principal = Sync-Entorno (Join-Path $Trabajo '.venv') 'principal'
 
 # audio-separator y Whisper llaman a "ffmpeg" por su nombre. Se usa la copia
 # que trae imageio-ffmpeg, que ya esta en el entorno, en vez de instalar otra.
@@ -140,7 +159,7 @@ if (-not (Test-Path -LiteralPath $ffmpeg)) {
 }
 
 Write-Step 'Entorno de Qwen3-ASR: la segunda transcripcion de cada clip'
-$asr = New-Entorno (Join-Path $Trabajo '.venv_asr') '3.12' 'asr.txt'
+$asr = Sync-Entorno (Join-Path $Trabajo '.venv_asr') 'asr'
 Get-Modelos $asr @('Qwen/Qwen3-ASR-1.7B')
 
 if ($ConMejora) {

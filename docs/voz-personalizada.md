@@ -69,16 +69,32 @@ Dos ideas lo atraviesan:
 .\voz_personalizada\instalar.ps1 -Trabajo D:\voces\mi_voz
 ```
 
-Crea la carpeta de trabajo con tres entornos de Python, todos con las
-versiones exactas de [voz_personalizada/requisitos/](../voz_personalizada/requisitos)
-y el sha256 de cada paquete. El instalador no acepta un paquete que no
-coincida con lo que se probó.
+Crea la carpeta de trabajo con tres entornos de Python. Cada uno es un grupo
+de [voz_personalizada/pyproject.toml](../voz_personalizada/pyproject.toml), y
+[uv.lock](../voz_personalizada/uv.lock) guarda las versiones exactas que se
+probaron y el sha256 de cada paquete: el instalador no acepta un paquete que
+no coincida. Volver a correrlo deja cada entorno igual al lock.
 
-| Entorno | Lista | Para qué |
+| Entorno | Grupo | Para qué |
 |---|---|---|
-| `.venv` | `principal.txt` | Separar, transcribir, alinear, reconocer la voz, cortar y medir |
-| `.venv_qwen` | `qwen.txt` | Entrenar con Qwen3-TTS, y leer con la voz en Read Aloud |
-| `.venv_asr` | `asr.txt` | La segunda transcripción, con Qwen3-ASR. Va aparte porque pide otra versión de transformers |
+| `.venv` | `principal` | Separar, transcribir, alinear, reconocer la voz, cortar y medir |
+| `.venv_qwen` | `qwen` | Entrenar con Qwen3-TTS, y leer con la voz en Read Aloud |
+| `.venv_asr` | `asr` | La segunda transcripción, con Qwen3-ASR |
+
+Van en entornos separados porque no caben juntos: el principal usa
+transformers 5, y qwen-tts y qwen-asr piden cada uno una 4.57 distinta. Los
+grupos están declarados en conflicto, y uv resuelve cada uno por su lado.
+gradio queda fuera de los tres: qwen-tts y qwen-asr lo piden solo para su
+demo.
+
+Para cambiar una versión, edita su grupo en `pyproject.toml`, corre `uv lock`
+en `voz_personalizada` y prueba el paso que la usa. Un entorno a mano, sin el
+instalador:
+
+```powershell
+$env:UV_PROJECT_ENVIRONMENT = 'D:\voces\mi_voz\.venv_qwen'
+uv sync --project voz_personalizada --frozen --no-default-groups --group qwen --managed-python
+```
 
 También baja a `modelos\hf` los modelos de Hugging Face que se usan sin
 conexión: Qwen3-TTS 12Hz 1.7B Base, su tokenizador de audio y Qwen3-ASR 1.7B.

@@ -1,0 +1,100 @@
+# Entornos de Python del proceso de la voz personalizada (docs\voz-personalizada.md).
+#
+# Un grupo por entorno, porque no caben juntos: el principal usa transformers 5,
+# y qwen-tts y qwen-asr piden cada uno una 4.57 distinta. uv los resuelve por
+# separado y uv.lock guarda las versiones exactas y el sha256 de cada paquete.
+# instalar.ps1 crea cada entorno en la carpeta de trabajo con:
+#
+#   $env:UV_PROJECT_ENVIRONMENT = '<trabajo>\.venv_qwen'
+#   uv sync --project voz_personalizada --frozen --no-default-groups --group qwen
+#
+# Para cambiar una version: edita el grupo, corre "uv lock" y prueba el paso
+# que la usa antes de subir el cambio.
+
+[project]
+name = "voz-personalizada"
+version = "1.0.0"
+description = "Entornos para preparar, entrenar y leer con una voz propia en Read Aloud"
+requires-python = "==3.12.*"
+dependencies = []
+
+[dependency-groups]
+# .venv: separar la voz, transcribir con Whisper, cortar, reconocer quien
+# habla, medir la calidad y la pagina de votacion.
+principal = [
+    "audio-separator==0.47.1",
+    "audioread==3.1.0",
+    "imageio-ffmpeg==0.6.0",
+    "librosa==1.0.0",
+    "numpy==2.5.4",
+    "onnxruntime-gpu==1.31.1",
+    "openai-whisper==20250625",
+    "scikit-learn==1.9.1",
+    "scipy==1.18.1",
+    "silero-vad==6.2.3",
+    "soundfile==0.14.0",
+    "speechbrain==1.1.2",
+    "torch==2.11.0",
+    "torchaudio==2.11.0",
+    "torchvision==0.26.0",
+    "transformers==5.21.0",
+    # Dependencias de las de arriba que se fijan en la version probada: este
+    # entorno se armo antes que los otros dos, y la fecha de exclude-newer
+    # les daria una version mas nueva.
+    "filelock==3.32.3",
+    "fsspec==2026.7.0",
+    "hf-xet==1.7.0",
+    "markupsafe==3.0.3",
+    "networkx==3.6.1",
+    "numba==0.68.0",
+    "platformdirs==4.13.6",
+    "setuptools==78.1.0",
+]
+# .venv_qwen: entrenar la voz con Qwen3-TTS y leer con ella en Read Aloud
+# (lib\servidor_qwen.py).
+qwen = [
+    "huggingface-hub==0.36.2",
+    "librosa==1.0.0",
+    "numpy==2.5.4",
+    "peft==0.18.0",
+    "psutil==7.2.2",
+    "qwen-tts==0.1.1",
+    "safetensors==0.8.0",
+    "soundfile==0.14.0",
+    "torch==2.11.0",
+    "torchaudio==2.11.0",
+]
+# .venv_asr: Qwen3-ASR, la segunda transcripcion de cada clip.
+asr = [
+    "qwen-asr==0.0.6",
+    "torch==2.11.0",
+    "torchaudio==2.11.0",
+    # La version probada: sin gradio, que la limitaba, subiria a la 13.
+    "pillow==12.3.0",
+]
+
+[tool.uv]
+package = false
+default-groups = []
+conflicts = [[{ group = "principal" }, { group = "qwen" }, { group = "asr" }]]
+# Solo Windows de 64 bits, que es donde se probo.
+environments = ["sys_platform == 'win32' and platform_machine == 'AMD64'"]
+# qwen-tts y qwen-asr piden gradio solo para su demo (cli\demo.py), que el
+# proceso no usa: son unos 40 paquetes menos. Un marcador que nunca se cumple
+# lo quita de la resolucion.
+override-dependencies = ["gradio; sys_platform == 'never'"]
+# Lo publicado hasta que se armaron los entornos que funcionaron (29 de
+# octubre de 2026): asi las dependencias de las dependencias salen con las
+# mismas versiones que se probaron, y no con la ultima de hoy.
+exclude-newer = "2026-10-29T15:00:00Z"
+
+# PyTorch para CUDA 12.8, que es lo que piden las NVIDIA RTX 50.
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+torchaudio = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
