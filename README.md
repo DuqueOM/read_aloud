@@ -24,7 +24,12 @@ El botón `≡` de esa barra despliega el texto que se está leyendo, con la fra
 que suena resaltada y lo ya leído atenuado. Así no te pierdes aunque cambies
 de ventana. Un clic sobre una frase salta a ella, y el texto se puede
 seleccionar y copiar con el clic derecho. Con el texto abierto, la ventana
-cambia de tamaño desde cualquiera de sus lados y esquinas.
+cambia de tamaño desde cualquiera de sus lados y esquinas. Se mueve con la
+pestaña de arriba.
+
+El botón de la tuerca abre los ajustes: opacidad, tamaño, letra, la voz y el
+rendimiento (la voz siempre lista, o cargada solo al leer para no ocupar
+recursos). Ver [docs/configuracion.md](docs/configuracion.md#panel-de-ajustes).
 
 ## Qué necesitas
 

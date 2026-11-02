@@ -3,7 +3,12 @@
 Todo lo ajustable vive en `config/settings.psd1`. Si borras el archivo, el
 programa sigue funcionando con estos mismos valores.
 
-Después de cambiar algo, reinicia el proceso residente:
+Lo más común se cambia sin editar nada, desde el **panel de ajustes**: el
+botón de la tuerca del reproductor (ver [Panel de ajustes](#panel-de-ajustes)).
+Lo que elijas ahí se guarda en `read_aloud_piper\runtime\ajustes.json` y manda
+sobre `settings.psd1`.
+
+Después de cambiar algo en `settings.psd1`, reinicia el proceso residente:
 
 ```powershell
 .\read_aloud.ps1 -Stop
@@ -32,6 +37,8 @@ El archivo debe existir en `read_aloud_piper\voices`. Consulta las opciones en
 | `QwenIdleMinutes` | `0` | Minutos sin leer tras los que Qwen se cierra; `0` es nunca |
 | `QwenReopen` | `$true` | Volver a cargar Qwen en cuanto la tarjeta queda libre, tras cederla |
 | `QwenReopenFreeGB` | `6` | Memoria libre de la tarjeta que hace falta para volver a cargarlo |
+| `Performance` | `'rapido'` | `'rapido'` deja la voz cargada; `'ahorro'` la carga al leer y la libera tras `SaverIdleMinutes` (ver [Panel de ajustes](#panel-de-ajustes)) |
+| `SaverIdleMinutes` | `5` | En ahorro, minutos sin leer tras los que se libera la voz |
 
 Read Aloud lee con Piper en cualquier equipo. Si además tienes una voz propia
 entrenada con [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS) y una tarjeta
@@ -149,6 +156,9 @@ Si trabajas más en inglés que en español, cámbialo a `'en'`.
 | `PlayerAutoClose` | `$true` | La cierra sola al terminar |
 | `PlayerOpacity` | `0.8` | Opacidad en reposo, de `0.3` a `1.0` |
 | `SkipSeconds` | `10` | Segundos que saltan los botones y los atajos |
+| `PlayerScale` | `1.0` | Tamaño de todo el reproductor, de `0.8` a `1.6` |
+| `TextFontSize` | `13` | Tamaño de la letra del panel de texto, de `10` a `22` |
+| `PanelOnShow` | `'recordar'` | Panel de texto al aparecer: `'recordar'` (como lo dejaste), `'abierto'` o `'cerrado'` |
 
 Con `PlayerAutoClose = $false` la barra se queda visible al terminar, y el
 botón de reproducir vuelve a leer el mismo texto desde el principio.
@@ -162,10 +172,10 @@ La ventana aparece en la esquina inferior derecha de la pantalla y se ancla
 por esa esquina: al abrir el panel de texto crece hacia arriba, y la barra de
 controles se queda donde estaba.
 
-Se arrastra desde cualquier parte que no sea un botón, la barra de posición o
-el texto, y recuerda dónde la dejaste. Un doble clic sobre la barra la
-devuelve a la esquina. La posición se guarda en
-`read_aloud_piper\runtime\player.json`.
+Se mueve arrastrando la pestaña de arriba, o desde cualquier parte de la
+barra que no sea un botón, la barra de posición o el texto, y recuerda dónde
+la dejaste. Un doble clic sobre la pestaña o la barra la devuelve a la
+esquina. La posición se guarda en `read_aloud_piper\runtime\player.json`.
 
 ### Panel de texto
 
@@ -191,9 +201,11 @@ que se pronuncia: verás `deploy`, aunque la voz diga `diplói`.
 
 ### Velocidad de reproducción
 
-El botón verde junto a `+10` muestra la velocidad actual. Un clic la sube un
-paso y un clic derecho la baja. También responden `Ctrl+Shift+]` y
-`Ctrl+Shift+[`. Los pasos son 0.75x, 1x, 1.25x, 1.5x, 1.75x y 2x.
+El botón verde junto a `+10` muestra la velocidad actual. Un clic despliega
+encima, en fila, todas las velocidades: 0.5x, 0.75x, 0.9x, 1x, 1.1x, 1.25x,
+1.5x, 1.75x y 2x, con la actual marcada; un clic en una la elige y cierra la
+fila. La rueda del ratón sobre el botón la sube o la baja un paso, igual que
+`Ctrl+Shift+]` y `Ctrl+Shift+[`.
 
 El cambio es inmediato porque acelera la reproducción del audio ya generado,
 sin volver a sintetizar nada. La velocidad elegida se recuerda para las
@@ -203,6 +215,33 @@ No es lo mismo que `LengthScale`. Ese ajuste cambia el ritmo con que la voz
 genera el audio y requiere reiniciar el proceso residente; el botón actúa
 encima de eso. El reloj del reproductor cuenta tiempo del audio, así que a 2x
 avanza dos segundos por cada segundo real.
+
+### Panel de ajustes
+
+El botón de la tuerca abre los ajustes que no son de reproducción. Los
+cambios se guardan solos en `read_aloud_piper\runtime\ajustes.json`, que manda
+sobre `settings.psd1`, y "Restablecer todo" lo borra y vuelve a los de
+`settings.psd1`.
+
+| Sección | Ajuste | Cuándo se nota |
+|---|---|---|
+| Apariencia | Opacidad en reposo, tamaño del reproductor, letra del texto, panel de texto al aparecer y su alto y ancho | Al momento |
+| Voz | Motor (automático, voz propia o Piper), voz de Piper en español y en inglés | Al reiniciar el lector |
+| Voz | Rendimiento: rápido o ahorro de recursos, y en ahorro, a los cuántos minutos sin leer se libera la voz | Al reiniciar el lector |
+| Lectura | Cerrar al terminar, salto de los botones, idioma de los textos ambiguos, pausa entre párrafos | Al momento o en la próxima lectura |
+| Lectura | Pausa entre frases | Al reiniciar el lector |
+
+Los ajustes de voz van a los procesos de síntesis, que se abren al arrancar.
+Cuando cambias uno, el panel ofrece "Reiniciar ahora": el lector se cierra y
+vuelve a abrir solo en unos segundos, y corta la lectura en curso.
+
+**Rendimiento**, solo con la voz propia de Qwen3-TTS:
+
+| | Rápido (`Performance = 'rapido'`) | Ahorro de recursos (`'ahorro'`) |
+|---|---|---|
+| Voz cargada | Al arrancar el lector, y otra vez en cuanto la tarjeta queda libre | Con la primera lectura |
+| Primera frase | 1 o 2 s | Unos 20 s la primera vez; después, 1 o 2 s mientras siga cargada |
+| Sin leer | Ocupa unos 5 GB de la tarjeta y 2.3 GB de RAM, que cede si otro programa los pide | Se libera tras `SaverIdleMinutes` (5 por defecto) sin leer, y no ocupa nada |
 
 ## Limpieza
 

@@ -12,7 +12,10 @@
 
 [CmdletBinding()]
 param(
-    [switch]$NoWarmup
+    [switch]$NoWarmup,
+    # Lo usa el panel de ajustes para reiniciar el lector: el proceso nuevo
+    # espera a que termine el viejo, que todavia tiene la instancia unica.
+    [int]$EsperarA = 0
 )
 
 $ErrorActionPreference = 'Stop'
@@ -31,6 +34,10 @@ $settings = Get-ReadAloudSettings -Paths $paths
 # Una sola instancia. Sin esto, dos daemons pelean por la tuberia y el audio
 # se escucha duplicado, que es justo el sintoma que se quiere eliminar.
 # --------------------------------------------------------------------------
+if ($EsperarA -gt 0) {
+    try { Wait-Process -Id $EsperarA -Timeout 20 -ErrorAction Stop } catch { }
+}
+
 $mutexCreated = $false
 $mutex = New-Object Threading.Mutex($true, 'Global\read_aloud_daemon_v2', [ref]$mutexCreated)
 if (-not $mutexCreated) {
@@ -119,6 +126,14 @@ foreach ($par in @(@{ Lang = 'es'; Ajuste = 'EngineEs' }, @{ Lang = 'en'; Ajuste
     $engines[$par.Lang] = $resolved.Engine
 }
 Write-DaemonLog ('Motores: es={0}, en={1}' -f $engines['es'], $engines['en'])
+
+# Rendimiento. 'rapido': la voz de Qwen se carga al arrancar y se queda
+# cargada, asi cada lectura empieza en 1 o 2 s, a cambio de unos 5 GB de la
+# tarjeta y 2.3 GB de RAM. 'ahorro': no se carga hasta la primera lectura, que
+# espera unos 20 s, y se cierra tras SaverIdleMinutes sin leer; sin lecturas
+# no ocupa nada.
+$ahorro = ([string]$settings.Performance).ToLowerInvariant() -eq 'ahorro'
+if ($ahorro) { Write-DaemonLog "Rendimiento: ahorro de recursos ($($settings.SaverIdleMinutes) min sin leer)." }
 
 # --------------------------------------------------------------------------
 # Estado compartido entre hilos.
@@ -557,8 +572,8 @@ Start-BackgroundRunspace -Script $synthScript -Variables @{
             Log         = $qwenVoice.Log
             BusyFile    = $qwenVoice.BusyFile
             Batch       = [Math]::Max(1, [int]$settings.QwenBatch)
-            IdleMinutes = ([double]$settings.QwenIdleMinutes).ToString($invariant)
-            Reopen      = [bool]$settings.QwenReopen
+            IdleMinutes = $(if ($ahorro) { [double]$settings.SaverIdleMinutes } else { [double]$settings.QwenIdleMinutes }).ToString($invariant)
+            Reopen      = (-not $ahorro) -and [bool]$settings.QwenReopen
             ReopenFreeGB= [double]$settings.QwenReopenFreeGB
             Smi         = $(if ($vramGB -gt 0) { (Get-Command 'nvidia-smi' -ErrorAction SilentlyContinue).Source } else { '' })
         }
@@ -645,8 +660,27 @@ $xaml = @'
       </Setter>
     </Style>
   </Window.Resources>
-  <Grid>
-  <Border x:Name="Root" CornerRadius="10" Background="#F21B1B1F" BorderBrush="#33FFFFFF"
+  <!-- La escala agranda o achica todo el reproductor (ajuste "Tamano"). -->
+  <Grid x:Name="Escala">
+  <Grid.LayoutTransform>
+    <ScaleTransform x:Name="Zoom" ScaleX="1" ScaleY="1"/>
+  </Grid.LayoutTransform>
+  <Grid.RowDefinitions>
+    <RowDefinition Height="Auto"/>
+    <RowDefinition Height="Auto"/>
+  </Grid.RowDefinitions>
+  <!-- Pestana para agarrar la ventana y moverla. La barra tambien se arrastra
+       desde sus huecos, pero entre tantos botones cuesta atinarle. Monta un
+       pixel sobre el borde de Root y va por encima, para tapar esa linea y
+       verse como parte de la ventana. -->
+  <Border x:Name="Asa" Grid.Row="0" Panel.ZIndex="1" HorizontalAlignment="Center"
+          Width="72" Height="14" Margin="0,0,0,-1" CornerRadius="7,7,0,0"
+          Background="#F21B1B1F" BorderBrush="#33FFFFFF" BorderThickness="1,1,1,0"
+          Cursor="SizeAll" ToolTip="Arrastra para mover. Doble clic: volver a la esquina">
+    <Border Width="26" Height="3" CornerRadius="1.5" Background="#80FFFFFF"
+            VerticalAlignment="Center" Margin="0,2,0,0"/>
+  </Border>
+  <Border x:Name="Root" Grid.Row="1" CornerRadius="10" Background="#F21B1B1F" BorderBrush="#33FFFFFF"
           BorderThickness="1" Padding="10,7">
     <Border.Effect>
       <DropShadowEffect BlurRadius="14" ShadowDepth="2" Opacity="0.45" Color="#000000"/>
@@ -696,7 +730,7 @@ $xaml = @'
       <Button x:Name="BtnSpeed" Content="1x" FontFamily="Segoe UI" FontSize="10" FontWeight="SemiBold"
               Width="40" Height="26" Foreground="#9AE6B4" Background="Transparent"
               BorderThickness="0" Cursor="Hand" Margin="4,0,0,0"
-              ToolTip="Velocidad. Clic: mas rapido. Clic derecho: mas lento."/>
+              ToolTip="Velocidad. Clic: elegir. Rueda: mas rapido o mas lento."/>
       <Grid Width="170" Height="26" Margin="8,0,8,0" VerticalAlignment="Center">
         <Border Height="4" CornerRadius="2" Background="#3AFFFFFF" VerticalAlignment="Center"/>
         <Border x:Name="BufferBar" Height="4" CornerRadius="2" Background="#55FFFFFF"
@@ -710,6 +744,9 @@ $xaml = @'
               Width="26" Height="26" Foreground="#C8C8CC" Background="Transparent"
               BorderThickness="0" Cursor="Hand" Margin="6,0,0,0"
               ToolTip="Mostrar el texto que se esta leyendo"/>
+      <Button x:Name="BtnSettings" Content="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+              Width="26" Height="26" Foreground="#C8C8CC" Background="Transparent"
+              BorderThickness="0" Cursor="Hand" Margin="2,0,0,0" ToolTip="Ajustes"/>
       <Button x:Name="BtnClose" Content="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="12"
               Width="26" Height="26" Foreground="#C8C8CC" Background="Transparent"
               BorderThickness="0" Cursor="Hand" Margin="2,0,0,0" ToolTip="Cerrar"/>
@@ -720,7 +757,7 @@ $xaml = @'
        cualquier aplicacion: cada uno mueve su lado y el opuesto queda quieto.
        Caen sobre el relleno de Root, asi que no tapan ningun control. Solo
        se muestran con el panel de texto abierto, que es lo que crece. -->
-  <Grid x:Name="Bordes" Visibility="Collapsed">
+  <Grid x:Name="Bordes" Grid.Row="1" Visibility="Collapsed">
     <Thumb x:Name="BordeArriba" Style="{StaticResource Borde}" Height="6"
            VerticalAlignment="Top" Margin="12,0" Cursor="SizeNS"/>
     <Thumb x:Name="BordeAbajo" Style="{StaticResource Borde}" Height="6"
@@ -738,6 +775,14 @@ $xaml = @'
     <Thumb x:Name="EsquinaAbajoDerecha" Style="{StaticResource Borde}" Width="12" Height="12"
            HorizontalAlignment="Right" VerticalAlignment="Bottom" Cursor="SizeNWSE"/>
   </Grid>
+  <!-- Las velocidades, en fila sobre el boton. Se cierra sola al elegir o al
+       hacer clic en otra parte. -->
+  <Popup x:Name="SpeedPopup" PlacementTarget="{Binding ElementName=BtnSpeed}" Placement="Top"
+         VerticalOffset="-6" StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade">
+    <Border Background="#F81B1B1F" BorderBrush="#33FFFFFF" BorderThickness="1" CornerRadius="8" Padding="4">
+      <StackPanel x:Name="SpeedList" Orientation="Horizontal"/>
+    </Border>
+  </Popup>
   </Grid>
 </Window>
 '@
@@ -747,7 +792,8 @@ $xmlReader = [Xml.XmlReader]::Create($reader)
 $window = [Windows.Markup.XamlReader]::Load($xmlReader)
 
 $ui = @{}
-foreach ($name in @('Root','LangBadge','BtnBack','BtnPlay','BtnFwd','BtnSpeed','BufferBar','Seek','TimeLabel','BtnText','BtnClose','TextPanel','TextView','Bar','Bordes')) {
+foreach ($name in @('Root','LangBadge','BtnBack','BtnPlay','BtnFwd','BtnSpeed','BufferBar','Seek','TimeLabel','BtnText','BtnClose','TextPanel','TextView','Bar','Bordes',
+                    'Asa','Zoom','BtnSettings','SpeedPopup','SpeedList')) {
     $ui[$name] = $window.FindName($name)
 }
 
@@ -755,10 +801,23 @@ foreach ($name in @('Root','LangBadge','BtnBack','BtnPlay','BtnFwd','BtnSpeed','
 # opaca mientras la usas. Un clic sobre ella la activa y un clic en cualquier
 # otra parte la desactiva; Windows avisa de ambos. Al ocultarse tambien se
 # desactiva, asi que cada lectura vuelve a aparecer translucida.
-$opacidadReposo = [Math]::Max(0.3, [Math]::Min(1.0, [double]$settings.PlayerOpacity))
-$window.Opacity = $opacidadReposo
+$script:opacidadReposo = [Math]::Max(0.3, [Math]::Min(1.0, [double]$settings.PlayerOpacity))
+$window.Opacity = $script:opacidadReposo
 $window.Add_Activated({ $window.Opacity = 1.0 })
-$window.Add_Deactivated({ $window.Opacity = $opacidadReposo })
+$window.Add_Deactivated({ $window.Opacity = $script:opacidadReposo })
+
+# Tamano de todo el reproductor y de la letra del panel de texto. Los dos se
+# cambian desde los ajustes (lib\ReadAloud.Settings.ps1).
+function Set-PlayerScale {
+    param([double]$Value)
+    $escala = [Math]::Max(0.8, [Math]::Min(1.6, $Value))
+    $ui.Zoom.ScaleX = $escala
+    $ui.Zoom.ScaleY = $escala
+}
+
+$script:fuente = [Math]::Max(10, [Math]::Min(22, [double]$settings.TextFontSize))
+$ui.TextView.FontSize = $script:fuente
+Set-PlayerScale ([double]$settings.PlayerScale)
 
 # Posicion: la ventana se ancla por su esquina inferior derecha. Asi aparece
 # abajo a la derecha, y al abrir el panel de texto crece hacia arriba sin que
@@ -835,9 +894,9 @@ $players = @(
 function Get-ActivePlayer { return $players[$state.Active] }
 function Get-IdlePlayer   { return $players[1 - $state.Active] }
 
-# Velocidades que recorre el boton. Se cambia la velocidad de reproduccion, no
+# Velocidades de la lista del boton. Se cambia la velocidad de reproduccion, no
 # la de sintesis: asi el cambio es inmediato y no hay que regenerar el audio.
-$speedSteps = @(0.75, 1.0, 1.25, 1.5, 1.75, 2.0)
+$speedSteps = @(0.5, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0)
 $script:speed = 1.0
 
 if ($savedState -and $savedState.PSObject.Properties.Name -contains 'Speed') {
@@ -872,19 +931,66 @@ function Format-Speed {
     return ($Value.ToString('0.##', [Globalization.CultureInfo]::InvariantCulture) + 'x')
 }
 
+function Set-PlaybackSpeedValue {
+    param([double]$Value)
+
+    $script:speed = $Value
+    foreach ($p in $players) { $p.SpeedRatio = $script:speed }
+    $ui.BtnSpeed.Content = Format-Speed $script:speed
+    foreach ($b in $ui.SpeedList.Children) {
+        if ([double]$b.Tag -eq $script:speed) {
+            $b.Foreground = $colores.Encendido
+            $b.Background = $colores.Elegido
+        } else {
+            $b.Foreground = $colores.Texto
+            $b.Background = $colores.Ninguno
+        }
+    }
+    Save-PlayerState
+}
+
 function Set-PlaybackSpeed {
+    # Un paso mas rapido (1) o mas lento (-1): la rueda sobre el boton y las
+    # ordenes 'faster' y 'slower' de read_aloud.ps1.
     param([int]$Direction)
 
     $index = [Array]::IndexOf($speedSteps, $script:speed)
-    if ($index -lt 0) { $index = 1 }
+    if ($index -lt 0) { $index = [Array]::IndexOf($speedSteps, 1.0) }
 
     $index = [Math]::Max(0, [Math]::Min($speedSteps.Count - 1, $index + $Direction))
-    $script:speed = $speedSteps[$index]
-
-    foreach ($p in $players) { $p.SpeedRatio = $script:speed }
-    $ui.BtnSpeed.Content = Format-Speed $script:speed
-    Save-PlayerState
+    Set-PlaybackSpeedValue $speedSteps[$index]
 }
+
+foreach ($paso in $speedSteps) {
+    $boton = New-Object Windows.Controls.Button
+    $boton.Content = Format-Speed $paso
+    $boton.Tag = $paso
+    $boton.Width = 40
+    $boton.Height = 26
+    $boton.FontFamily = New-Object Windows.Media.FontFamily('Segoe UI')
+    $boton.FontSize = 11
+    $boton.FontWeight = [Windows.FontWeights]::SemiBold
+    $boton.Add_Click({
+        param($sender, $e)
+        Set-PlaybackSpeedValue ([double]$sender.Tag)
+        $ui.SpeedPopup.IsOpen = $false
+    })
+    [void]$ui.SpeedList.Children.Add($boton)
+}
+
+# Centrada sobre el boton, que es mas angosto que la fila, pero sin pasarse
+# del borde izquierdo del reproductor: el boton esta cerca de ese borde.
+$ui.SpeedPopup.Add_Opened({
+    $ui.SpeedPopup.Child.UpdateLayout()
+    $centrada = ($ui.BtnSpeed.ActualWidth - $ui.SpeedPopup.Child.ActualWidth) / 2
+    $hastaElBorde = -$ui.BtnSpeed.TranslatePoint((New-Object Windows.Point(0, 0)), $ui.Root).X
+    $ui.SpeedPopup.HorizontalOffset = [Math]::Max($centrada, $hastaElBorde)
+})
+
+# Un clic en el boton con la fila abierta primero la cierra (cuenta como clic
+# fuera de ella) y despues llegaria al boton, que la volveria a abrir.
+$script:speedPopupCerrada = [datetime]::MinValue
+$ui.SpeedPopup.Add_Closed({ $script:speedPopupCerrada = [datetime]::Now })
 
 # --------------------------------------------------------------------------
 # Estado de la lectura en curso.
@@ -1076,6 +1182,8 @@ $colores = @{
     Ninguno   = [Windows.Media.Brushes]::Transparent
     Encendido = New-Brush '#9AE6B4'
     Apagado   = New-Brush '#C8C8CC'
+    Texto     = New-Brush '#D8D8DC'
+    Elegido   = New-Brush '#2EFFFFFF'
 }
 
 $script:runs = New-Object System.Collections.Generic.List[object]
@@ -1101,12 +1209,12 @@ function Build-TextPanel {
 
         if ($c.Block -ne $bloque) {
             $parrafo = New-Object Windows.Documents.Paragraph
-            $parrafo.LineHeight = 19
+            $parrafo.LineHeight = [Math]::Round($script:fuente * 1.46)
 
             switch ($c.Kind) {
                 'titulo' {
                     $parrafo.FontWeight = [Windows.FontWeights]::SemiBold
-                    $parrafo.FontSize = 14
+                    $parrafo.FontSize = $script:fuente + 1
                     $arriba = 0
                     if ($i -gt 0) { $arriba = 10 }
                     $parrafo.Margin = New-Object Windows.Thickness(0, $arriba, 0, 4)
@@ -1131,6 +1239,19 @@ function Build-TextPanel {
     }
 
     $ui.TextView.ScrollToHome()
+}
+
+function Set-TextFont {
+    # Cambia la letra del panel sin rearmar el texto, para no perder por donde
+    # va la lectura.
+    param([double]$Size)
+
+    $script:fuente = [Math]::Max(10, [Math]::Min(22, $Size))
+    $ui.TextView.FontSize = $script:fuente
+    foreach ($bloque in $ui.TextView.Document.Blocks) {
+        $bloque.LineHeight = [Math]::Round($script:fuente * 1.46)
+        if ($bloque.FontWeight -eq [Windows.FontWeights]::SemiBold) { $bloque.FontSize = $script:fuente + 1 }
+    }
 }
 
 function Start-FromChunk {
@@ -1308,12 +1429,15 @@ function Resize-TextPanel {
     $anchoAntes = $ui.TextPanel.ActualWidth
     $altoAntes = $ui.TextPanel.ActualHeight
 
+    # Las medidas del panel van sin la escala del reproductor; las de la
+    # pantalla, con ella.
+    $escala = $ui.Zoom.ScaleX
     $alto = $altoAntes - $Arriba + $Abajo
-    $alto = [Math]::Max(80, [Math]::Min($alto, $area.Height * 0.8))
+    $alto = [Math]::Max(80, [Math]::Min($alto, $area.Height * 0.8 / $escala))
 
     # Nunca mas estrecho que la barra de controles, que vive debajo.
     $ancho = $anchoAntes - $Izquierda + $Derecha
-    $ancho = [Math]::Max($ui.Bar.ActualWidth, [Math]::Min($ancho, $area.Width * 0.9))
+    $ancho = [Math]::Max($ui.Bar.ActualWidth, [Math]::Min($ancho, $area.Width * 0.9 / $escala))
 
     # La ventana se coloca por su esquina inferior derecha. Al mover el lado
     # izquierdo o el de arriba, esa esquina queda donde estaba; al mover el
@@ -1329,16 +1453,16 @@ function Resize-TextPanel {
 
         if ($Derecha -ne 0) {
             $limite = [Windows.SystemParameters]::VirtualScreenLeft + [Windows.SystemParameters]::VirtualScreenWidth
-            $crece = [Math]::Min($ancho - $anchoAntes, $limite - $script:ancla.Right)
+            $crece = [Math]::Min($ancho - $anchoAntes, ($limite - $script:ancla.Right) / $escala)
             $ancho = $anchoAntes + $crece
-            $script:ancla.Right += $crece
+            $script:ancla.Right += $crece * $escala
         }
 
         if ($Abajo -ne 0) {
             $limite = [Windows.SystemParameters]::VirtualScreenTop + [Windows.SystemParameters]::VirtualScreenHeight
-            $crece = [Math]::Min($alto - $altoAntes, $limite - $script:ancla.Bottom)
+            $crece = [Math]::Min($alto - $altoAntes, ($limite - $script:ancla.Bottom) / $escala)
             $alto = $altoAntes + $crece
-            $script:ancla.Bottom += $crece
+            $script:ancla.Bottom += $crece * $escala
         }
     }
 
@@ -1460,6 +1584,14 @@ function Start-Speaking {
     $state.IsPlaying = $true
 
     if ($settings.ShowPlayer) {
+        # Ajuste "Panel de texto al aparecer": como lo dejaste, o siempre
+        # abierto o cerrado. Solo al aparecer, no si ya estaba a la vista.
+        if (-not $window.IsVisible) {
+            switch ([string]$settings.PanelOnShow) {
+                'abierto' { if (-not $script:panelVisible) { Set-TextPanel -Visible $true } }
+                'cerrado' { if ($script:panelVisible) { Set-TextPanel -Visible $false } }
+            }
+        }
         $window.Show()
         # Se coloca al mostrar, no solo al arrancar: el alto depende de si el
         # panel esta abierto, y el monitor puede cambiar mientras el proceso
@@ -1585,9 +1717,16 @@ $ui.BtnFwd.Add_Click({
     Invoke-Seek -TargetSeconds ((Get-GlobalPosition) + $settings.SkipSeconds)
 })
 
-$ui.BtnSpeed.Add_Click({ Set-PlaybackSpeed -Direction 1 })
-$ui.BtnSpeed.Add_MouseRightButtonUp({ Set-PlaybackSpeed -Direction -1 })
-$ui.BtnSpeed.Content = Format-Speed $script:speed
+$ui.BtnSpeed.Add_Click({
+    if (([datetime]::Now - $script:speedPopupCerrada).TotalMilliseconds -lt 300) { return }
+    $ui.SpeedPopup.IsOpen = -not $ui.SpeedPopup.IsOpen
+})
+$ui.BtnSpeed.Add_MouseWheel({
+    param($sender, $e)
+    if ($e.Delta -gt 0) { Set-PlaybackSpeed -Direction 1 } else { Set-PlaybackSpeed -Direction -1 }
+    $e.Handled = $true
+})
+Set-PlaybackSpeedValue $script:speed
 
 $ui.BtnText.Add_Click({ Set-TextPanel -Visible (-not $script:panelVisible) })
 
@@ -1659,7 +1798,29 @@ $ui.Seek.Add_PreviewMouseUp({ Complete-SliderSeek })
 # Si otro control se queda con el raton, el arrastre termina igual.
 $ui.Seek.Add_LostMouseCapture({ Complete-SliderSeek })
 
-# La ventana se arrastra desde cualquier parte que no sea un control.
+function Move-PlayerWindow {
+    param($e)
+
+    # Doble clic: vuelve a la esquina inferior derecha.
+    if ($e.ClickCount -eq 2) {
+        $script:ancla = $null
+        Set-PlayerPosition
+        Save-PlayerState
+        return
+    }
+
+    try { $window.DragMove() } catch { }
+
+    # Donde la dejaste pasa a ser su esquina de referencia.
+    $script:ancla = @{
+        Right  = $window.Left + $window.ActualWidth
+        Bottom = $window.Top + $window.ActualHeight
+    }
+    Save-PlayerState
+}
+
+# La ventana se arrastra desde la pestana de arriba y desde cualquier parte de
+# la barra que no sea un control.
 #
 # El clic sobre la linea de la barra no lo marca nadie como atendido, asi que
 # llegaba hasta aqui y arrancaba el arrastre de la ventana. DragMove se queda
@@ -1687,23 +1848,17 @@ $ui.Root.Add_MouseLeftButtonDown({
         }
     }
 
-    # Doble clic sobre la barra: vuelve a la esquina inferior derecha.
-    if ($e.ClickCount -eq 2) {
-        $script:ancla = $null
-        Set-PlayerPosition
-        Save-PlayerState
-        return
-    }
-
-    try { $window.DragMove() } catch { }
-
-    # Donde la dejaste pasa a ser su esquina de referencia.
-    $script:ancla = @{
-        Right  = $window.Left + $window.ActualWidth
-        Bottom = $window.Top + $window.ActualHeight
-    }
-    Save-PlayerState
+    Move-PlayerWindow $e
 })
+
+# La pestana de arriba solo sirve para eso.
+$ui.Asa.Add_MouseLeftButtonDown({
+    param($sender, $e)
+    Move-PlayerWindow $e
+})
+
+# El panel de ajustes, el boton de la tuerca.
+. (Join-Path $PSScriptRoot 'lib\ReadAloud.Settings.ps1')
 
 # La X oculta, no destruye: la ventana se reutiliza en la siguiente lectura.
 $window.Add_Closing({
@@ -1867,6 +2022,9 @@ $timer.Start()
 if (-not $NoWarmup) {
     $warmIndex = 0
     foreach ($lang in @($models.Keys)) {
+        # En ahorro, Qwen espera a la primera lectura: calentarlo aqui seria
+        # cargarlo igual.
+        if ($ahorro -and $engines[$lang] -eq 'qwen') { continue }
         $sync.SynthJobs.Enqueue(@{
             Generation = 0
             Index      = -1 - $warmIndex

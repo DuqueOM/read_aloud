@@ -39,6 +39,13 @@
     QwenReopen = $true
     QwenReopenFreeGB = 6
 
+    # Rendimiento de la voz propia. 'rapido' la deja cargada: cada lectura
+    # empieza en 1 o 2 s. 'ahorro' la carga con la primera lectura (unos 20 s)
+    # y la libera tras SaverIdleMinutes sin leer. Tambien se cambia desde el
+    # panel de ajustes del reproductor (la tuerca), que manda sobre esto.
+    Performance = 'rapido'
+    SaverIdleMinutes = 5
+
     # Velocidad. Mas alto es mas lento. 1.00 es la velocidad base del modelo.
     LengthScale = 1.06
 
@@ -64,6 +71,12 @@
     # vuelve opaco del todo, y al hacer clic fuera regresa a este valor.
     PlayerOpacity = 0.75
     SkipSeconds = 10
+    # Tamano de todo el reproductor (0.8 a 1.6) y de la letra del panel de
+    # texto (10 a 22). Panel de texto al aparecer: 'recordar' (como lo
+    # dejaste), 'abierto' o 'cerrado'.
+    PlayerScale = 1.0
+    TextFontSize = 13
+    PanelOnShow = 'recordar'
 
     # Pausas, en segundos, que se agregan donde el texto cambia de bloque.
     # Van encima del silencio normal de fin de frase, asi que valores

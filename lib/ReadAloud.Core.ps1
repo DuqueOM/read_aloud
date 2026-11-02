@@ -33,6 +33,7 @@ function Get-ReadAloudPaths {
         TmpDir      = Join-Path $PiperBaseDir 'tmp'
         LogFile     = Join-Path $runtimeDir 'daemon.log'
         StateFile   = Join-Path $runtimeDir 'player.json'
+        UserSettingsFile = Join-Path $runtimeDir 'ajustes.json'
         TermsFile   = Join-Path $root 'config\terms_es.tsv'
         SettingsFile= Join-Path $root 'config\settings.psd1'
         DaemonScript= Join-Path $root 'read_aloud_daemon.ps1'
@@ -72,22 +73,58 @@ function Get-ReadAloudSettings {
         QwenMinVramGB       = 7
         QwenReopen          = $true
         QwenReopenFreeGB    = 6
+        Performance         = 'rapido'
+        SaverIdleMinutes    = 5
+        PlayerScale         = 1.0
+        TextFontSize        = 13
+        PanelOnShow         = 'recordar'
     }
 
-    if (-not (Test-Path -LiteralPath $Paths.SettingsFile)) {
-        return $defaults
-    }
-
-    try {
-        $loaded = Read-PowerShellDataFile -Path $Paths.SettingsFile
-        foreach ($key in @($loaded.Keys)) {
-            $defaults[$key] = $loaded[$key]
+    if (Test-Path -LiteralPath $Paths.SettingsFile) {
+        try {
+            $loaded = Read-PowerShellDataFile -Path $Paths.SettingsFile
+            foreach ($key in @($loaded.Keys)) {
+                $defaults[$key] = $loaded[$key]
+            }
+        } catch {
+            Write-Warning "No pude leer config\settings.psd1; uso los valores por defecto. $($_.Exception.Message)"
         }
-    } catch {
-        Write-Warning "No pude leer config\settings.psd1; uso los valores por defecto. $($_.Exception.Message)"
+    }
+
+    # Lo que se cambia en el panel de ajustes del reproductor manda sobre
+    # settings.psd1. Solo se aceptan claves conocidas: un archivo editado a mano
+    # con un error no debe meter valores raros.
+    $usuario = Get-UserSettings -Paths $Paths
+    foreach ($key in @($usuario.Keys)) {
+        if ($defaults.ContainsKey($key)) { $defaults[$key] = $usuario[$key] }
     }
 
     return $defaults
+}
+
+function Get-UserSettings {
+    # Los ajustes elegidos en el panel del reproductor (runtime\ajustes.json).
+    param([hashtable]$Paths)
+
+    $valores = @{}
+    if (-not (Test-Path -LiteralPath $Paths.UserSettingsFile)) { return $valores }
+    try {
+        $json = Get-Content -LiteralPath $Paths.UserSettingsFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        foreach ($p in $json.PSObject.Properties) { $valores[$p.Name] = $p.Value }
+    } catch {
+        Write-Warning "No pude leer $($Paths.UserSettingsFile); lo ignoro. $($_.Exception.Message)"
+    }
+    return $valores
+}
+
+function Save-UserSetting {
+    # Guarda un ajuste del panel junto a los que ya habia.
+    param([hashtable]$Paths, [string]$Name, $Value)
+
+    $valores = Get-UserSettings -Paths $Paths
+    $valores[$Name] = $Value
+    $json = ConvertTo-Json -InputObject $valores
+    [IO.File]::WriteAllText($Paths.UserSettingsFile, $json, (New-Object Text.UTF8Encoding($false)))
 }
 
 function Read-PowerShellDataFile {
