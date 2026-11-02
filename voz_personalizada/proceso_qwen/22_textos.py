@@ -1,7 +1,11 @@
-"""¿Que transcribe mejor los clips de la voz de prueba?
+"""¿Que transcribe mejor los clips de la voz?
 
-La referencia son los textos de los 516 clips del conjunto final, con las 140
-correcciones a mano del usuario. Se comparan:
+Ademas, CONTEXTO, normalizar() y distancia(), que usan 27_transcribir_clips.py
+y 28_revision.py, salen de aqui: el contexto y las variantes de los nombres,
+de voz.toml.
+
+Con la voz de prueba, la referencia fueron los textos de los 516 clips del conjunto
+final, con las 140 correcciones a mano del usuario. Se comparan:
 
 - hoy: el texto que salio de transcribir el episodio entero con Whisper
   large-v3, antes de las correcciones;
@@ -33,21 +37,27 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
 os.environ.setdefault("HF_HOME", str(RAIZ / "modelos" / "hf"))
+sys.path.insert(0, str(Path(__file__).parent))
+import voz  # noqa: E402
+
 DATOS = RAIZ / "datos"
 SALIDA = DATOS / "22_textos"
-FINAL = DATOS / "08_final" / "mi_voz_es"
+FINAL = DATOS / "08_final" / f"{voz.NOMBRE}_{voz.IDIOMA}"
 
-# Los nombres como los escribe el usuario: asi suenan en la grabacion.
-NOMBRES = ("la voz de prueba, Ana, Ana, Ana, Ana, Ana, Ana, Ana, Ana, Ana, Ana, "
-           "Ana, Ana, Ana, cartas Ana, las grabaciones")
-CONTEXTO = f"Charlas de cocina. Nombres: {NOMBRES}."
+# De que es la grabacion y los nombres propios como deben escribirse: guia a
+# los dos transcriptores. Con la voz de prueba: "las grabaciones de prueba, grabaciones.
+# Nombres: la voz de prueba, Ana, Ana, ...".
+CONTEXTO = voz.CONTEXTO
 # Variantes de un mismo nombre que no cuentan como error.
-VARIANTES = {"betto": "beto"}
+VARIANTES = voz.VARIANTES
 
 
 def referencias() -> dict[str, str]:
+    """Los textos ya corregidos por el usuario en una ronda anterior, si la hubo."""
     textos = {}
     for archivo in ("entrenamiento.jsonl", "validacion.jsonl"):
+        if not (DATOS / "11_qwen" / archivo).exists():
+            continue
         for linea in (DATOS / "11_qwen" / archivo).read_text(encoding="utf-8").splitlines():
             fila = json.loads(linea)
             textos[Path(fila["audio"]).stem] = fila["text"]
@@ -76,7 +86,7 @@ def con_whisper() -> None:
         textos = {}
         for clave in sorted(referencias()):
             audio = whisper.load_audio(str(FINAL / f"{clave}.wav"))
-            textos[clave] = modelo.transcribe(audio, language="es", beam_size=5, best_of=5, fp16=False,
+            textos[clave] = modelo.transcribe(audio, language=voz.IDIOMA, beam_size=5, best_of=5, fp16=False,
                                               condition_on_previous_text=False, initial_prompt=contexto)["text"].strip()
         guardar(nombre, textos)
         print(f"{nombre}: listo", flush=True)
@@ -92,7 +102,8 @@ def con_qwen() -> None:
     for nombre, contexto in (("qwen", ""), ("qwen_contexto", CONTEXTO)):
         textos = {}
         for i in range(0, len(rutas), 16):
-            for clave, r in zip(claves[i:i + 16], modelo.transcribe(rutas[i:i + 16], context=contexto, language="Spanish")):
+            for clave, r in zip(claves[i:i + 16], modelo.transcribe(rutas[i:i + 16], context=contexto,
+                                                                    language=voz.IDIOMA_TEXTO)):
                 textos[clave] = r.text.strip()
         guardar(nombre, textos)
         print(f"{nombre}: listo", flush=True)
@@ -153,7 +164,6 @@ def comparar() -> None:
 
 if __name__ == "__main__":
     if sys.argv[1] != "comparar":
-        sys.path.insert(0, str(Path(__file__).parent))
         import gpu
         gpu.ocupar()
     {"whisper": con_whisper, "qwen": con_qwen, "comparar": comparar}[sys.argv[1]]()

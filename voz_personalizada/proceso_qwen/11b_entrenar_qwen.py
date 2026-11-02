@@ -1,9 +1,9 @@
-"""Afina Qwen3-TTS 1.7B con la voz de prueba usando LoRA.
+"""Afina Qwen3-TTS 1.7B con una voz propia usando LoRA.
 
 Parte de la receta oficial (finetuning/sft_12hz.py del repositorio de
 Qwen3-TTS, commit 022e286), que tiene tres errores que hacen que el modelo
 entrenado no diga el texto. Se comprobaron con el modelo base sin tocar, que
-debe predecir bien los codigos de la voz de prueba si la entrada esta bien armada:
+debe predecir bien los codigos de la voz si la entrada esta bien armada:
 
 - El texto entra sin pasar por text_projection, que la generacion si aplica.
   Con ella, la perdida del base baja de 8.7 a 1.6.
@@ -195,10 +195,12 @@ def main() -> None:
     qwen = Qwen3TTSModel.from_pretrained(MODELO_BASE, device_map="cuda:0", dtype=torch.bfloat16,
                                          attn_implementation="sdpa")
     modelo, procesador, config = qwen.model, qwen.processor, qwen.model.config
-    idioma_id = config.talker_config.codec_language_id["spanish"]
 
     entrenamiento = [json.loads(l) for l in (datos / "entrenamiento.jsonl").read_text(encoding="utf-8").splitlines()]
     validacion = [json.loads(l) for l in (datos / "validacion.jsonl").read_text(encoding="utf-8").splitlines()]
+    # El idioma de la voz, el que 31_conjunto_qwen.py anota en cada clip.
+    idioma = entrenamiento[0]["language"]
+    idioma_id = config.talker_config.codec_language_id[idioma]
 
     # Huella de voz de la muestra, la misma para todos los clips (como
     # recomienda la receta). Queda guardada para el modelo final.
@@ -219,7 +221,7 @@ def main() -> None:
     print(f"parametros LoRA: {sum(p.numel() for p in entrenables) / 1e6:.1f} M", flush=True)
     (PUNTOS / "ajuste.json").write_text(json.dumps({
         "r": RANGO, "lora_alpha": ALFA, "lora_dropout": ABANDONO, "target_modules": CAPAS,
-        "modelo_base": MODELO_BASE, "idioma": "spanish",
+        "modelo_base": MODELO_BASE, "idioma": idioma,
         "aprendizaje": APRENDIZAJE, "epocas": EPOCAS, "datos": str(datos),
         "clips": len(entrenamiento)}, indent=1), encoding="utf-8")
 

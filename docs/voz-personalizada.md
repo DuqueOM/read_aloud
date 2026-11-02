@@ -114,17 +114,27 @@ Otras formas:
 
 ## 2. Preparar la carpeta de trabajo
 
-Copia los scripts del proceso a la carpeta de trabajo y corre todo desde ahí:
+El instalador deja los scripts del proceso en `scripts\` y crea `voz.toml`.
+Todos los pasos se corren desde la carpeta de trabajo:
 
 ```powershell
 cd D:\voces\mi_voz
-Copy-Item C:\ruta\a\read_aloud\voz_personalizada\proceso_qwen\* .\scripts\
 ```
 
-Antes de empezar, ajusta lo que es de cada voz (la tabla está en
-[proceso_qwen/README.md](../voz_personalizada/proceso_qwen/README.md)): las
-carpetas donde caen las grabaciones, los nombres propios de las grabaciones y los
-capítulos duplicados.
+Antes de empezar, edita `voz.toml` con lo que es de esta voz (cada campo está
+explicado en el archivo, y la tabla de quién usa cada uno, en
+[proceso_qwen/README.md](../voz_personalizada/proceso_qwen/README.md)):
+
+- **`nombre` y `titulo`:** cómo se llama, sin espacios y en pantalla;
+- **`idioma`:** el de las grabaciones;
+- **`origenes`:** las carpetas donde caen las grabaciones, y `filtro_nombre`
+  si comparten carpeta con otros videos;
+- **`contexto` y `variantes`:** de qué es la grabación y los nombres propios
+  como deben escribirse, para los transcriptores;
+- **`duplicados`:** si después descubres que bajaste un episodio dos veces.
+
+Los scripts no se editan, salvo los experimentos (`33` y `34`), que tienen
+sus opciones arriba de todo.
 
 Pon la referencia de la voz en `referencias\original\` y sepárala con el mismo
 separador que las grabaciones:
@@ -145,11 +155,14 @@ el primero usan la tarjeta, uno a la vez. Con dos a la vez no caben en 8 GB,
 Windows pasa memoria a la RAM y todo va mucho más lento.
 
 - **Cada capítulo recibe un identificador fijo** por el número de su nombre:
-  `ep01`, `ep02`... Entiende "Episode 22", "capítulo 1" y "42 - titulo...". Así
-  se pueden agregar capítulos después sin desordenar lo hecho.
+  `ep01`, `ep02`... Entiende "Episode 22", "Episodio 22", "capítulo 1", un
+  número al principio y, si no, el primer número del nombre; para otra forma,
+  `patron_episodio` en `voz.toml`. Así se pueden agregar capítulos después
+  sin desordenar lo hecho.
 - **Suma las descargas que terminan mientras corre.** Chrome guarda una
-  descarga a medias como `.crdownload`; un `.mp4` ya está entero. Antes de
-  extraer cada video lo busca de nuevo, por si lo moviste de carpeta.
+  descarga a medias como `.crdownload`; un video con su extensión ya está
+  entero. Antes de extraer cada video lo busca de nuevo, por si lo moviste de
+  carpeta.
 - **El avance se ve en `progreso.html`**, que se recarga solo cada 15 s.
 - **Tiempo:** unos 6 minutos por capítulo; 70 capítulos, unas 8 horas.
 
@@ -164,6 +177,7 @@ hace falta una revisión con el método anterior, sobre unos 20 capítulos:
 ```powershell
 .\.venv\Scripts\python.exe scripts\04a_calibrar.py
 .\.venv\Scripts\python.exe scripts\04_cortar.py
+$env:VOZ_TRABAJO = (Get-Location).Path
 .\.venv\Scripts\python.exe C:\ruta\a\read_aloud\voz_personalizada\scripts\05_revision.py
 ```
 
@@ -263,9 +277,17 @@ botón descarga `revision.json`, que es lo que lee el paso siguiente. Cópialo a
 
 De lo que conservaste quita los capítulos duplicados, los clips de menos de
 1 s y las tomas de más de una misma frase, y deja los mejores 60 minutos por
-calidad. Por qué y con qué medidas, en la
+calidad (`minutos_finales` en `voz.toml`). Por qué y con qué medidas, en la
 [ADR 0010](adr/0010-conjunto-final.md). El detalle de cada clip quitado, con
 su motivo, queda en `datos\30_final\seleccion.json`.
+
+La primera vez aparta también **las 10 frases de validación**: con ellas se
+mide cada época, y son las que comparas con la voz real al elegir, así que
+nunca entran al entrenamiento. Son de 2 a 6 s, de buena calidad, de episodios
+distintos, con un texto que no se repite en otro clip, y al menos una pregunta
+y una exclamación. Quedan en `datos\09_comparar\` (la lista y el audio real) y
+se reusan en todas las rondas; para elegirlas de nuevo, borra esa carpeta
+antes de correr este paso.
 
 ## 10. Entrenar
 
@@ -278,7 +300,12 @@ Start-Process .\.venv\Scripts\python.exe scripts\32_entrenar_final.py -WindowSty
    la [ADR 0009](adr/0009-limpieza-del-audio.md).
 2. **Saca los códigos de audio** de Qwen3-TTS de cada clip.
 3. **Entrena dos voces** (`11b_entrenar_qwen.py`): con los 60 mejores minutos y
-   con todo lo conservado, para comparar si el corte por calidad ayuda.
+   con todo lo conservado, para comparar si el corte por calidad ayuda. Quedan
+   en `datos\11_qwen\puntos_mejores60` y `puntos_todos` (con la voz de prueba se
+   llamaron `puntos_v4_60` y `puntos_v4_todos`).
+
+Si no hay muestra de referencia en `datos\11_qwen\referencia.wav`, se elige el
+clip de más calidad de 5 a 10 s: de ella sale la huella de la voz.
 
 El entrenamiento es LoRA sobre Qwen3-TTS 12Hz 1.7B Base, con la receta oficial
 corregida (tiene tres errores, ver la
@@ -296,15 +323,16 @@ validación entra al entrenamiento.
 ## 11. Elegir la voz
 
 ```powershell
-.\.venv_qwen\Scripts\python.exe scripts\11c_probar_qwen.py --puntos puntos_v4_60 1 2 3
-.\.venv\Scripts\python.exe scripts\13_comparar.py "qwen_mi_voz_v4_60_e02=60 mejores, época 2" ...
+.\.venv_qwen\Scripts\python.exe scripts\11c_probar_qwen.py --puntos puntos_mejores60 1 2 3
+.\.venv\Scripts\python.exe scripts\13_comparar.py "qwen_mi_voz_mejores60_e02=60 mejores, época 2" ...
 ```
 
 `11c_probar_qwen.py` genera las 10 frases de validación, más dos en inglés,
-con cada época. `09e_prosodia.py` y `10c_medir.py` miden entonación, timbre y
-errores de texto. `13_comparar.py` arma la página de escucha
-(`datos\13_comparar\comparar.html`). Pon solo la voz real, la voz actual de
-la app y dos o tres candidatas: más versiones cansan y se distinguen peor.
+con cada época, como `qwen_<nombre>_<entrenamiento>_eNN`. `10c_medir.py` mide
+timbre y errores de texto. `13_comparar.py` arma la página de escucha
+(`datos\13_comparar\comparar.html`); con `--app VERSION`, esa versión es la
+fila "voz actual de la app". Pon solo la voz real, la voz actual de la app y
+dos o tres candidatas: más versiones cansan y se distinguen peor.
 
 La época se elige con la validación como guía y de oído como decisión final
 ([ADR 0003](adr/0003-elegir-la-epoca.md)). Con 20 minutos de voz y aprendizaje
@@ -320,9 +348,10 @@ noviembre de 2026.
 Cuando las candidatas se parecen tanto que unas frases ganan con una y otras
 con otra, usa la votación a ciegas: `.\.venv\Scripts\python.exe
 scripts\34_votacion.py` genera dos tomas por voz de 20 frases (las 10 de
-validación y 10 como las que lee Read Aloud), mide errores de lectura y timbre, y
-abre `datos\34_votacion\votar.html`. Las voces se cambian en la lista `VOCES`
-del script. Con ella, dos entrenamientos más (45 mejores minutos, y los 60 con
+validación y 10 como las que lee Read Aloud), mide errores de lectura y
+timbre, y abre `datos\34_votacion\votar.html`. Las voces se cambian en la
+lista `VOCES` del script, y los textos de la app, que están en español, en
+`FRASES_APP`. Con ella, dos entrenamientos más (45 mejores minutos, y los 60 con
 aprendizaje más lento) empataron con la voz de la app
 ([ADR 0012](adr/0012-quinta-ronda-y-votacion.md)). La de 45 minutos ganó en
 los textos como los de la app, y desde el 2 de noviembre es la que se prueba
@@ -333,7 +362,7 @@ en el uso diario.
 Copia la época elegida a la carpeta de la voz de la app:
 
 ```powershell
-$p = 'D:\voces\mi_voz\datos\11_qwen\puntos_v4_60'
+$p = 'D:\voces\mi_voz\datos\11_qwen\puntos_mejores60'
 $v = 'D:\voces\mi_voz\modelos\voz_app'
 Copy-Item "$p\ajuste.json", "$p\voz.safetensors" $v
 Copy-Item "$p\epoca_02.safetensors" "$v\lora.safetensors"
@@ -432,6 +461,7 @@ vuelve a crear iguales.
 ## Carpeta de trabajo
 
 ```
+voz.toml                  Lo que es de esta voz: nombre, idioma, carpetas, nombres propios
 referencias\original\     La referencia de la voz, tal cual
 referencias\              La referencia con la voz separada
 scripts\                  Copia de voz_personalizada\proceso_qwen
@@ -441,8 +471,8 @@ datos\03_transcripcion\   Palabras con sus tiempos, segun Whisper
 datos\03_alineado\        Los mismos tiempos, afinados
 datos\04_cortes\          Cortes de la primera revision
 datos\05_revision\        Pagina y decisiones de la primera revision
-datos\08_final\           Las 10 frases de validacion (y el primer conjunto)
-datos\09_comparar\        Esas frases dichas por la voz real
+datos\08_final\           Con la voz de prueba, las 10 frases de validacion (y el primer conjunto)
+datos\09_comparar\        Las 10 frases de validacion y su audio real
 datos\21_hablante\        Comparacion de formas de reconocer la voz
 datos\24_curvas\          Huellas de WavLM y el clasificador de quien habla
 datos\25_cortes\          Clips de frases completas

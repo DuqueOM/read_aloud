@@ -1,9 +1,9 @@
-"""¿Hay una forma mejor de reconocer la voz de prueba que la de hoy?
+"""¿Hay una forma mejor de reconocer la voz que la de hoy?
 
 Hoy cada fragmento se compara con unas pocas grabaciones de referencia
 (ECAPA, parecido coseno, calibrado en 04a_calibrar.py). Ahora tenemos algo
-mucho mejor que las referencias: 717 clips que el usuario escucho y marco,
-516 como la voz de prueba sola y 201 como descartados. Con esas marcas se puede
+mucho mejor que las referencias: los clips que el usuario escucho y marco
+(con la voz de prueba, 717: 516 como la voz sola y 201 como descartados). Con esas marcas se puede
 entrenar un clasificador sobre la huella de cada clip, y probar huellas de
 otros modelos, ademas de ECAPA:
 

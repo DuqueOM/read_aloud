@@ -1,14 +1,14 @@
-"""Convierte el parecido con las referencias en una probabilidad de ser la voz de prueba.
+"""Convierte el parecido con las referencias en una probabilidad de ser la voz.
 
 El parecido es una medida de distancia entre voces, no una probabilidad: un
 0.6 no significa 60 %. Para poder decir "confianza de mas del 70 %" se ajusta
 un modelo de dos grupos a todas las ventanas de los capitulos. Un grupo
-representa a la voz de prueba y el otro al resto de las voces. Con ese modelo, cada
+representa a la voz y el otro al resto de las voces. Con ese modelo, cada
 valor de parecido se traduce en la probabilidad de pertenecer al grupo de
-la voz de prueba.
+la voz.
 
 El grupo del resto mezcla muchas voces y no tiene forma de campana, asi que se
-modela con dos campanas; la voz de prueba, con una. El ajuste se hace por maxima
+modela con dos campanas; la voz, con una. El ajuste se hace por maxima
 verosimilitud con el algoritmo EM.
 
 Guarda la calibracion en datos/04_curvas/calibracion.json, que lee
@@ -49,7 +49,7 @@ def main() -> None:
         (lambda c: c[~np.isnan(c)])(np.load(f)["parecido"]) for f in sorted(CURVAS.glob("ep*.npz"))
     ])
 
-    # Tres campanas: dos para el resto de las voces y una para la voz de prueba, que es
+    # Tres campanas: dos para el resto de las voces y una para la voz, que es
     # la de media mas alta.
     medias, desvios, pesos, lv = ajustar(valores, [0.15, 0.32, 0.62], [0.06, 0.08, 0.07], [0.4, 0.4, 0.2])
     orden = np.argsort(medias)
@@ -65,8 +65,8 @@ def main() -> None:
 
     malla = np.linspace(0, 1, 2001)
     pm = prob(malla)
-    # Por encima de la media de la voz de prueba la probabilidad no debe volver a bajar:
-    # mas parecido nunca es menos la voz de prueba.
+    # Por encima de la media de la voz la probabilidad no debe volver a bajar:
+    # mas parecido nunca es menos la voz.
     pico = np.argmax(pm)
     pm[pico:] = np.maximum.accumulate(pm[pico:])
 

@@ -25,6 +25,8 @@ import torch
 import whisper
 from scipy.signal import resample_poly
 
+import voz
+
 RAIZ = Path(__file__).resolve().parent.parent
 ENTRADA = RAIZ / "datos" / "02_voz"
 SALIDA = RAIZ / "datos" / "03_transcripcion"
@@ -78,7 +80,7 @@ def main() -> None:
         inicio = time.time()
         resultado = modelo.transcribe(
             cargar_16k(archivo),
-            language="es",
+            language=voz.IDIOMA,
             word_timestamps=True,
             # Sin arrastrar el texto anterior: con silencios largos entre
             # voces, arrastrarlo hace que Whisper repita o invente frases.

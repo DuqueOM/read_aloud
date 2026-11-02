@@ -82,7 +82,8 @@ def main() -> None:
     decisiones = json.loads(archivo.read_text(encoding="utf-8"))["decisiones"]
     conservadas = sorted(k for k, v in decisiones.items() if v == "si")
 
-    destino = SALIDA / "mi_voz_es"
+    import voz
+    destino = SALIDA / f"{voz.NOMBRE}_{voz.IDIOMA}"
     destino.mkdir(parents=True, exist_ok=True)
     for viejo in destino.glob("*.wav"):
         viejo.unlink()

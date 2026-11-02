@@ -13,13 +13,17 @@ Mientras la tarjeta tiene trabajo, el lote deja la marca de gpu.py: Read
 Aloud lee con Piper y no le disputa la memoria. Mientras solo espera
 descargas, la quita, y la voz de Qwen vuelve.
 
-Mientras trabaja, revisa la carpeta de origen e incorpora los capitulos que
+Mientras trabaja, revisa las carpetas de origen e incorpora los capitulos que
 terminen de descargarse. Chrome guarda una descarga en curso como .crdownload y
-le pone su nombre final solo al completarla, asi que un .mp4 ya esta entero. El
-lote no termina mientras quede alguna descarga en curso.
+le pone su nombre final solo al completarla, asi que un video con su
+extension ya esta entero. El lote no termina mientras quede alguna descarga en
+curso.
+
+Las carpetas, el filtro por nombre y como sacar el numero de cada capitulo
+salen de voz.toml (voz.py).
 
 Uso:
-    python scripts/lote.py                origenes por defecto (ORIGENES), capitulos nuevos
+    python scripts/lote.py                las carpetas de voz.toml, capitulos nuevos
     python scripts/lote.py RUTA_ORIGEN
 """
 
@@ -31,6 +35,7 @@ import time
 from pathlib import Path
 
 import gpu
+import voz
 from progreso_comun import RAIZ, guardar, marcar, nuevo
 
 PYTHON = sys.executable
@@ -40,12 +45,8 @@ AUDIO = RAIZ / "datos" / "01_audio"
 VOZ = RAIZ / "datos" / "02_voz"
 TRANSCRIPCION = RAIZ / "datos" / "03_transcripcion"
 
-# Donde caen las descargas: la carpeta de los primeros capitulos y Descargas.
-ORIGENES = [
-    Path(r"\\wsl.localhost\Ubuntu\home\usuario\videos"),
-    Path.home() / "Downloads",
-]
-PASOS = ["extraccion", "separacion", "transcripcion", "alineacion", "curva"]
+EXTENSIONES = {".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4a", ".mp3", ".wav", ".flac", ".ogg", ".aac"}
+PASOS =["extraccion", "separacion", "transcripcion", "alineacion", "curva"]
 
 # Medido en los capitulos 1 a 3, en la tarjeta a media precision.
 MINUTOS_TRANSCRIPCION = 2
@@ -75,23 +76,29 @@ def descargas_en_curso(origenes: list) -> bool:
 
 
 def numero_de_capitulo(nombre: str):
-    """El numero de capitulo de un video, o None.
+    """El numero de capitulo de una grabacion, o None.
 
-    Los nombres vienen de distintos sitios: "las grabaciones de prueba Episode 22 en
-    Espanol...", "...captulo 1 - ..." o "42 las grabaciones de prueba en
-    Espanol ... otro sitio". Se exige "la voz de prueba" para no tomar
-    otros videos de Descargas."""
-    if "propia" not in nombre.lower():
+    Con patron_episodio en voz.toml, el que saque ese patron. Si no, los
+    nombres pueden venir de distintos sitios, como paso con la primera voz:
+    "... Episode 22 en Espanol...", "...captulo 1 - ..." o "42 ... en
+    Espanol ... otro sitio"; y si nada de eso, el primer numero.
+    Con filtro_nombre, solo cuentan los nombres que lo contienen, para no
+    tomar otros videos de Descargas."""
+    if voz.FILTRO_NOMBRE and voz.FILTRO_NOMBRE.lower() not in nombre.lower():
         return None
-    numero = (re.search(r"(?:Episode|cap[ií]?tulo)\s*(\d+)", nombre, re.IGNORECASE)
-              or re.match(r"\s*(\d+)\D", nombre))
+    if voz.PATRON_EPISODIO:
+        numero = re.search(voz.PATRON_EPISODIO, nombre, re.IGNORECASE)
+    else:
+        numero = (re.search(r"(?:Episode|Episodio|cap[ií]?tulo)\s*(\d+)", nombre, re.IGNORECASE)
+                  or re.match(r"\s*(\d+)\D", nombre) or re.search(r"(\d+)", nombre))
     return int(numero.group(1)) if numero else None
 
 
 def buscar_capitulos(origenes: list) -> dict:
     """Capitulos de los origenes que aun no estan procesados, por numero."""
     encontrados = {}
-    for video in (v for origen in origenes for v in origen.glob("*.mp4")):
+    for video in (v for origen in origenes for v in sorted(origen.iterdir())
+                  if v.is_file() and v.suffix.lower() in EXTENSIONES):
         numero = numero_de_capitulo(video.name)
         if numero is None:
             continue
@@ -102,14 +109,14 @@ def buscar_capitulos(origenes: list) -> dict:
 
 
 def main() -> None:
-    origen = [Path(sys.argv[1])] if len(sys.argv) > 1 else ORIGENES
+    origen = [Path(sys.argv[1])] if len(sys.argv) > 1 else [o for o in voz.ORIGENES if o.exists()]
     capitulos = buscar_capitulos(origen)
     if not capitulos:
         print("No hay capitulos nuevos que procesar.")
         return
 
     episodios = list(capitulos)
-    estado = nuevo(f"Preparación de la voz de prueba · capítulos {episodios[0][2:]} a {episodios[-1][2:]}",
+    estado = nuevo(f"Preparación de la voz de {voz.TITULO} · capítulos {episodios[0][2:]} a {episodios[-1][2:]}",
                    episodios, PASOS)
     estado["eventos"].insert(0, [time.strftime("%H:%M"), f"Lote iniciado con {len(episodios)} capítulos"])
     guardar(estado)
@@ -128,7 +135,7 @@ def main() -> None:
                 estado["orden"].append(episodio)
                 estado["episodios"][episodio] = {p: "pendiente" for p in PASOS}
             estado["orden"].sort()
-            estado["titulo"] = (f"Preparación de la voz de prueba · capítulos "
+            estado["titulo"] = (f"Preparación de la voz de {voz.TITULO} · capítulos "
                                 f"{estado['orden'][0][2:]} a {estado['orden'][-1][2:]}")
         marcar(estado, "calibracion", "pendiente",
                evento=f"Descarga completa, se suman: {', '.join(nuevos)}")
@@ -252,9 +259,9 @@ def main() -> None:
     for h in hilos:
         h.join()
 
-    estado["nota"] = ("Los capítulos nuevos están preparados. Claude recalibra ahora con todos los "
-                      "capítulos juntos y revisa una muestra de cortes antes de armar la página.")
-    marcar(estado, "calibracion", "en curso (Claude)", evento="Preparación automática terminada")
+    estado["nota"] = ("Los capítulos nuevos están preparados. Sigue con la primera revisión o, si ya la "
+                      "hiciste, con 24_curva_wavlm.py y 25_cortar_frases.py (docs\\voz-personalizada.md).")
+    marcar(estado, "calibracion", "pendiente", evento="Preparación automática terminada")
     print("listo", time.strftime("%H:%M"), flush=True)
 
 

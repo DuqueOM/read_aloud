@@ -1,9 +1,11 @@
 """Pagina corta de escucha: la voz real, la voz actual de la app y candidatas.
 
-Cada frase muestra solo tres cosas: lo que dijo la voz real, como lo lee hoy Read
-Aloud y las candidatas que se pasen, todo al mismo volumen. La voz de la app
-es Piper tal cual, o con --app la version que se indique. Las candidatas son
-versiones de datos/10_motores/audio, con su etiqueta:
+Cada frase muestra solo tres cosas: lo que dijo la voz real, como lo lee hoy
+Read Aloud y las candidatas que se pasen, todo al mismo volumen. La voz de la
+app es, con --app, esa version de datos/10_motores/audio; sin --app, el Piper
+de comparacion de la primera version del proceso, si esta. Las candidatas son
+versiones de datos/10_motores/audio (las deja 11c_probar_qwen.py), con su
+etiqueta:
 
     python scripts/13_comparar.py --app qwen_mi_voz_v2_e02 qwen_mi_voz_v4_60_e02="60 mejores, época 2"
 
@@ -18,10 +20,14 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
+import voz
+
 RAIZ = Path(__file__).resolve().parent.parent
 MOTORES = RAIZ / "datos" / "10_motores" / "audio"
 COMPARAR = RAIZ / "datos" / "09_comparar"
 SALIDA = RAIZ / "datos" / "13_comparar"
+# Las dos frases en ingles de 11c_probar_qwen.py, y el Piper de la primera
+# version con que se comparaban.
 INGLES = {
     "en1": ("Wait, are you serious? I can't believe we actually made it!", "frase4"),
     "en2": ("The function returns a list of results, sorted by date.", "frase5"),
@@ -41,8 +47,6 @@ def igualar(origen: Path, destino: Path) -> None:
 
 def main() -> None:
     argumentos = sys.argv[1:]
-    # Con --app VERSION, la voz actual de la app es esa version de
-    # datos/10_motores/audio (la app ya no lee con Piper tal cual).
     app_version = None
     if argumentos[:1] == ["--app"]:
         app_version, argumentos = argumentos[1], argumentos[2:]
@@ -50,30 +54,37 @@ def main() -> None:
     audio_dir = SALIDA / "audio"
     audio_dir.mkdir(parents=True, exist_ok=True)
 
-    frases = [(f"es{f['n']}", f["texto"], COMPARAR / "audio" / f"f{f['n']}_real.wav",
+    frases = [(f"{voz.IDIOMA}{f['n']}", f["texto"], COMPARAR / "audio" / f"f{f['n']}_real.wav",
                COMPARAR / "audio" / f"f{f['n']}_piper.wav")
               for f in json.loads((COMPARAR / "frases.json").read_text(encoding="utf-8"))]
-    frases += [(clave, texto, None, RAIZ / "datos" / "09_puntos" / "fuente" / f"{fuente}.wav")
-               for clave, (texto, fuente) in INGLES.items()]
+    if voz.IDIOMA != "en":
+        frases += [(clave, texto, None, RAIZ / "datos" / "09_puntos" / "fuente" / f"{fuente}.wav")
+                   for clave, (texto, fuente) in INGLES.items()]
 
-    bloques = {"es": [], "en": []}
+    bloques = {"propias": [], "en": []}
     for clave, texto, real, app in frases:
         if app_version:
             app = MOTORES / f"{clave}_{app_version}.wav"
         filas = []
-        for etiqueta, origen, clase in ([("Voz real", real, "real")] if real else []) + \
+        for etiqueta, origen, clase in ([(f"{voz.TITULO} real", real, "real")] if real else []) + \
                 [("Voz actual de la app", app, "app")] + \
                 [(e, MOTORES / f"{clave}_{v}.wav", "") for v, e in candidatas]:
+            if not origen.exists():
+                continue
             nombre = f"{clave}_{origen.stem.split('_', 1)[-1] if clase == '' else clase}.wav"
             igualar(origen, audio_dir / nombre)
             filas.append(f'<div class="fila {clase}"><span>{html.escape(etiqueta)}</span>'
                          f'<audio controls preload="none" src="audio/{nombre}"></audio></div>')
-        bloques[clave[:2]].append(f'<div class="par"><b>{html.escape(texto)}</b>{"".join(filas)}</div>')
+        bloques["en" if clave in INGLES else "propias"].append(
+            f'<div class="par"><b>{html.escape(texto)}</b>{"".join(filas)}</div>')
 
+    titulo = html.escape(voz.TITULO)
+    ingles = (f'<h2>Inglés</h2>\n<p>Sin original: la voz real no habla inglés en las grabaciones.</p>\n'
+              f'{"".join(bloques["en"])}') if bloques["en"] else ""
     (SALIDA / "comparar.html").write_text(f"""<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Voz de la voz de prueba</title>
+<title>Voz de {titulo}</title>
 <style>
  body {{ margin:0; background:#16161a; color:#e6e6ea; font:15px/1.5 "Segoe UI",system-ui,sans-serif; }}
  main {{ max-width:760px; margin:0 auto; padding:28px 20px; }}
@@ -87,13 +98,11 @@ def main() -> None:
  audio {{ width:100%; height:32px; }}
  @media (max-width:560px) {{ main {{ padding:20px 16px; }} .fila {{ grid-template-columns:1fr; gap:2px; }} }}
 </style></head><body><main>
-<h1>Voz de la voz de prueba</h1>
-<p>Frases que dijo la voz real en las grabaciones y que el modelo no vio al entrenar. Todo al mismo volumen.</p>
-<h2>Español</h2>
-{"".join(bloques["es"])}
-<h2>Inglés</h2>
-<p>Sin original: la voz real no habla inglés en las grabaciones.</p>
-{"".join(bloques["en"])}
+<h1>Voz de {titulo}</h1>
+<p>Frases que {titulo} dijo en las grabaciones y que el modelo no vio al entrenar. Todo al mismo volumen.</p>
+<h2>{voz.IDIOMA_NOMBRE}</h2>
+{"".join(bloques["propias"])}
+{ingles}
 </main></body></html>""", encoding="utf-8")
     print(f"pagina: {SALIDA / 'comparar.html'}")
 

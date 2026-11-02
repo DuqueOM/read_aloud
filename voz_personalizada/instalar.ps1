@@ -130,7 +130,12 @@ $env:UV_PYTHON_INSTALL_DIR = Join-Path $Trabajo 'herramientas\python'
 
 $config = Join-Path $Trabajo 'voz.toml'
 if (-not (Test-Path -LiteralPath $config)) {
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'voz.ejemplo.toml') -Destination $config
+    # Con la carpeta de este repositorio ya puesta: los pasos que usan algo de
+    # Read Aloud (qwen_rapido, la preparacion del texto) la buscan ahi.
+    $lector = Split-Path -Parent $PSScriptRoot
+    $texto = (Get-Content -LiteralPath (Join-Path $PSScriptRoot 'voz.ejemplo.toml') -Raw -Encoding UTF8) -replace
+        "(?m)^lector = ''", "lector = '$lector'"
+    [IO.File]::WriteAllText($config, $texto, (New-Object Text.UTF8Encoding($false)))
     Write-Host '    creado voz.toml: editalo antes de empezar' -ForegroundColor Yellow
 }
 
@@ -146,6 +151,21 @@ if ($SoloLectura) {
     Write-Host "    en config\settings.psd1. Ver docs\configuracion.md." -ForegroundColor Green
     return
 }
+
+Write-Step 'Scripts del proceso en scripts\'
+# Solo los que faltan: si ya editaste alguno en la carpeta de trabajo, se
+# respeta. Para traer una version nueva, borralo de ahi y vuelve a correr esto.
+$scripts = Join-Path $Trabajo 'scripts'
+New-Item -ItemType Directory -Path $scripts -Force | Out-Null
+$copiados = 0
+foreach ($archivo in Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'proceso_qwen') -File) {
+    $destino = Join-Path $scripts $archivo.Name
+    if ($archivo.Name -ne 'README.md' -and -not (Test-Path -LiteralPath $destino)) {
+        Copy-Item -LiteralPath $archivo.FullName -Destination $destino
+        $copiados++
+    }
+}
+Write-Host "    $copiados copiados" -ForegroundColor Gray
 
 Write-Step 'Entorno principal: separacion, transcripcion, alineacion, cortes y medidas'
 $principal = Sync-Entorno (Join-Path $Trabajo '.venv') 'principal'

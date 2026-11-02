@@ -19,8 +19,10 @@ Corre en el entorno principal:
     .venv/Scripts/python.exe scripts/28_revision.py
 """
 
+import html
 import importlib.util
 import json
+import re
 from pathlib import Path
 
 spec = importlib.util.spec_from_file_location("textos", Path(__file__).parent / "22_textos.py")
@@ -31,7 +33,7 @@ RAIZ = textos.RAIZ
 DATOS = RAIZ / "datos"
 SALIDA = DATOS / "28_revision"
 LECTURA_PREFERIDA = "whisper"
-META_S = 60 * 60
+META_S = round(textos.voz.MINUTOS_FINALES * 60)
 # Un clip nuevo hereda la decision de uno viejo si lo cubre en esta parte; y su
 # texto corregido, si ademas el viejo no tiene mas que el nuevo.
 CUBRE_DECISION = 0.7
@@ -46,7 +48,8 @@ def main() -> None:
     puntajes = {c["nombre"]: c for c in json.loads((DATOS / "26_puntaje" / "clips.json").read_text(encoding="utf-8"))}
     lecturas = {m: json.loads((DATOS / "27_textos" / f"{m}.json").read_text(encoding="utf-8"))
                 for m in ("whisper", "qwen") if (DATOS / "27_textos" / f"{m}.json").exists()}
-    decisiones = json.loads((DATOS / "05_revision" / "decisiones.json").read_text(encoding="utf-8"))["decisiones"]
+    primera = DATOS / "05_revision" / "decisiones.json"
+    decisiones = json.loads(primera.read_text(encoding="utf-8"))["decisiones"] if primera.exists() else {}
     corregidos = textos.referencias()
     viejos = {}
     for indice in (DATOS / "04_cortes").glob("ep*/indice.json"):
@@ -88,7 +91,11 @@ def main() -> None:
     clips.sort(key=lambda c: -c["puntaje"])
     SALIDA.mkdir(parents=True, exist_ok=True)
     plantilla = (Path(__file__).parent / "revision2_plantilla.html").read_text(encoding="utf-8")
-    pagina = plantilla.replace("/*DATOS*/[]", json.dumps(clips, ensure_ascii=False)).replace("/*META*/3600", str(META_S))
+    pagina = (plantilla.replace("/*DATOS*/[]", json.dumps(clips, ensure_ascii=False))
+              .replace("/*META*/3600", str(META_S))
+              .replace("/*TITULO*/", html.escape(textos.voz.TITULO))
+              # Va dentro de una cadena de JavaScript: solo letras, numeros y _.
+              .replace("/*NOMBRE*/", re.sub(r"\W", "_", textos.voz.NOMBRE)))
     (SALIDA / "revision.html").write_text(pagina, encoding="utf-8")
     total = sum(c["dur"] for c in clips) / 60
     print(f"{len(clips)} clips, {total:.1f} min; con aviso {sum(bool(c['marcas']) for c in clips)}; "

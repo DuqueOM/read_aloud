@@ -6,22 +6,60 @@
 # Las rutas de Windows van entre comillas simples: asi la barra invertida se
 # lee tal cual.
 
-# Nombre corto, sin espacios. Se usa en las carpetas de datos, en el modelo y
-# en el navegador para guardar las decisiones de la revision.
+# Nombre corto, sin espacios ni acentos. Es el hablante en el modelo de
+# Qwen3-TTS y va en las carpetas de datos, en los nombres de las versiones y
+# en lo que guardan las paginas en el navegador.
 nombre = "mi_voz"
 
+# Como la llaman las paginas de revision y de escucha.
+titulo = "Mi voz"
+
 # Idioma en que habla la voz en las grabaciones, en codigo de dos letras.
-# Whisper lo usa para transcribir, y de el depende el alineador.
+# Whisper lo usa para transcribir, y de el dependen el alineador y la marca de
+# idioma de Qwen3-TTS, que habla es, en, pt, fr, it, de, ru, ja, ko y zh.
 idioma = "es"
 
 # Carpeta con las grabaciones de donde se sacan los clips: videos o audios.
 origen = 'C:\ruta\a\las\grabaciones'
 
+# Si caen en varias carpetas (por ejemplo, otra y Descargas mientras se bajan),
+# ponlas todas aqui; entonces "origen" no se usa en el proceso con Qwen3-TTS.
+# origenes = ['C:\ruta\a\las\grabaciones', 'C:\Users\yo\Downloads']
+
+# Solo los archivos cuyo nombre contenga esto, sin distinguir mayusculas:
+# sirve para no tomar otros videos de una carpeta como Descargas.
+# filtro_nombre = "una palabra de sus nombres"
+
 # Expresion regular que saca de cada nombre de archivo su numero de episodio.
-# Por defecto, el primer numero del nombre. Si los nombres llevan otros
-# numeros antes, como "Curso 2 - Video 05", usa algo como 'Episodio\s*(\d+)'.
+# Sin ella, el proceso con Qwen3-TTS entiende "Episode 22", "Episodio 22",
+# "capitulo 22", un numero al principio del nombre y, si no, el primer numero.
+# Si los nombres llevan otros numeros antes, como "Curso 2 - Video 05", usa
+# algo como 'Episodio\s*(\d+)'.
 # patron_episodio = '(\d+)'
 
 # Modelo wav2vec2 para alinear palabras. Solo hace falta para idiomas que no
-# estan en comun.py; se busca en Hugging Face uno entrenado en ese idioma.
+# estan en voz.py; se busca en Hugging Face uno entrenado en ese idioma.
 # alineador = "jonatasgrosman/wav2vec2-large-xlsr-53-spanish"
+
+# Contexto para los dos transcriptores de cada clip: de que es la grabacion y
+# los nombres propios escritos como deben quedar en el texto.
+# contexto = "Charlas de cocina. Nombres: Ana, Beto, Carla."
+
+# Minutos de voz, los de mejor calidad, con que se entrena.
+# minutos_finales = 60
+
+# La carpeta del repositorio de Read Aloud. El instalador la llena.
+lector = ''
+
+# Las tablas van al final: en TOML, todo lo que sigue a [una_tabla] es parte
+# de ella.
+
+# Formas distintas de escribir un mismo nombre que no cuentan como lecturas
+# distintas del texto (en minusculas).
+# [variantes]
+# "betto" = "beto"
+
+# Episodios descargados dos veces: la copia y el original. La copia se quita
+# del conjunto final.
+# [duplicados]
+# ep25 = "ep24"

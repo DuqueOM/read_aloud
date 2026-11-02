@@ -15,7 +15,7 @@ fundido, el CUDA graph de qwen_rapido, la repeticion de las duraciones raras
 y el mismo pulido del audio.
 
 Ademas mide cada toma: Whisper la transcribe para contar errores de lectura,
-y WavLM Large da su parecido de timbre con la voz de prueba (coseno con el centro de
+y WavLM Large da su parecido de timbre con la voz real (coseno con el centro de
 300 clips del conjunto final, como la huella de 21_hablante.py).
 
     .venv/Scripts/python.exe scripts/34_votacion.py          todo, con el avance en progreso.html
@@ -31,6 +31,7 @@ import importlib.util
 import json
 import os
 import random
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -43,20 +44,26 @@ sys.path.insert(0, str(Path(__file__).parent))
 import numpy as np
 import soundfile as sf
 
+import voz as config_voz  # "voz" es tambien la huella y cada voz que se compara
+
 DATOS = RAIZ / "datos"
 SALIDA = DATOS / "34_votacion"
 AUDIO = SALIDA / "audio"
 ESCUCHA = SALIDA / "escucha"
-# El repositorio de Read Aloud, al lado de esta carpeta: de ahi salen la
+# El repositorio de Read Aloud (lector en voz.toml): de ahi salen la
 # preparacion del texto y qwen_rapido.
-LECTOR = RAIZ.parent / "read_aloud"
+LECTOR = config_voz.lector()
 
+# Las voces que se comparan: carpeta de datos/11_qwen, epoca y etiqueta.
+# Cambialas en cada votacion; estas son las de la quinta ronda de la voz de prueba.
 VOCES = {
     "app": ("puntos_v4_60", "02", "Voz actual: 60 mejores minutos, época 2"),
     "v5_45": ("puntos_v5_45", "02", "45 mejores minutos, época 2"),
     "v5_lento": ("puntos_v5_60_lento", "03", "60 mejores, aprendizaje lento, época 3"),
 }
 SEMILLAS = (11, 22)
+# Textos como los que lee Read Aloud, en espanol con algo de ingles: si la voz
+# es de otro idioma, cambialos por unos de ese idioma.
 FRASES_APP = [
     "Para instalar las dependencias, abre la terminal, ejecuta el comando y espera a que termine la descarga.",
     "El archivo de configuración tiene tres secciones: la conexión a la base de datos, el registro de errores "
@@ -145,8 +152,8 @@ def cargar_voz(carpeta: Path, epoca: str):
     with torch.no_grad():
         modelo.talker.model.codec_embedding.weight[3000] = voz[0].to(modelo.dtype).to(modelo.device)
     modelo.config.tts_model_type = modelo.tts_model_type = "custom_voice"
-    modelo.config.talker_config.spk_id = {"propia": 3000}
-    modelo.config.talker_config.spk_is_dialect = {"propia": False}
+    modelo.config.talker_config.spk_id = {config_voz.NOMBRE: 3000}
+    modelo.config.talker_config.spk_is_dialect = {config_voz.NOMBRE: False}
     modelo.supported_speakers = modelo.config.talker_config.spk_id.keys()
     qwen_rapido.activar(modelo)
     return qwen
@@ -173,7 +180,7 @@ def decir(qwen, texto: str, idioma: str):
     tope = int(CODIGOS_POR_SEGUNDO * (2.5 * len(texto) * SEGUNDOS_POR_LETRA + 3))
     for intento in range(2):
         wavs, tasa = qwen.generate_custom_voice(text=[texto], language=[IDIOMAS.get(idioma, "Spanish")],
-                                                speaker=["propia"], non_streaming_mode=True, max_new_tokens=tope)
+                                                speaker=[config_voz.NOMBRE], non_streaming_mode=True, max_new_tokens=tope)
         segundos = len(wavs[0]) / tasa
         if 0.35 * esperado <= segundos <= 2.5 * esperado + 1.0:
             break
@@ -297,7 +304,7 @@ def pagina() -> None:
         filas = []
         if f["grupo"] == "serie":
             igualar(DATOS / "09_comparar" / "audio" / f"f{f['n']}_real.wav", ESCUCHA / f"{f['clave']}_real.wav")
-            filas.append(f'<div class="fila real"><span>Voz real</span>'
+            filas.append(f'<div class="fila real"><span>{html.escape(config_voz.TITULO)} real</span>'
                          f'<audio controls preload="none" src="escucha/{f["clave"]}_real.wav"></audio></div>')
         for letra, voz in letras.items():
             tomas = []
@@ -329,9 +336,11 @@ def pagina() -> None:
                 errores[voz].append({"frase": f["texto"], "toma": t, "dicho": m["dicho"],
                                      "error": round(m["error"], 3)})
     datos = {"mapa": mapa, "voces": {v: e for v, (_, _, e) in VOCES.items()}, "resumen": resumen,
-             "errores": errores, "real": medicion.get("_real")}
+             "errores": errores, "real": medicion.get("_real", medicion.get("_real"))}
 
     (SALIDA / "votar.html").write_text(PLANTILLA.replace("{{TARJETAS}}", "".join(tarjetas))
+                                       .replace("{{TITULO}}", html.escape(config_voz.TITULO))
+                                       .replace("{{NOMBRE}}", re.sub(r"\W", "_", config_voz.NOMBRE))
                                        .replace("{{DATOS}}", json.dumps(datos, ensure_ascii=False)), encoding="utf-8")
     print(f"pagina: {SALIDA / 'votar.html'}", flush=True)
 
@@ -366,21 +375,21 @@ PLANTILLA = """<!doctype html>
 </style></head><body><main>
 <h1>Votación de voces</h1>
 <p>En cada frase hay tres voces, A, B y C, en un orden distinto cada vez. Cada una dice la frase dos veces, y cada
-toma sale distinta: escucha las dos antes de votar. Elige la que suene más a la voz de prueba y más natural; si no
+toma sale distinta: escucha las dos antes de votar. Elige la que suene más a {{TITULO}} y más natural; si no
 distingues, marca «Iguales». Tus votos se guardan en este navegador aunque cierres la página.</p>
 <div id="barra"><span id="cuenta"></span><button id="ver">Ver resultado</button>
 <button id="bajar">Descargar votos</button></div>
 <div id="resultado"></div>
 <h2>Frases de validación</h2>
-<p>Las 10 que el modelo no vio al entrenar, con lo que dijo la voz real.</p>
+<p>Las 10 que el modelo no vio al entrenar, con lo que dijo {{TITULO}}.</p>
 <div id="serie"></div>
 <h2>Textos como los que lee Read Aloud</h2>
-<p>Sin original: la voz real nunca los dijo.</p>
+<p>Sin original: {{TITULO}} nunca los dijo.</p>
 <div id="app"></div>
 <template id="tarjetas">{{TARJETAS}}</template>
 <script>
 const DATOS = {{DATOS}};
-const CLAVE = "mi_voz_votacion_v1";
+const CLAVE = "{{NOMBRE}}_votacion_v1";
 let votos = {};
 try { votos = JSON.parse(localStorage.getItem(CLAVE) || "{}"); } catch (e) {}
 const plantilla = document.getElementById("tarjetas").content;
@@ -410,14 +419,14 @@ function resultado() {
   const total = cuenta(), serie = cuenta("serie"), app = cuenta("app");
   const pct = x => x == null ? "–" : (100 * x).toFixed(1) + " %";
   let h = `<h2>Resultado</h2><table><tr><th>Voz</th><th>Votos</th><th>Validación</th><th>Textos de la app</th>
-    <th>Error de lectura</th><th>Tomas con error</th><th>Parecido con la voz de prueba</th></tr>`;
+    <th>Error de lectura</th><th>Tomas con error</th><th>Parecido con {{TITULO}}</th></tr>`;
   for (const v of [...voces].sort((a, b) => total[b] - total[a])) {
     const r = DATOS.resumen[v];
     h += `<tr><td>${DATOS.voces[v]}</td><td>${total[v]}</td><td>${serie[v]}</td><td>${app[v]}</td>
       <td>${pct(r.error)}</td><td>${DATOS.errores[v].length}</td><td>${r.parecido == null ? "–" : r.parecido.toFixed(3)}</td></tr>`;
   }
   h += `<tr><td>Iguales</td><td>${total.iguales}</td><td>${serie.iguales}</td><td>${app.iguales}</td><td></td><td></td><td></td></tr></table>`;
-  if (DATOS.real != null) h += `<p>Parecido de la voz real con el mismo centro: ${DATOS.real.toFixed(3)}. Más alto es más parecido.</p>`;
+  if (DATOS.real != null) h += `<p>Parecido de {{TITULO}} real con el mismo centro: ${DATOS.real.toFixed(3)}. Más alto es más parecido.</p>`;
   for (const v of voces) for (const e of DATOS.errores[v])
     h += `<div class="err"><b>${DATOS.voces[v]}</b>, toma ${e.toma}: «${e.frase}» → se oyó «${e.dicho}»</div>`;
   const div = document.getElementById("resultado");
@@ -451,7 +460,7 @@ def cadena() -> None:
     principal = RAIZ / ".venv" / "Scripts" / "python.exe"
     pasos = [("Dos tomas de cada voz", qwen, "generar"), ("Errores de lectura y parecido", principal, "medir"),
              ("Página de votación", principal, "pagina")]
-    estado = nuevo("Voz de la voz de prueba · votación a ciegas", [p[0] for p in pasos], ["estado"], finales=[])
+    estado = nuevo(f"Voz de {config_voz.TITULO} · votación a ciegas", [p[0] for p in pasos], ["estado"], finales=[])
     estado["filas"] = "Paso"
     estado["nota"] = "Se generan las tomas para votar. Mientras tanto, Read Aloud lee con Piper."
     guardar(estado)
@@ -461,7 +470,7 @@ def cadena() -> None:
         ok = revision.correr(python, ["34_votacion.py", paso], estado, nombre)
         marcar(estado, "estado", "listo" if ok else "con error", nombre)
         if not ok:
-            estado["nota"] = f"Falló «{nombre}». Detalle en datos/34_votacion.log; Claude lo revisa."
+            estado["nota"] = f"Falló «{nombre}». Detalle en datos/34_votacion.log."
             guardar(estado)
             return
     estado["nota"] = "Lista: abre datos/34_votacion/votar.html y vota."

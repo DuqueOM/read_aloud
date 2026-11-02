@@ -26,7 +26,8 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
 os.environ.setdefault("HF_HOME", str(RAIZ / "modelos" / "hf"))
-sys.path.insert(0, "C:/ruta/a/read_aloud/lib")  # qwen_rapido vive con el servidor de Read Aloud
+import voz  # noqa: E402
+sys.path.insert(0, str(voz.lector() / "lib"))  # qwen_rapido vive con el servidor de Read Aloud
 
 import torch
 from peft import set_peft_model_state_dict

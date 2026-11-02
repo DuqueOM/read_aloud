@@ -1,6 +1,6 @@
 """Quien habla en cada momento, con WavLM Large y las decisiones del usuario.
 
-21_hablante.py mostro que, para decidir si un clip es de la voz de prueba, el promedio
+21_hablante.py mostro que, para decidir si un clip es de la voz, el promedio
 de las capas intermedias de WavLM Large con un clasificador entrenado con las
 decisiones del usuario (AUC 0.74) supera a las referencias con ECAPA (0.60).
 Pero los clips nuevos se cortan palabra por palabra, asi que hace falta la
@@ -12,7 +12,7 @@ misma decision en cada momento del episodio, como la curva de 04_cortar.py.
    0.25 s, es el promedio de esas representaciones: las mismas ventanas que
    la curva de hoy.
 2. Clasificador: aprende con ventanas de los clips que el usuario conservo
-   (la voz de prueba sola) frente a ventanas de palabras que la curva de hoy da como de
+   (la voz sola) frente a ventanas de palabras que la curva de hoy da como de
    otra voz con mucha seguridad (probabilidad menor de 0.05) y ventanas de los
    clips descartados.
 3. Prueba: por episodios que no vio, el promedio de la curva nueva dentro de
@@ -135,7 +135,7 @@ def main() -> None:
             j = int(np.argmin(np.abs(centros - vieja["centros"][i])))
             x.append(huellas[j]); y.append(False); grupo.append(episodio); clip_de.append(-1)
     x, y, grupo, clip_de = np.array(x), np.array(y), np.array(grupo), np.array(clip_de)
-    print(f"{len(x)} ventanas para aprender ({y.sum()} de la voz de prueba)", flush=True)
+    print(f"{len(x)} ventanas para aprender ({y.sum()} de la voz)", flush=True)
 
     # Prueba por episodios no vistos: promedio de la curva nueva en cada clip.
     puntaje = np.zeros(len(x))

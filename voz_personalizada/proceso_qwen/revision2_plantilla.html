@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Revisión · voz de prueba</title>
+<title>Revisión · /*TITULO*/</title>
 <style>
   :root {
     --fondo: #16161a; --panel: #1f1f25; --borde: #2e2e36; --texto: #e6e6ea;
@@ -91,7 +91,7 @@
       <button id="b-edi">Corregir texto <kbd>E</kbd></button>
     </div>
     <div class="ayuda">
-      Conserva solo clips donde habla la voz sola, sin música, ruido, eco ni otra voz, y
+      Conserva solo clips donde habla /*TITULO*/ sola, sin música, ruido, eco ni otra voz, y
       donde la frase está completa. El texto tiene que decir exactamente lo que se oye,
       con sus signos: <b>¿</b>pregunta<b>?</b>, <b>¡</b>exclamación<b>!</b>, comas donde hace una pausa.
       Para corregirlo pulsa <kbd>E</kbd>, escribe y pulsa <kbd>Enter</kbd>: se guarda y el clip
@@ -109,7 +109,7 @@
 <script>
 const CLIPS = /*DATOS*/[];
 const META_S = /*META*/3600;
-const CLAVE = 'mi_voz_revision_v3';
+const CLAVE = '/*NOMBRE*/_revision_v3';
 
 let estado = { decisiones: {}, textos: {} };
 try { estado = Object.assign(estado, JSON.parse(localStorage.getItem(CLAVE) || '{}')); } catch (e) {}

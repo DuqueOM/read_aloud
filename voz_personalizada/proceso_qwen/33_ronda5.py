@@ -23,6 +23,7 @@ import importlib.util
 import json
 from pathlib import Path
 
+import voz
 from progreso_comun import RAIZ, guardar, marcar, nuevo
 
 spec = importlib.util.spec_from_file_location("revision", Path(__file__).parent / "29_preparar_revision.py")
@@ -32,7 +33,8 @@ spec.loader.exec_module(revision)
 PRINCIPAL = RAIZ / ".venv" / "Scripts" / "python.exe"
 QWEN = RAIZ / ".venv_qwen" / "Scripts" / "python.exe"
 QWEN_DATOS = RAIZ / "datos" / "31_qwen"
-APP = "qwen_mi_voz_v4_60_e02"
+# La version de 11c_probar_qwen.py que usa hoy la app, para comparar.
+APP = f"qwen_{voz.NOMBRE}_v4_60_e02"
 COMUN = ["--epocas", "8", "--paciencia", "2", "--medias", "--reanudar"]
 ENTRENAMIENTOS = [
     ("Entrenamiento con los 45 mejores minutos", "puntos_v5_45", "mejores45", "3e-5",
@@ -56,7 +58,7 @@ def mejor_punto(salida: str) -> str:
 
 def version(salida: str, epoca: str) -> str:
     entera, _, fraccion = epoca.partition(".")
-    return f"qwen_mi_voz_{salida.removeprefix('puntos_')}_e{int(entera):02d}" + (f"_{fraccion}" if fraccion else "")
+    return f"qwen_{voz.NOMBRE}_{salida.removeprefix('puntos_')}_e{int(entera):02d}" + (f"_{fraccion}" if fraccion else "")
 
 
 def main() -> None:
@@ -64,7 +66,7 @@ def main() -> None:
     # uno y otro Read Aloud volveria a cargar la voz para soltarla al minuto.
     import gpu
     gpu.ocupar()
-    estado = nuevo("Voz de la voz de prueba · quinta ronda", [e[0] for e in ENTRENAMIENTOS] + [PRUEBAS], ["estado"],
+    estado = nuevo(f"Voz de {voz.TITULO} · quinta ronda", [e[0] for e in ENTRENAMIENTOS] + [PRUEBAS], ["estado"],
                    finales=[])
     estado["filas"] = "Paso"
     estado["nota"] = ("Dos entrenamientos para mejorar la voz actual: los 45 mejores minutos, y los 60 mejores "
@@ -81,7 +83,7 @@ def main() -> None:
                                     "--aprendizaje", aprendizaje, *COMUN], estado, nombre)
         marcar(estado, "estado", "listo" if ok else "con error", nombre, f"{nombre}: {'listo' if ok else 'con error'}")
         if not ok:
-            estado["nota"] = f"Falló «{nombre}». Detalle en datos/33_ronda5.log; Claude lo revisa."
+            estado["nota"] = f"Falló «{nombre}». Detalle en datos/33_ronda5.log."
             guardar(estado)
             return
 
@@ -91,13 +93,13 @@ def main() -> None:
         epoca = mejor_punto(salida)
         if not revision.correr(QWEN, ["11c_probar_qwen.py", "--puntos", salida, epoca], estado, PRUEBAS):
             marcar(estado, "estado", "con error", PRUEBAS)
-            estado["nota"] = "Fallaron las frases de prueba. Detalle en datos/33_ronda5.log; Claude lo revisa."
+            estado["nota"] = "Fallaron las frases de prueba. Detalle en datos/33_ronda5.log."
             guardar(estado)
             return
         candidatas.append(f"{version(salida, epoca)}={etiqueta}, época {epoca.replace('.', ',')}")
     ok = revision.correr(PRINCIPAL, ["13_comparar.py", "--app", APP, *candidatas], estado, PRUEBAS)
     marcar(estado, "estado", "listo" if ok else "con error", PRUEBAS)
-    estado["nota"] = ("Listo. Escucha datos/13_comparar/comparar.html y dile a Claude cuál suena más a la voz de prueba."
+    estado["nota"] = (f"Listo. Escucha datos/13_comparar/comparar.html y elige cuál suena más a {voz.TITULO}."
                       if ok else "Falló la página de escucha. Detalle en datos/33_ronda5.log.")
     guardar(estado)
 

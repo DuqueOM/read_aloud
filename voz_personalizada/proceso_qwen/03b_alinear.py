@@ -4,7 +4,8 @@ Whisper entrega tiempos por palabra con un error de una o dos decimas. En el
 borde de un clip ese error es justo lo que deja entrar un resto de ruido o el
 comienzo de la voz de otra voz.
 
-Un modelo wav2vec2 entrenado en espanol escucha el audio letra por letra. Como
+Un modelo wav2vec2 entrenado en el idioma de la voz (voz.toml) escucha el
+audio letra por letra. Como
 ya se sabe que se dijo, gracias a la transcripcion, basta con encontrar en que
 momento suena cada letra: eso es la alineacion forzada, y deja los limites de
 cada palabra con precision de centesimas.
@@ -35,11 +36,15 @@ import torchaudio.functional as F  # noqa: E402
 from scipy.signal import resample_poly  # noqa: E402
 from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor  # noqa: E402
 
+import voz  # noqa: E402
+
 VOZ = RAIZ / "datos" / "02_voz"
 TRANSCRIPCION = RAIZ / "datos" / "03_transcripcion"
 SALIDA = RAIZ / "datos" / "03_alineado"
 
-MODELO = "jonatasgrosman/wav2vec2-large-xlsr-53-spanish"
+MODELO = voz.ALINEADOR
+if not MODELO:
+    raise SystemExit(f"No hay alineador para el idioma '{voz.IDIOMA}': pon uno en voz.toml como 'alineador'.")
 TASA = 16000
 
 # Las palabras se alinean en tramos. Un hueco largo separa tramos, y un tramo

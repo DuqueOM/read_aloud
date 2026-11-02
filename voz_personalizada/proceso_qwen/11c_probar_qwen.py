@@ -1,22 +1,22 @@
 """Genera las frases de prueba con las epocas de Qwen3-TTS afinado.
 
-Carga el modelo base, le pone las capas LoRA de cada epoca y habla como la
-voz "propia", sin muestra de referencia: la voz ya esta en el modelo. Genera
-sin streaming, que es la disposicion en que se entrena: todo el texto antes
-del audio. La epoca 0 es el modelo base, para comprobar el camino. Las
-frases en espanol son las 10 que no entraron al entrenamiento. Prueba tambien
-si el modelo obedece indicaciones de estilo.
+Carga el modelo base, le pone las capas LoRA de cada epoca y habla con el
+nombre de la voz de voz.toml, sin muestra de referencia: la voz ya esta en el
+modelo. Genera sin streaming, que es la disposicion en que se entrena: todo
+el texto antes del audio. La epoca 0 es el modelo base, para comprobar el
+camino. Las frases en el idioma de la voz son las 10 de validacion, que no
+entraron al entrenamiento. Prueba tambien si el modelo obedece indicaciones
+de estilo.
 
-Deja los audios en datos/10_motores/audio como qwen_mi_voz_eNN, para que
-10b_pagina.py los pase por RVC y los ponga en la pagina, y 10c_medir.py los
-mida junto a los demas motores.
+Deja los audios en datos/10_motores/audio como qwen_<nombre>_eNN, para que
+13_comparar.py los ponga en la pagina de escucha y 10c_medir.py los mida.
 
 Corre en el entorno de Qwen:
     .venv_qwen/Scripts/python.exe scripts/11c_probar_qwen.py 4 8 12
     .venv_qwen/Scripts/python.exe scripts/11c_probar_qwen.py --puntos puntos_v2 2 4 6
 
-Las versiones de una salida distinta de "puntos" llevan su nombre: qwen_mi_voz_v2_e04.
-Un punto de mitad de epoca se pide como 1.5, y queda como qwen_mi_voz_v2_e01_5.
+Las versiones de una salida distinta de "puntos" llevan su nombre: qwen_<nombre>_v2_e04.
+Un punto de mitad de epoca se pide como 1.5, y queda como qwen_<nombre>_v2_e01_5.
 """
 
 import json
@@ -35,6 +35,9 @@ from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
 from qwen_tts import Qwen3TTSModel
 from safetensors.torch import load_file
 
+sys.path.insert(0, str(Path(__file__).parent))
+import voz as config_voz  # noqa: E402  ("voz" es tambien la huella de voz, mas abajo)
+
 PUNTOS = RAIZ / "datos" / "11_qwen" / "puntos"
 SALIDA = RAIZ / "datos" / "10_motores" / "audio"
 INGLES = [
@@ -45,7 +48,7 @@ INDICACIONES = {
     "alegre": "Habla con mucha alegría y energía, como si estuvieras emocionada.",
     "triste": "Habla en voz baja y triste, casi a punto de llorar.",
 }
-VOZ = "propia"
+VOZ = config_voz.NOMBRE
 ID_VOZ = 3000  # el mismo hueco que usa la receta oficial
 SEMILLA = 1234
 
@@ -81,15 +84,18 @@ def nombre_epoca(epoca: str) -> str:
 def main() -> None:
     global PUNTOS
     argumentos = sys.argv[1:]
-    prefijo = "qwen_mi_voz"
+    prefijo = f"qwen_{VOZ}"
     if argumentos[:1] == ["--puntos"]:
         PUNTOS = PUNTOS.parent / argumentos[1]
         prefijo += "_" + argumentos[1].removeprefix("puntos_")
         argumentos = argumentos[2:]
     epocas = [nombre_epoca(e) for e in argumentos]
     frases = json.loads((RAIZ / "datos" / "09_comparar" / "frases.json").read_text(encoding="utf-8"))
-    lista = ([(f"es{f['n']}", "Spanish", f["texto"]) for f in frases]
-             + [(f"en{n}", "English", t) for n, t in enumerate(INGLES, 1)])
+    # Las frases de validacion, en el idioma de la voz, y dos en ingles para
+    # oir como lee lo que no aprendio (si la voz ya es en ingles, sobran).
+    lista = [(f"{config_voz.IDIOMA}{f['n']}", config_voz.IDIOMA_TEXTO, f["texto"]) for f in frases]
+    if config_voz.IDIOMA != "en":
+        lista += [(f"en{n}", "English", t) for n, t in enumerate(INGLES, 1)]
 
     # Ocupa la tarjeta: Read Aloud lee con Piper mientras tanto.
     sys.path.insert(0, str(Path(__file__).parent))

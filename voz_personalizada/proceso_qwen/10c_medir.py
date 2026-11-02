@@ -1,9 +1,9 @@
-"""Comprueba que cada version diga el texto y mide su parecido con la voz de prueba.
+"""Comprueba que cada version diga el texto y mide su parecido con la voz real.
 
 Los motores que generan la entonacion a veces inventan, repiten o se comen
 palabras. Whisper transcribe cada version y se compara con el texto pedido:
 el error de caracteres dice cuanto se aparto. La huella de voz da, como en
-09c_medir.py, la probabilidad de ser la voz de prueba. Junto con la forma de la curva
+09c_medir.py, la probabilidad de ser la voz. Junto con la forma de la curva
 de tono de 10b_pagina.py queda una tabla por version.
 
 Corre en el entorno principal:
@@ -49,8 +49,9 @@ def error_caracteres(esperado: str, obtenido: str) -> float:
 
 
 def main() -> None:
+    import voz
     frases = json.loads((RAIZ / "datos" / "09_comparar" / "frases.json").read_text(encoding="utf-8"))
-    textos = {f"es{f['n']}": f["texto"] for f in frases}
+    textos = {f"{voz.IDIOMA}{f['n']}": f["texto"] for f in frases}
     textos.update({"en1": "Wait, are you serious? I can't believe we actually made it!",
                    "en2": "The function returns a list of results, sorted by date."})
 

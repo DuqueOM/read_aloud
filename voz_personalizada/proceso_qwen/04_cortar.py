@@ -10,11 +10,11 @@ Combina dos senales:
 2. Donde empieza y termina cada palabra, segun la transcripcion de Whisper.
 
 Cada palabra recibe el parecido de la curva en su posicion. Un clip es un
-tramo seguido de palabras de la voz de prueba, sin pausas largas, cuyos bordes caen en
+tramo seguido de palabras de la voz, sin pausas largas, cuyos bordes caen en
 el silencio real que rodea a su primera y su ultima palabra. Asi se quitan a
 la vez las otras voces que hablan en medio y el ruido de los extremos, y nunca
 se corta dentro de un sonido. Al final, la huella del clip entero confirma que
-es la voz de prueba.
+es de la voz.
 
 Uso:
     python scripts/04_cortar.py              todos los capitulos transcritos
@@ -48,9 +48,9 @@ VENTANA_S = 1.5
 PASO_S = 0.25
 SILENCIO_DB = -40.0
 
-# Umbrales de probabilidad de ser la voz de prueba, calibrada por 04a_calibrar.py. Desde
-# ALTO la palabra es de la voz de prueba; por debajo de BAJO es de otra voz y corta
-# el clip. Entre ambos se acepta solo si queda rodeada de palabras de la voz de prueba:
+# Umbrales de probabilidad de ser la voz, calibrada por 04a_calibrar.py. Desde
+# ALTO la palabra es de la voz; por debajo de BAJO es de otra voz y corta
+# el clip. Entre ambos se acepta solo si queda rodeada de palabras de la voz:
 # suele ser ella en otro registro, como un grito o un susurro, donde el
 # parecido baja un poco.
 ALTO = 0.70
@@ -62,7 +62,7 @@ CALIBRACION = RAIZ / "datos" / "04_curvas" / "calibracion.json"
 MAX_PAUSA_S = 0.6
 MIN_CLIP_S = 1.0
 MAX_CLIP_S = 12.0
-# Al menos esta parte del clip, medida en tiempo, debe ser claramente la voz de prueba.
+# Al menos esta parte del clip, medida en tiempo, debe ser claramente de la voz.
 MIN_PROPORCION_VOZ = 0.7
 
 # Cada borde se lleva al silencio real mas cercano a la palabra del extremo.
@@ -95,7 +95,7 @@ CUADRO_S = 0.01
 FUNDIDO_S = 0.005
 
 # Comprobacion final: la huella del clip entero tambien tiene que parecer de
-# la voz de prueba. Atrapa los clips cortos donde la curva, que mira ventanas de 1.5 s,
+# la voz. Atrapa los clips cortos donde la curva, que mira ventanas de 1.5 s,
 # se dejo arrastrar por las palabras de alrededor.
 MIN_PROB_CLIP = 0.5
 
@@ -161,7 +161,7 @@ def referencias(modelo):
 
 
 def curva(modelo, episodio: str, centro, refs):
-    """Parecido con la voz de prueba a lo largo del capitulo. Se guarda en disco."""
+    """Parecido con la voz a lo largo del capitulo. Se guarda en disco."""
     CURVAS.mkdir(parents=True, exist_ok=True)
     destino = CURVAS / f"{episodio}.npz"
     if destino.exists():
@@ -307,7 +307,7 @@ def dividir(tramo):
 
 
 def armar_clips(palabras, nivel):
-    """Agrupa palabras seguidas en tramos y se queda con los de la voz de prueba."""
+    """Agrupa palabras seguidas en tramos y se queda con los de la voz."""
     tramos, actual = [], []
 
     for i, p in enumerate(palabras):

@@ -20,6 +20,7 @@ import sys
 import time
 from pathlib import Path
 
+import voz
 from progreso_comun import AVANCE, RAIZ, guardar, leer_avance, marcar, nuevo
 
 PASOS = [
@@ -46,10 +47,14 @@ def correr(python, argumentos, estado=None, fila=None) -> bool:
 
 
 def main() -> None:
-    estado = nuevo("Voz de la voz de prueba · preparación de la revisión (70 capítulos)", [p[0] for p in PASOS], ["estado"],
+    # La marca queda puesta toda la cadena: si cada paso pusiera la suya, entre
+    # uno y otro Read Aloud volveria a cargar la voz para soltarla al minuto.
+    import gpu
+    gpu.ocupar()
+    estado = nuevo(f"Voz de {voz.TITULO} · preparación de la revisión", [p[0] for p in PASOS], ["estado"],
                    finales=["pagina"], revision="datos/28_revision/revision.html")
     estado["filas"] = "Paso"
-    estado["nota"] = ("Los 70 capítulos ya están separados, transcritos y cortados en frases completas. "
+    estado["nota"] = ("Los capítulos ya están separados, transcritos y cortados en frases completas. "
                       "Mientras corren estos pasos, Read Aloud lee con Piper.")
     guardar(estado)
     for nombre, python, argumentos in PASOS:
@@ -60,7 +65,7 @@ def main() -> None:
         marcar(estado, "estado", "listo" if ok else "con error", nombre,
                f"{nombre}: {'listo' if ok else 'con error'} en {minutos:.0f} min")
         if not ok:
-            estado["nota"] = f"Falló «{nombre}». Detalle en datos/29_preparar_revision.log; Claude lo revisa."
+            estado["nota"] = f"Falló «{nombre}». Detalle en datos/29_preparar_revision.log."
             guardar(estado)
             sys.exit(1)
 

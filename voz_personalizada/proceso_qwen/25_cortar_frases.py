@@ -1,8 +1,8 @@
-"""Corta cada episodio en clips de frases completas de la voz de prueba.
+"""Corta cada episodio en clips de frases completas de la voz.
 
 Lo que cambia frente a 04_cortar.py, y por que:
 
-- La unidad es la frase, no la palabra. Solo el 48 % de los 516 clips
+- La unidad es la frase, no la palabra. Con la voz de prueba, solo el 48 % de los 516 clips
   conservados empezaba y terminaba donde empieza y termina la frase: el
   corte soltaba palabras de los extremos para encontrar silencio, y asi
   quedaban frases sin su ultima palabra. Para entrenar una
@@ -69,7 +69,7 @@ CANCION_DISPERSION_S = 15.0
 
 
 class Hablante:
-    """Probabilidad de que un tramo del episodio sea de la voz de prueba."""
+    """Probabilidad de que un tramo del episodio sea de la voz."""
 
     def __init__(self, episodio):
         datos = np.load(CURVAS / f"{episodio}.npz")
@@ -151,7 +151,7 @@ def clips_del_episodio(hablante, palabras, nivel, en_cancion):
     grupos = [g for g in frases(palabras) if not en_cancion(palabras[g[0]]["inicio"], palabras[g[-1]]["fin"])]
     buenas = [es_de_la_voz(hablante, palabras, g) for g in grupos]
 
-    # Tiras de frases de la voz de prueba seguidas, con pausas naturales entre ellas.
+    # Tiras de frases de la voz seguidas, con pausas naturales entre ellas.
     tiras, actual = [], []
     for g, buena in zip(grupos, buenas):
         seguida = actual and palabras[g[0]]["inicio"] - palabras[actual[-1][-1]]["fin"] <= MAX_PAUSA_ENTRE_FRASES_S

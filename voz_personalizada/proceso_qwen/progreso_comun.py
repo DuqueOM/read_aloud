@@ -11,6 +11,8 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
+import voz
+
 RAIZ = Path(__file__).resolve().parent.parent
 ESTADO = RAIZ / "progreso.json"
 PAGINA = RAIZ / "progreso.html"
@@ -130,7 +132,7 @@ def _pagina(estado: dict) -> str:
 
     return f"""<!doctype html>
 <html lang="es"><head><meta charset="utf-8">{refresco}
-<title>Progreso · voz de prueba</title>
+<title>Progreso · voz de {html.escape(voz.TITULO)}</title>
 <style>
  body {{ margin:0; background:#16161a; color:#e6e6ea; font:15px/1.5 "Segoe UI",system-ui,sans-serif; }}
  main {{ max-width:900px; margin:0 auto; padding:28px 24px; }}
@@ -149,7 +151,7 @@ def _pagina(estado: dict) -> str:
           padding:12px 20px; border-radius:8px; font-weight:600; margin:4px 0 22px; }}
  .nota {{ background:#1f1f25; border:1px solid #2e2e36; border-radius:8px; padding:12px 14px; }}
 </style></head><body><main>
-<h1>{html.escape(estado.get("titulo", "Preparación de la voz de prueba"))}</h1>
+<h1>{html.escape(estado.get("titulo", f"Preparación de la voz de {voz.TITULO}"))}</h1>
 <p class="sub">Empezó a las {estado["inicio"][11:16]} · {pct} % completado · se actualiza sola cada 15 s</p>
 <div class="barra"><i></i></div>
 {enlace}{nota}
