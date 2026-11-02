@@ -308,7 +308,9 @@ validación y 10 como las que lee Read Aloud), mide errores de lectura y timbre,
 abre `datos\34_votacion\votar.html`. Las voces se cambian en la lista `VOCES`
 del script. Con ella, dos entrenamientos más (45 mejores minutos, y los 60 con
 aprendizaje más lento) empataron con la voz de la app
-([ADR 0012](adr/0012-quinta-ronda-y-votacion.md)).
+([ADR 0012](adr/0012-quinta-ronda-y-votacion.md)). La de 45 minutos ganó en
+los textos como los de la app, y desde el 2 de noviembre es la que se prueba
+en el uso diario.
 
 ## 12. Leer con la voz en Read Aloud
 

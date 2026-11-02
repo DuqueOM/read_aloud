@@ -1,4 +1,4 @@
-# 0012. Votar a ciegas con dos tomas por voz, y quedarse con la voz de los 60 mejores minutos
+# 0012. Votar a ciegas con dos tomas por voz, y probar en uso la voz de los 45 mejores minutos
 
 - **Estado:** aceptada
 - **Fecha:** 2 de noviembre de 2026
@@ -35,7 +35,7 @@ suerte. Además, las 10 frases de validación no se parecen a lo que lee la app.
   peor que la mejor toma de esa frase) y WavLM Large mide el parecido del
   timbre.
 
-**Resultado, y se queda la voz de la app:**
+**Resultado:**
 
 | Voz | Votos | Validación | Textos de la app | Tomas con error | Parecido |
 |---|---|---|---|---|---|
@@ -48,8 +48,13 @@ suerte. Además, las 10 frases de validación no se parecen a lo que lee la app.
 Un empate 8 a 8 en 20 frases no separa a las dos primeras, y las tres leen y
 suenan igual por las medidas. La de 45 minutos agregó una palabra que no
 estaba en el texto ("con su" → "con su trabajo"); la de la app cambió "ayer"
-por algo que Whisper oyó como "allá". Cambiar de voz sin una mejora clara no
-vale la pena.
+por algo que Whisper oyó como "allá".
+
+**La app pasa a la voz de los 45 mejores minutos, a prueba.** Ganó en los
+textos como los que lee Read Aloud (5 a 3), que es para lo que se usa, aunque
+esa diferencia cabe en el azar de 10 frases. El usuario la prueba en el uso
+diario, con textos largos y párrafos; si la nota peor, se vuelve a la de 60
+minutos (instrucciones en `modelos\voz_app\LEEME.txt`).
 
 ## Alternativas
 

@@ -23,4 +23,4 @@ Laptop de 8 GB.
 | [0009](0009-limpieza-del-audio.md) | Quitar el eco, pero no "mejorar" la voz | Aceptada |
 | [0010](0010-conjunto-final.md) | Entrenar con los 60 mejores minutos | Aceptada |
 | [0011](0011-recargar-qwen-y-reposo.md) | Volver a cargar Qwen en cuanto la tarjeta queda libre, y un reposo sin sondeo | Aceptada |
-| [0012](0012-quinta-ronda-y-votacion.md) | Votar a ciegas con dos tomas por voz, y quedarse con la voz de los 60 mejores minutos | Aceptada |
+| [0012](0012-quinta-ronda-y-votacion.md) | Votar a ciegas con dos tomas por voz, y probar en uso la voz de los 45 mejores minutos | Aceptada |
