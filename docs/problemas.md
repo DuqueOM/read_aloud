@@ -68,7 +68,7 @@ arranca uno solo:
 . .\lib\ReadAloud.Core.ps1
 Send-ReadAloudCommand -PipeName 'read_aloud_pipe' -Command @{ cmd = 'quit' }
 Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
-    Where-Object { $_.CommandLine -like '*read_aloud_daemon.ps1*' } |
+    Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -like '*-File*read_aloud_daemon.ps1*' } |
     ForEach-Object { Stop-Process -Id $_.ProcessId }
 ```
 
