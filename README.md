@@ -1,5 +1,7 @@
 # Read Aloud
 
+[![CI](https://github.com/DuqueOM/read_aloud/actions/workflows/ci.yml/badge.svg)](https://github.com/DuqueOM/read_aloud/actions/workflows/ci.yml)
+
 Lee en voz alta el texto que tengas seleccionado, con un atajo de teclado y
 voces neuronales que corren en tu propia máquina. Sin internet, sin cuentas y
 sin enviar nada a ningún servidor.

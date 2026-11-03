@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pester:
+    name: Pester (Windows PowerShell 5.1)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Instalar Pester 5
+        run: Install-Module Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force -SkipPublisherCheck
+
+      - name: Pruebas
+        run: .\tools\run_pester.ps1 -Resultados pester.xml
+
+      - name: Guardar resultados
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pester
+          path: pester.xml
+
+  psscriptanalyzer:
+    name: PSScriptAnalyzer
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Instalar PSScriptAnalyzer
+        run: Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force
+
+      # Falla con los errores; los avisos quedan en el registro del paso.
+      - name: Analizar
+        run: .\tools\run_psscriptanalyzer.ps1
+
+  ruff:
+    name: ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Revisar
+        run: pipx run ruff==0.17.3 check lib voz_personalizada
+
+      - name: Formato
+        run: pipx run ruff==0.17.3 format --check lib voz_personalizada
+
+  gitleaks:
+    name: gitleaks (todo el historial)
+    runs-on: ubuntu-latest
+    env:
+      VERSION: 8.30.1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Instalar gitleaks
+        run: |
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}"
+          archivo="gitleaks_${VERSION}_linux_x64.tar.gz"
+          curl -sSfL -o "$RUNNER_TEMP/$archivo" "$base/$archivo"
+          curl -sSfL -o "$RUNNER_TEMP/checksums.txt" "$base/gitleaks_${VERSION}_checksums.txt"
+          (cd "$RUNNER_TEMP" && grep " $archivo\$" checksums.txt | sha256sum -c -)
+          tar -xzf "$RUNNER_TEMP/$archivo" -C "$RUNNER_TEMP" gitleaks
+
+      - name: Buscar secretos
+        run: $RUNNER_TEMP/gitleaks git . --redact --no-banner -v
