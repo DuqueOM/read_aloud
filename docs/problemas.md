@@ -61,12 +61,15 @@ procedimiento completo, con la tabla de equivalencias de sonidos, está en
 No debería pasar: una orden nueva reemplaza la anterior, y un texto idéntico
 recibido en menos de un segundo y medio se ignora.
 
-Si ocurre, hay dos procesos residentes. Ciérralos todos y arranca uno solo:
+Si ocurre, hay dos procesos residentes. Ciérralos todos; la próxima lectura
+arranca uno solo:
 
 ```powershell
-.\read_aloud.ps1 -Stop
-Get-Process powershell | Where-Object { $_.MainWindowTitle -eq '' }
-powershell -File .\read_aloud_daemon.ps1
+. .\lib\ReadAloud.Core.ps1
+Send-ReadAloudCommand -PipeName 'read_aloud_pipe' -Command @{ cmd = 'quit' }
+Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
+    Where-Object { $_.CommandLine -like '*read_aloud_daemon.ps1*' } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId }
 ```
 
 También revisa que no haya dos copias del script de AutoHotkey activas.

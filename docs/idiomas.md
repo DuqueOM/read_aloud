@@ -72,11 +72,12 @@ Prueba primero cómo suena tal cual:
 ```
 
 Si no te convence, añade la línea al archivo, reinicia el proceso residente y
-vuelve a probar:
+vuelve a probar. Se cierra así y la próxima lectura lo arranca con el
+diccionario nuevo:
 
 ```powershell
-.\read_aloud.ps1 -Stop
-powershell -File .\read_aloud_daemon.ps1
+. .\lib\ReadAloud.Core.ps1
+Send-ReadAloudCommand -PipeName 'read_aloud_pipe' -Command @{ cmd = 'quit' }
 ```
 
 Para escribir la pronunciación, piensa cómo la dirías tú hablando español y
