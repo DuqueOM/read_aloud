@@ -1,8 +1,9 @@
 #
 # Ajustes de Read Aloud.
-# Cambia lo que quieras aqui y reinicia el proceso residente:
-#   .\read_aloud.ps1 -Stop
-#   powershell -File .\read_aloud_daemon.ps1
+# Cambia lo que quieras aqui y reinicia el proceso residente: se cierra asi y
+# la proxima lectura lo arranca con los ajustes nuevos (docs\configuracion.md).
+#   . .\lib\ReadAloud.Core.ps1
+#   Send-ReadAloudCommand -PipeName 'read_aloud_pipe' -Command @{ cmd = 'quit' }
 #
 # Si borras este archivo, el programa sigue funcionando con estos mismos
 # valores por defecto.
