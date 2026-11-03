@@ -1,0 +1,77 @@
+Read Aloud
+Copyright 2026 Duque Ortega Mutis
+
+Licensed under the Apache License, Version 2.0. See the LICENSE file.
+
+This repository contains only scripts. It does not include or redistribute
+any of the third-party software, models or voice data listed below:
+setup.ps1 and the scripts in voz_personalizada/ download them from their
+official sources, and each one keeps its own license. It does not include
+any voice recordings or trained voice models either.
+
+Licenses as stated by each project at its source in November 2026.
+
+
+Read-aloud app (installed by setup.ps1)
+---------------------------------------
+
+Piper 2023.11.14-2, https://github.com/rhasspy/piper
+  MIT License. Its Windows release bundles espeak-ng (GPL-3.0),
+  piper-phonemize (MIT License) and ONNX Runtime (MIT License); piper.exe
+  runs as a separate process.
+
+Piper voices, https://huggingface.co/rhasspy/piper-voices
+  Each voice has a MODEL_CARD with the license of its training data:
+  - es_MX-claude-high: Apache-2.0.
+  - es_MX-ald-medium: Unlicense.
+  - en_US-lessac-medium: trained on the Lessac Blizzard 2013 data, which
+    Voice Factory International and Lessac Technologies release under a
+    research licence. Check its terms before any other use, or choose a
+    different English voice (VoiceEn in config/settings.psd1).
+  - en_US-amy-medium: see its MODEL_CARD.
+
+AutoHotkey, https://www.autohotkey.com
+  GPL-2.0. Installed separately by the user for the keyboard shortcut.
+
+
+Custom voice (voz_personalizada/, optional)
+-------------------------------------------
+
+Qwen3-TTS, https://github.com/QwenLM/Qwen3-TTS
+  Code (qwen-tts) and models (Qwen3-TTS-12Hz-1.7B-Base,
+  Qwen3-TTS-Tokenizer-12Hz): Apache-2.0, Copyright 2026 The Alibaba Qwen
+  team. voz_personalizada/proceso_qwen/11b_entrenar_qwen.py follows the
+  method of the official fine-tuning recipe (finetuning/sft_12hz.py,
+  commit 022e286) and reimplements it with the corrections described in
+  that file; it does not copy the recipe's code.
+
+Qwen3-ASR-1.7B, https://github.com/QwenLM/Qwen3-ASR
+  Apache-2.0.
+
+Whisper large-v3, https://github.com/openai/whisper
+  MIT License.
+
+PEFT, https://github.com/huggingface/peft
+  Apache-2.0.
+
+PyTorch and torchaudio, https://pytorch.org
+  BSD-style licenses (torchaudio: BSD-2-Clause). The WavLM Large and
+  TorchAudio-SQUIM models come through torchaudio; see its documentation.
+
+SpeechBrain and spkrec-ecapa-voxceleb, https://speechbrain.github.io
+  Apache-2.0.
+
+wav2vec2-large-xlsr-53-spanish,
+https://huggingface.co/jonatasgrosman/wav2vec2-large-xlsr-53-spanish
+  Apache-2.0.
+
+python-audio-separator, https://github.com/nomadkaraoke/python-audio-separator
+  MIT License. Each separation model keeps the license on its model card.
+
+uv, https://github.com/astral-sh/uv
+  MIT License or Apache-2.0.
+
+Earlier attempts, kept in voz_personalizada/historia/, used Chatterbox
+(https://github.com/resemble-ai/chatterbox), Applio
+(https://github.com/IAHispano/Applio) and resemble-enhance
+(https://github.com/resemble-ai/resemble-enhance), all MIT License.

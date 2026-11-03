@@ -212,4 +212,6 @@ La voz propia usa [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS) y
 Apache-2.0. Las demás herramientas del proceso están en
 [docs/voz-personalizada.md](docs/voz-personalizada.md#herramientas).
 
-Este repositorio contiene únicamente los scripts que orquestan todo eso.
+Este repositorio contiene únicamente los scripts que orquestan todo eso, con
+licencia [Apache 2.0](LICENSE). Las licencias de lo que se descarga al
+instalar están en [NOTICE](NOTICE).
