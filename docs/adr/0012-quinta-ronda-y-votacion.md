@@ -66,8 +66,8 @@ minutos (instrucciones en `modelos\voz_app\LEEME.txt`).
 
 - Ajustar el aprendizaje o recortar los datos ya no cambia la voz de forma que
   se note: quedan pequeñas variaciones que el azar de cada toma tapa. Una
-  mejora clara pediría más voz de buena calidad (falta el capítulo 25
-  verdadero) o un modelo base mejor.
+  mejora clara pediría más voz de buena calidad (falta la grabación 25
+  verdadera) o un modelo base mejor.
 - `34_votacion.py` queda como la forma de decidir entre voces parecidas.
 - Los puntos de `puntos_v5_45` y `puntos_v5_60_lento` (unos 5 GB) se pueden
   borrar al cerrar el proyecto.

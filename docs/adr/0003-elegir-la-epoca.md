@@ -13,8 +13,8 @@ RVC, entrenó 400 épocas; con Qwen3-TTS eso no sirve.
 ## Decisión
 
 - Guardar las capas LoRA de **cada época**.
-- Medir en cada una la **pérdida de validación** con 10 frases que la voz real dijo
-  en las grabaciones y que nunca entran al entrenamiento. Son siempre las mismas,
+- Medir en cada una la **pérdida de validación** con 10 frases que dijo la
+  voz real y que nunca entran al entrenamiento. Son siempre las mismas,
   para comparar rondas.
 - Generar esas frases con las mejores épocas, medir entonación (forma y rango
   de la curva de tono frente a la voz real), timbre (ECAPA) y errores de texto

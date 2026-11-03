@@ -5,21 +5,20 @@
 
 ## Contexto
 
-Con los 70 capítulos de las grabaciones salieron 2094 clips candidatos (107 minutos).
+Con las 70 grabaciones salieron 2094 clips candidatos (107 minutos).
 En la revisión el usuario conservó 1529, 76.7 minutos, y corrigió 145 textos.
 Entre lo conservado había:
 
-- **un capítulo duplicado:** el 25 descargado era una segunda copia del 24. El
+- **una grabación duplicada:** la 25 descargada era una segunda copia de la 24. El
   100 % de su texto propio coincidía, y sus clips son la misma grabación;
-- **frases repetidas:** una misma frase aparece 21
-  veces;
+- **frases repetidas:** una misma frase aparece 21 veces;
 - **distintas calidades** de audio y de volumen, y clips muy cortos.
 
 ## Decisión
 
 `30_seleccion_final.py` quita, en este orden:
 
-1. **Las copias del capítulo duplicado** (30 clips, 1.4 minutos). Repetir un
+1. **Las copias de la grabación duplicada** (30 clips, 1.4 minutos). Repetir un
    clip idéntico solo le da doble peso.
 2. **Los clips de menos de 1 s** (27 clips, 0.4 minutos): casi no tienen
    entonación de la que aprender.
@@ -53,7 +52,7 @@ En los 60 minutos elegidos mejoran todas las medidas frente a lo conservado:
 | Ruido del borde | −34 dB | −36 dB |
 | Eco | −18.9 dB | −19.2 dB |
 
-Las dos fuentes de los capítulos salieron parecidas (PESQ 2.69 y 2.82), así
+Las dos fuentes de las grabaciones salieron parecidas (PESQ 2.69 y 2.82), así
 que no hizo falta descartar ninguna.
 
 ## Cómo se valida
@@ -92,4 +91,4 @@ que los 14 minutos de más.** La época 2 de `mejores60` es la voz de la app.
 - El conjunto queda guardado aparte, listo para cualquier modelo futuro: los
   audios, `metadatos.csv` con el texto, la calidad y si está entre los 60
   mejores, y las 10 frases de validación.
-- Faltan el capítulo 25 verdadero y su minuto y medio de voz.
+- Falta la grabación 25 verdadera y su minuto y medio de voz.

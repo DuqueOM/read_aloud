@@ -7,7 +7,8 @@ repetir los experimentos. Si una decisión cambia, se escribe un ADR nuevo que
 reemplaza al anterior y se marca el viejo como reemplazado.
 
 Casi todas son de la voz personalizada, hecha entre octubre de 2026 y hoy con
-una voz de prueba tomada de distintos videos para uso personal; la 0015 es del reproductor. Las cifras son de esas pruebas, en una RTX 5070
+una voz de prueba tomada de distintos videos para uso personal; la 0015 es
+del reproductor. Las cifras son de esas pruebas, en una RTX 5070
 Laptop de 8 GB.
 
 | ADR | Decisión | Estado |

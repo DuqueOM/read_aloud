@@ -28,19 +28,19 @@ En `25_cortar_frases.py`:
   de hasta 15 s. Si un borde no cae en silencio, se prueba con una frase
   menos, **nunca con una palabra menos**.
 - Se quitan las **canciones de entrada y salida**: tiras de cuatro palabras que
-  aparecen en cinco capítulos o más, casi en el mismo momento desde el inicio
-  o desde el final. Las frases que la voz repite cada capítulo
+  aparecen en cinco grabaciones o más, casi en el mismo momento desde el
+  inicio o desde el final. Las frases que la voz repite en cada grabación
   también se repiten, pero en momentos distintos, y se conservan.
 
 ## Resultado
 
-De los mismos 22 capítulos salieron 29.7 minutos de candidatos, todos de
+De las mismas 22 grabaciones salieron 29.7 minutos de candidatos, todos de
 frases enteras, frente a 30.8 minutos de los que la mitad estaban cortados.
 581 de 630 clips terminan en un signo de puntuación y el resto en una pausa.
 
 ## Consecuencias
 
-- Hubo que revisar de nuevo los 22 primeros capítulos junto con los nuevos,
+- Hubo que revisar de nuevo las 22 primeras grabaciones junto con las nuevas,
   en una sola pasada.
 - Los clips cortos que quedan son frases completas, como una pregunta o una
   exclamación de dos palabras. Solo se quitan los de menos de 1 s (ver la

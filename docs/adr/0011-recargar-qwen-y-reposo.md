@@ -61,8 +61,8 @@ ventana corría cada 60 ms aunque no hubiera nada que leer ni mostrar.
 
 ## Consecuencias
 
-- Tras un entrenamiento, una prueba o un juego en la tarjeta NVIDIA, la voz de
-  la voz de prueba vuelve sola en unos 30 s y la lectura siguiente empieza en 1 o 2 s.
+- Tras un entrenamiento, una prueba o un juego en la tarjeta NVIDIA, la voz
+  propia vuelve sola en unos 30 s y la lectura siguiente empieza en 1 o 2 s.
 - Mientras Read Aloud está abierto, Qwen ocupa casi siempre unos 5 GB de la
   tarjeta y 2.3 GB de RAM. Quien prefiera liberarlos usa `QwenIdleMinutes`, y
   paga la carga en la lectura siguiente, o `QwenReopen = $false`.

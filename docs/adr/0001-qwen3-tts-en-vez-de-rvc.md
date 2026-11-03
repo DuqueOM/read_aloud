@@ -27,15 +27,16 @@ LoRA (ver la [0002](0002-lora-y-correcciones-a-la-receta.md)).
 
 ## Alternativas probadas
 
-Con las mismas 10 frases que dijo la voz real en las grabaciones, escuchadas junto a la
-real:
+Con las mismas 10 frases que dijo la voz real en las grabaciones, escuchadas
+junto a ella:
 
 - **Piper con RVC:** la de antes, con la entonación de Piper.
-- **Chatterbox Multilingual V3**, y su versión en español de México (MIT):
+- **Chatterbox Multilingual V3**, y su versión afinada para el español de
+  México (MIT):
   clonan desde una muestra, sin entrenar.
 - **Qwen3-TTS clonando desde una muestra de 8 s**, solo y con RVC encima.
 
-El usuario eligió Qwen3-TTS. Al afinarlo con los clips de la voz de prueba, ya no hizo
+El usuario eligió Qwen3-TTS. Al afinarlo con los clips de la voz, ya no hizo
 falta RVC encima.
 
 ## Consecuencias

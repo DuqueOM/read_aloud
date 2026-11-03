@@ -1,27 +1,29 @@
 # Voz personalizada
 
 Esta guía explica cómo sacar una voz concreta de grabaciones donde habla junto
-a otras, como videos con varias personas, entrenar con ella un modelo de texto a voz y
-leer con esa voz en Read Aloud. Todo corre en tu equipo.
+a otras, como videos con varias personas, entrenar con ella un modelo de texto
+a voz y leer con esa voz en Read Aloud. Todo corre en tu equipo.
 
 El código está en [voz_personalizada/](../voz_personalizada). Lo que pesa
 (grabaciones, audio, modelos y entornos de Python) vive fuera del
 repositorio, en una carpeta de trabajo por voz. Por qué el proceso es así está
 en el [registro de decisiones](adr/README.md).
 
-> **Estado:** probado de punta a punta con una voz, la de la voz de prueba de las grabaciones
-> es_mx: 70 capítulos, 1438 clips revisados de oído y una voz que Read Aloud
-> ya usa. Falta comparar a ciegas los dos últimos entrenamientos (ver la
-> [ADR 0010](adr/0010-conjunto-final.md)) y generalizar los scripts de
-> [proceso_qwen/](../voz_personalizada/proceso_qwen), que todavía traen
-> fijas algunas cosas de esa voz.
+> **Estado:** probado de punta a punta con una voz de prueba, tomada de
+> distintos videos para uso personal: unas 70 grabaciones, 1438 clips
+> revisados de oído y una voz que Read Aloud ya usa. Este repositorio no
+> incluye ni distribuye ningún modelo, audio ni dato de esa voz.
 
 ## Uso responsable
 
-Clonar la voz de una persona, también cuando interpreta un papel,
-solo debe hacerse con su permiso o para uso estrictamente personal. No
-publiques ni compartas un modelo ni un conjunto de datos hechos con una voz
-ajena sin autorización.
+Clonar la voz de una persona, también cuando interpreta un papel, solo debe
+hacerse con su permiso o para uso estrictamente personal. No publiques ni
+compartas un modelo, un conjunto de datos ni audio generado con una voz ajena
+sin autorización, y no lo uses para hacerte pasar por nadie.
+
+Este repositorio solo trae el código del proceso. No incluye ni distribuye
+ningún modelo, audio, transcripción ni dato de la voz con que se probó, y
+todo lo que generes queda en tu carpeta de trabajo, fuera de él.
 
 ## Cómo funciona
 
@@ -55,11 +57,11 @@ Dos ideas lo atraviesan:
 - **[uv](https://docs.astral.sh/uv/).** Y git con git-lfs si vas a instalar
   las herramientas de la primera versión (`-ConRvc`, `-ConMejora`).
 - **Espacio en disco:** unos 25 GB de entornos y modelos, y cerca de 1 GB por
-  capítulo de 25 minutos mientras se procesa.
-- **Muchas grabaciones de la voz.** Como referencia: con una voz que habla mucho, cada
-  capítulo de 25 minutos dio 1.4 minutos de candidatos y algo más de 1 minuto
-  conservado tras la revisión. Para una hora de voz hicieron falta los 70
-  capítulos de las grabaciones.
+  grabación de 25 minutos mientras se procesa.
+- **Muchas grabaciones de la voz.** Como referencia: con una voz que habla
+  mucho en cada grabación, cada video de 25 minutos dio 1.4 minutos de
+  candidatos y algo más de 1 minuto conservado tras la revisión. Para una
+  hora de voz hicieron falta unas 70 grabaciones.
 - **Una referencia de la voz:** uno o varios WAV con solo esa voz, unos
   minutos, sacados de escenas limpias. Sirve para la primera revisión.
 
@@ -131,7 +133,7 @@ explicado en el archivo, y la tabla de quién usa cada uno, en
   si comparten carpeta con otros videos;
 - **`contexto` y `variantes`:** de qué es la grabación y los nombres propios
   como deben escribirse, para los transcriptores;
-- **`duplicados`:** si después descubres que bajaste un episodio dos veces.
+- **`duplicados`:** si después descubres que bajaste una grabación dos veces.
 
 Los scripts no se editan, salvo los experimentos (`33` y `34`), que tienen
 sus opciones arriba de todo.
@@ -149,22 +151,23 @@ separador que las grabaciones:
 .\.venv\Scripts\python.exe scripts\lote.py
 ```
 
-Lleva cada capítulo por cinco pasos: extraer el audio, separar la voz,
+Lleva cada grabación por cinco pasos: extraer el audio, separar la voz,
 transcribir, alinear las palabras y calcular las huellas de voz. Todos menos
 el primero usan la tarjeta, uno a la vez. Con dos a la vez no caben en 8 GB,
 Windows pasa memoria a la RAM y todo va mucho más lento.
 
-- **Cada capítulo recibe un identificador fijo** por el número de su nombre:
-  `ep01`, `ep02`... Entiende "Episode 22", "Episodio 22", "capítulo 1", un
-  número al principio y, si no, el primer número del nombre; para otra forma,
-  `patron_episodio` en `voz.toml`. Así se pueden agregar capítulos después
+- **Cada grabación recibe un identificador fijo** por el número de su nombre:
+  `ep01`, `ep02`... Entiende nombres como "Video 22", "22 - Título" o
+  "Parte 22": el número que sigue a "Episodio" o "Episode" si lo hay, el del
+  principio o, si no, el primero del nombre. Para otra forma,
+  `patron_episodio` en `voz.toml`. Así se pueden agregar grabaciones después
   sin desordenar lo hecho.
 - **Suma las descargas que terminan mientras corre.** Chrome guarda una
   descarga a medias como `.crdownload`; un video con su extensión ya está
   entero. Antes de extraer cada video lo busca de nuevo, por si lo moviste de
   carpeta.
 - **El avance se ve en `progreso.html`**, que se recarga solo cada 15 s.
-- **Tiempo:** unos 6 minutos por capítulo; 70 capítulos, unas 8 horas.
+- **Tiempo:** unos 6 minutos por grabación; 70 grabaciones, unas 8 horas.
 
 Mientras corre, Read Aloud lee con Piper (ver
 [Read Aloud y la tarjeta](#read-aloud-y-la-tarjeta)).
@@ -172,7 +175,7 @@ Mientras corre, Read Aloud lee con Piper (ver
 ## 4. La primera revisión
 
 El reconocedor de la voz aprende de tus decisiones, así que la primera vez
-hace falta una revisión con el método anterior, sobre unos 20 capítulos:
+hace falta una revisión con el método anterior, sobre unas 20 grabaciones:
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\04a_calibrar.py
@@ -194,7 +197,7 @@ conservando solo los de la voz sola, y exporta `decisiones.json` a
 ```
 
 `21_hablante.py` compara formas de reconocer la voz con tus decisiones, por
-episodios que no vio. `24_curva_wavlm.py` entrena con ellas el clasificador
+grabaciones que no vio. `24_curva_wavlm.py` entrena con ellas el clasificador
 que se usa al cortar: WavLM Large, el que ganó (AUC 0.74 frente a 0.60 de las
 referencias con ECAPA). Por qué, en la [ADR 0007](adr/0007-reconocer-la-voz-con-wavlm.md).
 
@@ -209,7 +212,7 @@ bordes en silencio. Quien dice cada frase se decide con la frase entera; una
 frase con un tramo de otra voz se descarta. Se quitan las canciones de entrada
 y salida. Por qué, en la [ADR 0006](adr/0006-clips-de-frases-completas.md).
 
-Cada clip se nombra por su capítulo y su instante de inicio, como
+Cada clip se nombra por su grabación y su instante de inicio, como
 `ep04_052310.wav`.
 
 ## 7. Medir y transcribir cada clip
@@ -226,7 +229,7 @@ con el avance en `progreso.html`:
    huella de voz. Con eso, un clasificador entrenado con tus decisiones da un
    puntaje: la probabilidad de que conserves el clip (AUC 0.80).
 2. **Transcribe cada clip dos veces** (`27_transcribir_clips.py`), con Qwen3-ASR
-   y con Whisper, los dos con los nombres propios como contexto. Ver la
+   y con Whisper, los dos con los nombres propios de `voz.toml` como contexto. Ver la
    [ADR 0008](adr/0008-transcripcion.md).
 3. **Arma la página de revisión** (`28_revision.py`).
 
@@ -275,7 +278,7 @@ botón descarga `revision.json`, que es lo que lee el paso siguiente. Cópialo a
 .\.venv\Scripts\python.exe scripts\30_seleccion_final.py
 ```
 
-De lo que conservaste quita los capítulos duplicados, los clips de menos de
+De lo que conservaste quita las grabaciones duplicadas, los clips de menos de
 1 s y las tomas de más de una misma frase, y deja los mejores 60 minutos por
 calidad (`minutos_finales` en `voz.toml`). Por qué y con qué medidas, en la
 [ADR 0010](adr/0010-conjunto-final.md). El detalle de cada clip quitado, con
@@ -283,8 +286,8 @@ su motivo, queda en `datos\30_final\seleccion.json`.
 
 La primera vez aparta también **las 10 frases de validación**: con ellas se
 mide cada época, y son las que comparas con la voz real al elegir, así que
-nunca entran al entrenamiento. Son de 2 a 6 s, de buena calidad, de episodios
-distintos, con un texto que no se repite en otro clip, y al menos una pregunta
+nunca entran al entrenamiento. Son de 2 a 6 s, de buena calidad, de grabaciones
+distintas, con un texto que no se repite en otro clip, y al menos una pregunta
 y una exclamación. Quedan en `datos\09_comparar\` (la lista y el audio real) y
 se reusan en todas las rondas; para elegirlas de nuevo, borra esa carpeta
 antes de correr este paso.
@@ -419,7 +422,7 @@ Los modelos se bajan de sus fuentes oficiales y no van en el repositorio.
 `Start-Process`, como en los pasos 7 y 10. Los dos siguen donde quedaron si se
 vuelven a lanzar.
 
-**El lote no encuentra capítulos en una carpeta de WSL.** El acceso a
+**El lote no encuentra grabaciones en una carpeta de WSL.** El acceso a
 `\\wsl.localhost` falla a veces por un rato. El lote los suma cuando la
 carpeta vuelve a responder.
 
@@ -450,7 +453,7 @@ desde la que trabajas.
 Lo que vale la pena conservar:
 
 - **El conjunto final**, listo para cualquier modelo futuro: los audios
-  limpios, su texto y su calidad. Con la voz de prueba quedó en `conjunto_mi_voz\`, con
+  limpios, su texto y su calidad. Con la voz de prueba quedó en `conjunto_<voz>\`, con
   un `LEEME.md` que explica cómo se hizo.
 - **La voz que usa Read Aloud:** `modelos\voz_app`, `.venv_qwen`,
   `modelos\hf` (el modelo base y el tokenizador) y `herramientas\python`.
@@ -468,7 +471,7 @@ voz.toml                  Lo que es de esta voz: nombre, idioma, carpetas, nombr
 referencias\original\     La referencia de la voz, tal cual
 referencias\              La referencia con la voz separada
 scripts\                  Copia de voz_personalizada\proceso_qwen
-datos\01_audio\           Audio de cada capitulo
+datos\01_audio\           Audio de cada grabacion
 datos\02_voz\             Voz separada
 datos\03_transcripcion\   Palabras con sus tiempos, segun Whisper
 datos\03_alineado\        Los mismos tiempos, afinados

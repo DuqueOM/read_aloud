@@ -25,7 +25,7 @@ descartados.
 
 ## Medidas
 
-Todas con episodios que el clasificador no vio (5 grupos de episodios). El AUC
+Todas con grabaciones que el clasificador no vio (5 grupos de grabaciones). El AUC
 es la probabilidad de que un clip conservado reciba más puntaje que uno
 descartado:
 

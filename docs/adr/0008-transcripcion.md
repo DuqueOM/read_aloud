@@ -10,13 +10,13 @@ aprende. En la primera revisión, el usuario corrigió a mano 140 de 516 textos.
 
 La transcripción corría en el procesador, porque en la tarjeta, a precisión
 completa, Whisper large-v3 casi no cabía en 8 GB y era cuatro veces más
-lento. Pero en el procesador, con la computadora en uso, un capítulo llegó a
+lento. Pero en el procesador, con la computadora en uso, una grabación llegó a
 tardar 174 minutos.
 
 ## Decisión
 
-1. **Whisper large-v3 en la tarjeta, a media precisión**, sobre el capítulo
-   entero, con tiempos por palabra. Es como lo corre OpenAI en una tarjeta. El
+1. **Whisper large-v3 en la tarjeta, a media precisión**, sobre la grabación
+   entera, con tiempos por palabra. Es como lo corre OpenAI en una tarjeta. El
    modelo se pasa a media precisión en el procesador y después a la tarjeta;
    las LayerNorm quedan en float32, como las calcula Whisper de todos modos.
    Cargarlo directo en la tarjeta deja reservados los 6 GB de float32 y el
@@ -29,10 +29,10 @@ tardar 174 minutos.
 
 ## Medidas
 
-**Media precisión frente a precisión completa**, en tres capítulos, contra los
+**Media precisión frente a precisión completa**, en tres grabaciones, contra los
 textos corregidos a mano:
 
-| | Error por carácter | Tiempo por capítulo de 25 min | Memoria |
+| | Error por carácter | Tiempo por grabación de 25 min | Memoria |
 |---|---|---|---|
 | Procesador, float32 | 12.2 % | 21 a 174 min | — |
 | Tarjeta, media precisión | 12.0 % | 2 min | 4.2 GB |
@@ -44,7 +44,7 @@ estaban los errores:
 
 | | Error por carácter | Signo final correcto |
 |---|---|---|
-| Whisper sobre el capítulo entero | 9.3 % | 96 % |
+| Whisper sobre la grabación entera | 9.3 % | 96 % |
 | Qwen3-ASR | 4.3 % | 74 % |
 | Qwen3-ASR con los nombres de contexto | **3.0 %** | 73 % |
 
