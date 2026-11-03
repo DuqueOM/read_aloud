@@ -244,7 +244,8 @@ def medir() -> None:
 
     @torch.no_grad()
     def huella(ruta):
-        capas, _ = grande.extract_features(torch.from_numpy(a16(ruta))[None].to("cuda:0"))
+        # ruff ve el "del grande" de mas abajo; huella no se llama despues de el.
+        capas, _ = grande.extract_features(torch.from_numpy(a16(ruta))[None].to("cuda:0"))  # noqa: F821
         v = torch.stack([capas[i].mean(dim=1).squeeze(0) for i in range(4, 13)]).mean(0).cpu().numpy()
         return v / (np.linalg.norm(v) + 1e-9)
 

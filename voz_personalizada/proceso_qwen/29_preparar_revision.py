@@ -18,7 +18,6 @@ Se lanza aparte, para que no dependa de la sesion que lo abre:
 import subprocess
 import sys
 import time
-from pathlib import Path
 
 import voz
 from progreso_comun import AVANCE, RAIZ, guardar, leer_avance, marcar, nuevo
