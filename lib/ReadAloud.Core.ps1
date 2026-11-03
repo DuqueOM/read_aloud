@@ -187,23 +187,31 @@ function Get-QwenVoice {
 
     $work = [string]$Settings.QwenWorkDir
     $voice = @{
-        Python  = Join-Path $work '.venv_qwen\Scripts\python.exe'
+        Python  = ''
         Script  = Join-Path $Paths.LibDir 'servidor_qwen.py'
-        VoiceDir= Join-Path $work 'modelos\voz_app'
-        HfHome  = Join-Path $work 'modelos\hf'
+        VoiceDir= ''
+        HfHome  = ''
         Log     = Join-Path $Paths.RuntimeDir 'qwen.log'
         # Los pasos pesados de la carpeta de trabajo dejan aqui su numero de
         # proceso mientras usan la tarjeta grafica (scripts\gpu.py); mientras
         # tanto se lee con Piper (Test-GpuBusy, en read_aloud_daemon.ps1).
-        BusyFile= Join-Path $work 'gpu_ocupada'
+        BusyFile= ''
         Ready   = $false
     }
 
+    # Sin carpeta de trabajo no hay voz propia: las rutas de la carpeta quedan
+    # vacias y la voz, no lista. Se arman con Path.Combine y no con Join-Path,
+    # que falla con una ruta vacia o con una unidad que no existe en el equipo,
+    # y el proceso residente se caeria al arrancar.
     if (-not [string]::IsNullOrWhiteSpace($work)) {
+        $voice.Python   = [IO.Path]::Combine($work, '.venv_qwen\Scripts\python.exe')
+        $voice.VoiceDir = [IO.Path]::Combine($work, 'modelos\voz_app')
+        $voice.HfHome   = [IO.Path]::Combine($work, 'modelos\hf')
+        $voice.BusyFile = [IO.Path]::Combine($work, 'gpu_ocupada')
         $voice.Ready = (
             (Test-Path -LiteralPath $voice.Python) -and
             (Test-Path -LiteralPath $voice.Script) -and
-            (Test-Path -LiteralPath (Join-Path $voice.VoiceDir 'lora.safetensors')) -and
+            (Test-Path -LiteralPath ([IO.Path]::Combine($voice.VoiceDir, 'lora.safetensors'))) -and
             (Test-Path -LiteralPath $voice.HfHome)
         )
     }

@@ -201,15 +201,25 @@ Describe 'Get-VoiceModelPath' {
 }
 
 Describe 'Get-QwenVoice' {
-    # Error conocido: con QwenWorkDir vacio, el valor de config\settings.psd1,
-    # Join-Path recibe una ruta vacia y falla. El proceso residente corre con
-    # ErrorActionPreference = 'Stop' y se cae al arrancar, asi que un equipo sin
-    # settings.local.psd1 espera 25 s en cada lectura y lee sin reproductor.
-    # Se quita el -Skip cuando se corrija.
-    It 'sin carpeta de trabajo no está lista' -Skip {
-        $v = Get-QwenVoice -Paths @{ LibDir = 'C:\lib'; RuntimeDir = 'C:\runtime' } -Settings @{ QwenWorkDir = '' }
+    # QwenWorkDir vacio es el valor de config\settings.psd1. Si aqui fallara,
+    # el proceso residente se caeria al arrancar en cualquier equipo sin
+    # settings.local.psd1.
+    It 'sin carpeta de trabajo ("<Carpeta>") no está lista y no falla' -ForEach @(
+        @{ Carpeta = '' }
+        @{ Carpeta = '   ' }
+    ) {
+        $v = Get-QwenVoice -Paths @{ LibDir = 'C:\lib'; RuntimeDir = 'C:\runtime' } -Settings @{ QwenWorkDir = $Carpeta }
         $v.Ready | Should -BeFalse
+        $v.Python | Should -BeExactly ''
+        $v.BusyFile | Should -BeExactly ''
         $v.Script | Should -Be 'C:\lib\servidor_qwen.py'
+    }
+
+    It 'con una carpeta en una unidad que no existe no está lista y no falla' {
+        $libre = [char[]]'QRSTUVWXYZ' | Where-Object { -not (Test-Path -LiteralPath ($_ + ':\')) } | Select-Object -First 1
+        $v = Get-QwenVoice -Paths @{ LibDir = 'C:\lib'; RuntimeDir = 'C:\runtime' } -Settings @{ QwenWorkDir = "${libre}:\voces\mi_voz" }
+        $v.Ready | Should -BeFalse
+        $v.Python | Should -Be "${libre}:\voces\mi_voz\.venv_qwen\Scripts\python.exe"
     }
 
     It 'arma las rutas dentro de la carpeta de trabajo' {
