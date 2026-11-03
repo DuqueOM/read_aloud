@@ -64,6 +64,8 @@ from safetensors.torch import load_file
 sys.path.insert(0, str(Path(__file__).parent))
 import qwen_rapido
 
+# El nombre es solo la etiqueta con que se pide la voz al generar: el modelo
+# no lo guarda, la voz es la huella de voz.safetensors en el hueco ID_VOZ.
 VOZ = "propia"
 ID_VOZ = 3000
 IDIOMAS = {"es": "Spanish", "en": "English"}
