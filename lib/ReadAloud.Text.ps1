@@ -408,7 +408,9 @@ function Prepare-TextForPiper {
 
     $out = New-Object System.Collections.Generic.List[string]
 
-    foreach ($line in ($t -split "`n", -1)) {
+    # Sin limite: con -1, PowerShell 7 cuenta desde la derecha y devuelve el
+    # texto entero en una sola parte.
+    foreach ($line in ($t -split "`n")) {
         $trimmed = $line.Trim()
 
         if ($trimmed -eq '') {
@@ -544,7 +546,7 @@ function Split-IntoBlocks {
     $parrafo = New-Object System.Collections.Generic.List[string]
     $abreBloque = $true
 
-    foreach ($linea in ($t -split "`n", -1)) {
+    foreach ($linea in ($t -split "`n")) {
         $l = $linea.Trim()
 
         if ($l -eq '') {
