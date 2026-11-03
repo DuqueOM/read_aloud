@@ -1,0 +1,3 @@
+The download is 1 GB and the cache uses many MB. The ML model loads in 300 ms.
+
+Run the setup -> wait => done. Then open the docs/settings page and check the result.

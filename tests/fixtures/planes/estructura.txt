@@ -1,0 +1,34 @@
+idioma del texto: es
+[0] es, bloque 0 (titulo), pausa 0.55 s
+    voz:     Instalación.
+    muestra: Instalación
+[1] es, bloque 1 (titulo), pausa 0.30 s
+    voz:     Resumen.
+    muestra: Resumen
+[2] es, bloque 2 (parrafo), pausa 0.35 s
+    voz:     El instalador descarga Piper, las voces en español e inglés, y después crea el acceso directo en el escritorio.
+    muestra: El instalador descarga Piper, las voces en español e inglés, y después crea el acceso directo en el escritorio.
+[3] es, bloque 3 (vineta), pausa 0.18 s
+    voz:     Copia el texto.
+    muestra: •  Copia el texto.
+[4] es, bloque 4 (vineta), pausa 0.18 s
+    voz:     Pulsa Ctrl+Shift+V.
+    muestra: •  Pulsa Ctrl+Shift+V
+[5] es, bloque 5 (vineta), pausa 0.18 s
+    voz:     1. Abre la consola.
+    muestra: 1. Abre la consola
+[6] es, bloque 6 (vineta), pausa 0.18 s
+    voz:     2) Ejecuta el instalador.
+    muestra: 2) Ejecuta el instalador.
+[7] es, bloque 7 (fila), pausa 0.18 s
+    voz:     | Voz | Idioma | Calidad |.
+    muestra: | Voz | Idioma | Calidad |
+[8] es, bloque 8 (fila), pausa 0.18 s
+    voz:     | es_MX | español | alta |.
+    muestra: | es_MX | español | alta |
+[9] es, bloque 9 (fila), pausa 0.18 s
+    voz:     | en_US | inglés | media |.
+    muestra: | en_US | inglés | media |
+[10] es, bloque 10 (parrafo), pausa 0.00 s
+    voz:     Último párrafo, que cierra el texto.
+    muestra: Último párrafo, que cierra el texto.

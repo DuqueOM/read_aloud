@@ -1,0 +1,3 @@
+“Comillas tipográficas” y ‘simples’ — con raya – y guion corto… para terminar la línea.
+Nombre	Valor
+Velocidad	1,06

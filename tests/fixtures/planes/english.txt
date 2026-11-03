@@ -1,0 +1,13 @@
+idioma del texto: en
+[0] en, bloque 0 (parrafo), pausa 0.00 s
+    voz:     The download is 1 gigabyte and the cache uses many megabytes.
+    muestra: The download is 1 GB and the cache uses many MB.
+[1] en, bloque 0 (parrafo), pausa 0.35 s
+    voz:     The machine learning model loads in 300 ms.
+    muestra: The ML model loads in 300 ms.
+[2] en, bloque 1 (parrafo), pausa 0.00 s
+    voz:     Run the setup to wait produces done.
+    muestra: Run the setup -> wait => done.
+[3] en, bloque 1 (parrafo), pausa 0.00 s
+    voz:     Then open the docs slash settings page and check the result.
+    muestra: Then open the docs/settings page and check the result.

@@ -1,0 +1,22 @@
+idioma del texto: es
+[0] es, bloque 0 (parrafo), pausa 0.00 s
+    voz:     Antes de abrir el pe erre, revisa que el yeison de la a pe i sea válido.
+    muestra: Antes de abrir el PR, revisa que el JSON de la API sea válido.
+[1] es, bloque 0 (parrafo), pausa 0.35 s
+    voz:     El archivo pesa 45 megabytes y la carga tardó 2,5 segundos.
+    muestra: El archivo pesa 45 MB y la carga tardó 2,5 s.
+[2] es, bloque 1 (parrafo), pausa 0.00 s
+    voz:     La ge pe u tiene 8 gigabytes de memoria.
+    muestra: La GPU tiene 8 GB de memoria.
+[3] es, bloque 1 (parrafo), pausa 0.35 s
+    voz:     Con el modelo de machín lérnin cargado quedan los gigabytes justos para el resto del trabajo.
+    muestra: Con el modelo de ML cargado quedan los GB justos para el resto del trabajo.
+[4] es, bloque 2 (parrafo), pausa 0.00 s
+    voz:     El escrípt de Pauer Chel lee docs barra configuracion.md y deja el resultado en la carpeta de salida.
+    muestra: El script de PowerShell lee docs/configuracion.md y deja el resultado en la carpeta de salida.
+[5] es, bloque 2 (parrafo), pausa 0.35 s
+    voz:     La fecha 3/11 no cambia: entrada hacia salida, y error produce aviso.
+    muestra: La fecha 3/11 no cambia: entrada -> salida, y error => aviso.
+[6] es, bloque 3 (parrafo), pausa 0.00 s
+    voz:     Sí. Bien. Las dos anteriores son tan cortas que se juntan con esta.
+    muestra: Sí. Bien. Las dos anteriores son tan cortas que se juntan con esta.

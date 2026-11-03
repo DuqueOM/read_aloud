@@ -1,0 +1,5 @@
+Hoy probamos la lectura en dos idiomas. The quick test shows that the voice switches when the sentence is clearly in English. Después vuelve al español sin ningún problema.
+
+El botón dice Save changes y funciona bien.
+
+This whole paragraph is written in English, and it should be read with the English voice from the start to the end.

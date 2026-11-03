@@ -1,0 +1,10 @@
+idioma del texto: es
+[0] es, bloque 0 (parrafo), pausa 0.35 s
+    voz:     "Comillas tipográficas" y 'simples' - con raya - y guion corto... para terminar la línea.
+    muestra: “Comillas tipográficas” y ‘simples’ — con raya – y guion corto… para terminar la línea.
+[1] es, bloque 1 (fila), pausa 0.18 s
+    voz:     Nombre Valor.
+    muestra: Nombre    Valor
+[2] es, bloque 2 (fila), pausa 0.00 s
+    voz:     Velocidad 1,06.
+    muestra: Velocidad    1,06

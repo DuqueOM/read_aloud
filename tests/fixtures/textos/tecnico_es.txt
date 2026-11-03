@@ -1,0 +1,7 @@
+Antes de abrir el PR, revisa que el JSON de la API sea válido. El archivo pesa 45 MB y la carga tardó 2,5 s.
+
+La GPU tiene 8 GB de memoria. Con el modelo de ML cargado quedan los GB justos para el resto del trabajo.
+
+El script de PowerShell lee docs/configuracion.md y deja el resultado en la carpeta de salida. La fecha 3/11 no cambia: entrada -> salida, y error => aviso.
+
+Sí. Bien. Las dos anteriores son tan cortas que se juntan con esta.

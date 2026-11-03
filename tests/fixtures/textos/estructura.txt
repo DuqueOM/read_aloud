@@ -1,0 +1,18 @@
+# Instalación
+
+Resumen
+
+El instalador descarga Piper, las voces en español e inglés, y después crea el
+acceso directo en el escritorio.
+
+- Copia el texto.
+- Pulsa Ctrl+Shift+V
+1. Abre la consola
+2) Ejecuta el instalador.
+
+| Voz | Idioma | Calidad |
+|-----|--------|---------|
+| es_MX | español | alta |
+| en_US | inglés | media |
+
+Último párrafo, que cierra el texto.

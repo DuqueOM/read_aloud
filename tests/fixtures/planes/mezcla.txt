@@ -1,0 +1,16 @@
+idioma del texto: en
+[0] es, bloque 0 (parrafo), pausa 0.00 s
+    voz:     Hoy probamos la lectura en dos idiomas.
+    muestra: Hoy probamos la lectura en dos idiomas.
+[1] en, bloque 0 (parrafo), pausa 0.00 s
+    voz:     The quick test shows that the voice switches when the sentence is clearly in English.
+    muestra: The quick test shows that the voice switches when the sentence is clearly in English.
+[2] es, bloque 0 (parrafo), pausa 0.35 s
+    voz:     Después vuelve al español sin ningún problema.
+    muestra: Después vuelve al español sin ningún problema.
+[3] es, bloque 1 (parrafo), pausa 0.35 s
+    voz:     El botón dice Save changes y funciona bien.
+    muestra: El botón dice Save changes y funciona bien.
+[4] en, bloque 2 (parrafo), pausa 0.00 s
+    voz:     This whole paragraph is written in English, and it should be read with the English voice from the start to the end.
+    muestra: This whole paragraph is written in English, and it should be read with the English voice from the start to the end.
