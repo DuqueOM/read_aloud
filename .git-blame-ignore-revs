@@ -1,0 +1,6 @@
+# Commits que solo cambian el formato: git blame los salta con
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# (GitHub lo lee solo).
+
+# Formato de ruff en los scripts de Python
+a7c889d42d7b5ea28aea79f81b7c612f817a103e
