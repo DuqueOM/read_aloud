@@ -149,7 +149,7 @@ anterior, pon las cuatro en `0`.
 Para ver qué bloques detecta en un texto concreto, sin escucharlo:
 
 ```powershell
-.ead_aloud.ps1 -ShowPlan
+.\read_aloud.ps1 -ShowPlan
 ```
 
 Debajo de cada fragmento aparece la pausa que lo sigue.
