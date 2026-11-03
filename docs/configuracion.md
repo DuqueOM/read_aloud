@@ -23,11 +23,18 @@ El orden, de menos a más prioridad: los valores por defecto,
 `settings.psd1`, `settings.local.psd1` y `ajustes.json`.
 
 Después de cambiar algo en `settings.psd1`, reinicia el proceso residente:
+ciérralo desde la consola y la próxima lectura lo vuelve a arrancar con los
+ajustes nuevos. (Los cambios hechos en el panel ofrecen su propio botón
+"Reiniciar ahora".)
 
 ```powershell
-.\read_aloud.ps1 -Stop
-powershell -File .\read_aloud_daemon.ps1
+. .\lib\ReadAloud.Core.ps1
+Send-ReadAloudCommand -PipeName 'read_aloud_pipe' -Command @{ cmd = 'quit' }
 ```
+
+`.\read_aloud.ps1 -Stop` no sirve para esto: solo detiene la lectura. Y
+arrancar `read_aloud_daemon.ps1` con el proceso abierto tampoco: el nuevo ve
+que ya hay uno y se cierra.
 
 ## Voces
 
