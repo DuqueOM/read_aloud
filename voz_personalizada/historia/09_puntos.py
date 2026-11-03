@@ -7,7 +7,7 @@ convierten las mismas frases y se comparan sin saber cual es cual.
 
 Las frases las lee Piper con las voces que usa Read Aloud, porque esa es la
 fuente real del lector. El tono se sube lo necesario para llevar la mediana
-de Piper a la de la voz de prueba, medida en el conjunto.
+de Piper a la de la voz, medida en el conjunto.
 
 Corre en el entorno de Applio:
     applio/.venv/Scripts/python.exe scripts/09_puntos.py
@@ -30,7 +30,7 @@ APPLIO = RAIZ / "applio"
 MODELO = APPLIO / "logs" / "mi_voz_es"
 CONJUNTO = RAIZ / "datos" / "08_final" / "mi_voz_es"
 SALIDA = RAIZ / "datos" / "09_puntos"
-PIPER = Path(r"C:\ruta\a\read_aloud\read_aloud_piper")
+PIPER = Path(r"C:\ruta\a\read_aloud\read_aloud_piper")  # la carpeta de Piper de Read Aloud
 
 FRASES = [
     ("es_MX-claude-high", "¡No puede ser! ¿De verdad encontraste las llaves debajo de la cama?"),
@@ -89,7 +89,7 @@ def main() -> None:
 
     azar = random.Random(0)
     tono_voz = tono_mediano(azar.sample(sorted(CONJUNTO.glob("*.wav")), 40))
-    print(f"tono mediano de la voz de prueba: {tono_voz:.0f} Hz")
+    print(f"tono mediano de la voz: {tono_voz:.0f} Hz")
 
     sys.path.insert(0, str(APPLIO))
     os.chdir(APPLIO)

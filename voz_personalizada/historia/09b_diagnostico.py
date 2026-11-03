@@ -6,9 +6,9 @@ de audio con cada punto de control:
 
   piper     las frases de la prueba, voces graves de Piper, +10 a +13 semitonos
   femenina  voces femeninas de Piper en ingles, con menos cambio de tono
-  natural   habla real de otras voces de los capitulos, con su entonacion
+  natural   habla real de otras voces de las grabaciones, con su entonacion
 
-Si las fuentes naturales quedan mucho mas parecidas a la voz de prueba que las de Piper,
+Si las fuentes naturales quedan mucho mas parecidas a la voz que las de Piper,
 el modelo esta bien y el limite es la fuente. 09c_medir.py mide el parecido.
 
 Corre en el entorno de Applio:
@@ -34,7 +34,7 @@ CONJUNTO = RAIZ / "datos" / "08_final" / "mi_voz_es"
 VOZ = RAIZ / "datos" / "02_voz"
 CURVAS = RAIZ / "datos" / "04_curvas"
 SALIDA = RAIZ / "datos" / "09_diagnostico"
-PIPER = Path(r"C:\ruta\a\read_aloud\read_aloud_piper")
+PIPER = Path(r"C:\ruta\a\read_aloud\read_aloud_piper")  # la carpeta de Piper de Read Aloud
 
 FEMENINAS = [
     ("en_GB-cori-high", "Wait, are you serious? I can't believe we actually made it!"),
@@ -43,7 +43,7 @@ FEMENINAS = [
     ("en_US-ljspeech-high", "The function returns a list of results, sorted by date."),
 ]
 
-# Tramos de otras voces: parecido con la voz de prueba por debajo de esto en todas
+# Tramos de otras voces: parecido con la voz por debajo de esto en todas
 # las ventanas, durante al menos MIN_S segundos seguidos.
 PARECIDO_OTRO = 0.25
 MIN_S, MAX_S = 3.0, 6.0
@@ -69,7 +69,7 @@ def leer16(archivo) -> np.ndarray:
 
 
 def tramos_naturales(fuente: Path) -> list:
-    """Busca tramos largos de otras voces, uno por capitulo."""
+    """Busca tramos largos de otras voces, uno por grabacion."""
     elegidos = []
     for curva in sorted(CURVAS.glob("ep*.npz")):
         datos = np.load(curva)
@@ -126,7 +126,7 @@ def main() -> None:
 
     azar = random.Random(0)
     tono_voz = tono_mediano([leer16(a) for a in azar.sample(sorted(CONJUNTO.glob("*.wav")), 40)])
-    print(f"tono mediano de la voz de prueba: {tono_voz:.0f} Hz")
+    print(f"tono mediano de la voz: {tono_voz:.0f} Hz")
 
     sys.path.insert(0, str(APPLIO))
     os.chdir(APPLIO)

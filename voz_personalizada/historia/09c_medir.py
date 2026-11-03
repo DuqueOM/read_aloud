@@ -1,7 +1,7 @@
-"""Mide cuanto se parece a la voz de prueba cada conversion de 09b_diagnostico.py.
+"""Mide cuanto se parece a la voz real cada conversion de 09b_diagnostico.py.
 
 Usa la misma huella de voz y la misma calibracion con que se eligieron los
-clips: la probabilidad de ser la voz de prueba de un clip entero. Como referencia mide
+clips: la probabilidad de ser la voz de un clip entero. Como referencia mide
 tambien clips reales del conjunto, que marcan el techo, y las fuentes sin
 convertir, que marcan el suelo.
 
@@ -60,7 +60,7 @@ def main() -> None:
     print(f"Voz real, {len(reales)} clips del conjunto: mediana {np.median(reales):.0%}, "
           f"minimo {min(reales):.0%}")
     tipos = list(por_epoca)
-    print("\nprobabilidad media de ser la voz de prueba")
+    print("\nprobabilidad media de ser la voz")
     print("epoca     " + "".join(f"{t:>11s}" for t in tipos))
     print("sin conv. " + "".join(f"{np.mean(sin_convertir[t]):>11.0%}" for t in tipos))
     for epoca in sorted(por_epoca[tipos[0]]):

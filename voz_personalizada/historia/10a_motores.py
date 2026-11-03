@@ -7,7 +7,7 @@ entorno, asi que el script recibe el motor:
     .venv_chatterbox/Scripts/python.exe scripts/10a_motores.py chatterbox
     .venv_qwen/Scripts/python.exe scripts/10a_motores.py qwen
 
-Las frases en espanol son las de 09d_comparar.py, para oirlas junto a la voz de prueba
+Las frases en espanol son las de 09d_comparar.py, para oirlas junto a la voz
 real; las de ingles no tienen original. Mide tambien cuanto tarda cada frase
 frente a lo que dura, que es lo que decide si sirve para Read Aloud.
 
@@ -54,7 +54,7 @@ def semilla() -> None:
 
 
 def chatterbox():
-    """Chatterbox Multilingual V3 y su version afinada para espanol de Mexico."""
+    """Chatterbox Multilingual V3 y su version afinada para el espanol de Mexico."""
     from huggingface_hub import snapshot_download
     from safetensors.torch import load_file
     from chatterbox.mtl_tts import ChatterboxMultilingualTTS, Conditionals
@@ -72,7 +72,7 @@ def chatterbox():
 
     def cargar(t3_archivo: Path, s3gen_archivo: Path):
         # Igual que ChatterboxMultilingualTTS.from_local, pero con archivos de
-        # dos repositorios: la libreria 0.1.x aun no carga el paquete es_mx.
+        # dos repositorios: la libreria 0.1.x aun no carga el paquete es-mx-latam.
         ve = VoiceEncoder()
         ve.load_state_dict(torch.load(base / "ve.pt", weights_only=True))
         t3 = T3(T3Config.multilingual())

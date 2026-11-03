@@ -6,20 +6,21 @@ resultados salieron decisiones que siguen vigentes, sobre todo la
 [ADR 0001](../../docs/adr/0001-qwen3-tts-en-vez-de-rvc.md), y porque algunos
 scripts de [proceso_qwen](../proceso_qwen) los citan.
 
-**No se mantienen.** Son la copia tal cual de la carpeta de trabajo de la voz de prueba
-(los respaldó la rama `wip/voz-entrenamiento`, ya borrada): hablan de la voz de prueba,
-toman sus rutas de la carpeta padre de la suya y no leen `voz.toml`. Para
+**No se mantienen.** Son la copia de la carpeta de trabajo de esa voz (los
+respaldó la rama `wip/voz-entrenamiento`, ya borrada), con los nombres de la
+voz cambiados por `mi_voz` y las rutas de aquel equipo por marcadores: toman
+sus rutas de la carpeta padre de la suya y no leen `voz.toml`. Para
 hacer una voz nueva, el camino es [proceso_qwen](../proceso_qwen) y la guía
 [docs/voz-personalizada.md](../../docs/voz-personalizada.md).
 
 | Script | Entorno | Qué hizo |
 |---|---|---|
-| `03_segmentar.py` | `.venv` | Partía la voz de cada capítulo en frases habladas |
+| `03_segmentar.py` | `.venv` | Partía la voz de cada grabación en frases habladas |
 | `04_huellas.py` | `.venv` | Huella de voz (ECAPA) de cada frase y de cada referencia; ver la [ADR 0007](../../docs/adr/0007-reconocer-la-voz-con-wavlm.md) |
 | `08b_pesos.py` | `applio\.venv` | Sacaba los pesos de inferencia de los puntos de control completos de RVC |
 | `09_puntos.py` | `applio\.venv` | Prueba a ciegas de los puntos de control de RVC; sus frases de origen (`datos\09_puntos\fuente`) las reusa `13_comparar.py` |
 | `09b_diagnostico.py` | `applio\.venv` | Convertía varias fuentes con todos los puntos de control, para medirlas |
-| `09c_medir.py` | `.venv` | Medía cuánto se parecía a la voz de prueba cada conversión; `10c_medir.py` usa la misma medida |
+| `09c_medir.py` | `.venv` | Medía cuánto se parecía a la voz real cada conversión; `10c_medir.py` usa la misma medida |
 | `10a_motores.py` | `.venv_chatterbox` / `.venv_qwen` | Generaba las frases de prueba con motores que imitan una muestra de voz: Chatterbox Multilingual y Qwen3-TTS |
 | `10b_pagina.py` | `applio\.venv` | Pasaba esos motores por RVC, medía la forma de su entonación y armaba la página de escucha |
 | `12_textos.py` | — | Página para corregir a mano las transcripciones del conjunto; hoy se corrigen en la revisión única de `28_revision.py` |

@@ -1,8 +1,8 @@
 """Pasa los motores por RVC, mide su entonacion y arma la pagina de escucha.
 
-Cada salida de 10a_motores.py se convierte tambien con el modelo RVC de
-la voz de prueba: el motor pone la entonacion y RVC afina el timbre. Despues se mide,
-para cada frase en espanol, cuanto se parece la curva de tono a la de la voz de prueba
+Cada salida de 10a_motores.py se convierte tambien con el modelo RVC de la
+voz: el motor pone la entonacion y RVC afina el timbre. Despues se mide, para
+cada frase en espanol, cuanto se parece la curva de tono a la de la voz
 real (alineadas en el tiempo, como en 09e_prosodia.py), y se arma una pagina
 con todas las versiones al mismo volumen.
 
@@ -91,7 +91,7 @@ def main() -> None:
         destino = audio_dir / f"{origen.stem}_rvc.wav"
         if destino.exists():
             continue
-        # Estos motores ya hablan cerca del tono de la voz de prueba: solo se corrige
+        # Estos motores ya hablan cerca del tono de la voz: solo se corrige
         # la diferencia que quede.
         semitonos = int(np.clip(round(tono_voz - np.nanmedian(tono(librosa.load(origen, sr=TASA)[0]))), -12, 12))
         convertidor.convert_audio(
@@ -174,8 +174,8 @@ def main() -> None:
  @media (max-width:560px) {{ .fila {{ grid-template-columns:1fr; gap:2px; }} }}
 </style></head><body><main>
 <h1>Motores de voz</h1>
-<p>Cada frase en español la dijo la voz real en las grabaciones. Los motores dicen el mismo texto imitando una muestra de
-8 s de la voz de prueba que no está entre estas frases. "+ RVC" es la misma salida pasada por el modelo que entrenamos,
+<p>Cada frase en español la dijo la voz real en las grabaciones. Los motores dicen el mismo texto imitando
+una muestra de 8 s de la voz que no está entre estas frases. "+ RVC" es la misma salida pasada por el modelo que entrenamos,
 que afina el timbre sin cambiar la entonación. Todo al mismo volumen. Las frases en inglés no tienen original.</p>
 <h2>Español</h2>
 {"".join(b for b, c in zip(bloques, textos) if c.startswith("es"))}

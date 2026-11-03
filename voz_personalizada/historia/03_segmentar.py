@@ -1,14 +1,14 @@
-"""Parte la pista de voz de cada capitulo en frases habladas.
+"""Parte la pista de voz de cada video en frases habladas.
 
 El detector de habla trabaja a 16 kHz, que es lo que espera, pero los cortes
 se hacen sobre la voz separada en su calidad original de 44.1 kHz: la calidad
 del material de entrenamiento no se rebaja en ningun paso.
 
-Cada frase queda como un WAV mono de 24 bits, y un indice JSON por capitulo
-guarda de donde salio cada una, para poder volver al capitulo si hace falta.
+Cada frase queda como un WAV mono de 24 bits, y un indice JSON por video
+guarda de donde salio cada una, para poder volver al video si hace falta.
 
 Uso:
-    python scripts/03_segmentar.py            todos los capitulos separados
+    python scripts/03_segmentar.py            todos los videos separados
     python scripts/03_segmentar.py ep01       uno solo
 """
 

@@ -103,7 +103,7 @@ def pagina(datos: dict) -> tuple[str, bool]:
     return f"""<!doctype html>
 <html lang="es"><head><meta charset="utf-8">{refresco}
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Entrenamiento · voz de prueba</title>
+<title>Entrenamiento · voz propia</title>
 <style>
  body {{ margin:0; background:#16161a; color:#e6e6ea; font:15px/1.5 "Segoe UI",system-ui,sans-serif; }}
  main {{ max-width:760px; margin:0 auto; padding:28px 20px; }}
@@ -120,7 +120,7 @@ def pagina(datos: dict) -> tuple[str, bool]:
  .cifra span {{ color:#8a8a94; font-size:13px; }}
  .grafico {{ width:100%; height:auto; background:#1f1f25; border:1px solid #2e2e36; border-radius:8px; }}
 </style></head><body><main>
-<h1>Entrenamiento de la voz de prueba</h1>
+<h1>Entrenamiento de la voz propia</h1>
 <p class="sub">Se actualiza sola cada {CADA_S} s · última lectura {datetime.now():%H:%M:%S}</p>
 <div class="grande">Época {actual} de {EPOCAS} · {pct} %</div>
 <div class="barra"><i></i></div>
