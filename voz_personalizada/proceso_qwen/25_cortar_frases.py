@@ -99,7 +99,7 @@ def zonas_de_cancion(todas: dict) -> dict:
         duracion = palabras[-1]["fin"]
         w = [normalizar(p["texto"]) for p in palabras]
         for i in range(len(w) - 3):
-            tiras[" ".join(w[i:i + 4])].append((episodio, i, palabras[i]["inicio"], duracion - palabras[i]["inicio"]))
+            tiras[" ".join(w[i : i + 4])].append((episodio, i, palabras[i]["inicio"], duracion - palabras[i]["inicio"]))
     zonas = defaultdict(list)
     for apariciones in tiras.values():
         if len({a[0] for a in apariciones}) < CANCION_EPISODIOS:
@@ -191,8 +191,10 @@ def partir(tira, palabras, nivel):
 
 def main() -> None:
     pedidos = sys.argv[1:]
-    todas = {a.stem: json.loads(a.read_text(encoding="utf-8"))["palabras"]
-             for a in sorted((DATOS / "03_alineado").glob("ep*.json"))}
+    todas = {
+        a.stem: json.loads(a.read_text(encoding="utf-8"))["palabras"]
+        for a in sorted((DATOS / "03_alineado").glob("ep*.json"))
+    }
     canciones = zonas_de_cancion(todas)
     total_s = 0.0
     for episodio, palabras in todas.items():
@@ -211,7 +213,7 @@ def main() -> None:
 
         indice = []
         for indices, inicio, fin in clips_del_episodio(hablante, palabras, cortar.niveles(audio, tasa), en_cancion):
-            trozo = audio[int(inicio * tasa):int(fin * tasa)].copy()
+            trozo = audio[int(inicio * tasa) : int(fin * tasa)].copy()
             fundido = int(cortar.FUNDIDO_S * tasa)
             rampa = np.linspace(0, 1, fundido, dtype=np.float32)
             trozo[:fundido] *= rampa
@@ -219,13 +221,22 @@ def main() -> None:
             archivo = f"{episodio}_{round(inicio * 100):06d}.wav"
             sf.write(carpeta / archivo, trozo, tasa, subtype="PCM_24")
             prob, ajenas = hablante.tramo(palabras[indices[0]]["inicio"], palabras[indices[-1]]["fin"])
-            indice.append({"archivo": archivo, "inicio": round(inicio, 3), "fin": round(fin, 3),
-                           "duracion": round(fin - inicio, 3), "texto": " ".join(palabras[i]["texto"] for i in indices),
-                           "palabras": [indices[0], indices[-1]],
-                           "frases": sum(1 for i in indices if FIN_FRASE.search(palabras[i]["texto"])),
-                           "prob": round(prob, 4), "ventanas_ajenas": round(ajenas, 3)})
-        (carpeta / "indice.json").write_text(json.dumps({"episodio": episodio, "clips": indice}, ensure_ascii=False,
-                                                        indent=1), encoding="utf-8")
+            indice.append(
+                {
+                    "archivo": archivo,
+                    "inicio": round(inicio, 3),
+                    "fin": round(fin, 3),
+                    "duracion": round(fin - inicio, 3),
+                    "texto": " ".join(palabras[i]["texto"] for i in indices),
+                    "palabras": [indices[0], indices[-1]],
+                    "frases": sum(1 for i in indices if FIN_FRASE.search(palabras[i]["texto"])),
+                    "prob": round(prob, 4),
+                    "ventanas_ajenas": round(ajenas, 3),
+                }
+            )
+        (carpeta / "indice.json").write_text(
+            json.dumps({"episodio": episodio, "clips": indice}, ensure_ascii=False, indent=1), encoding="utf-8"
+        )
         minutos = sum(c["duracion"] for c in indice) / 60
         total_s += minutos * 60
         print(f"{episodio}: {len(indice)} clips, {minutos:.1f} min", flush=True)

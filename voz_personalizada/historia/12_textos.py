@@ -34,13 +34,15 @@ def main() -> None:
         for clip in json.loads(indice.read_text(encoding="utf-8"))["clips"]:
             if clip["archivo"] not in final:
                 continue
-            dentro = [p for p in palabras
-                      if p["inicio"] >= clip["inicio"] - 0.05 and p["fin"] <= clip["fin"] + 0.05]
-            clips.append({
-                "archivo": clip["archivo"], "texto": clip["texto"],
-                "dudosas": sorted({p["texto"].strip(" ,.¿?¡!") for p in dentro if p["prob"] < DUDOSA}),
-                "minimo": min((p["prob"] for p in dentro), default=1.0),
-            })
+            dentro = [p for p in palabras if p["inicio"] >= clip["inicio"] - 0.05 and p["fin"] <= clip["fin"] + 0.05]
+            clips.append(
+                {
+                    "archivo": clip["archivo"],
+                    "texto": clip["texto"],
+                    "dudosas": sorted({p["texto"].strip(" ,.¿?¡!") for p in dentro if p["prob"] < DUDOSA}),
+                    "minimo": min((p["prob"] for p in dentro), default=1.0),
+                }
+            )
     clips.sort(key=lambda c: c["minimo"])
 
     datos = json.dumps(clips, ensure_ascii=False).replace("</", "<\\/")

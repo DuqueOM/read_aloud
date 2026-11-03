@@ -57,8 +57,7 @@ def main() -> None:
             por_epoca[datos["tipo"]][epoca].append(valor)
             detalle[nombre][epoca] = valor
 
-    print(f"Voz real, {len(reales)} clips del conjunto: mediana {np.median(reales):.0%}, "
-          f"minimo {min(reales):.0%}")
+    print(f"Voz real, {len(reales)} clips del conjunto: mediana {np.median(reales):.0%}, minimo {min(reales):.0%}")
     tipos = list(por_epoca)
     print("\nprobabilidad media de ser la voz")
     print("epoca     " + "".join(f"{t:>11s}" for t in tipos))
@@ -68,11 +67,14 @@ def main() -> None:
 
     print("\npor fuente, epoca 400")
     for nombre, valores in detalle.items():
-        print(f"  {nombre:20s} {fuentes[nombre]['semitonos']:+3d} st  sin conv. {valores['origen']:.0%}  "
-              f"convertida {valores.get(400, float('nan')):.0%}")
+        print(
+            f"  {nombre:20s} {fuentes[nombre]['semitonos']:+3d} st  sin conv. {valores['origen']:.0%}  "
+            f"convertida {valores.get(400, float('nan')):.0%}"
+        )
 
-    (DIAGNOSTICO / "medicion.json").write_text(json.dumps(
-        {"reales": reales, "detalle": detalle}, ensure_ascii=False, indent=1), encoding="utf-8")
+    (DIAGNOSTICO / "medicion.json").write_text(
+        json.dumps({"reales": reales, "detalle": detalle}, ensure_ascii=False, indent=1), encoding="utf-8"
+    )
 
 
 if __name__ == "__main__":

@@ -62,10 +62,15 @@ def clips_marcados():
         for clip in json.loads(indice.read_text(encoding="utf-8"))["clips"]:
             nombre = clip["archivo"].removesuffix(".wav")
             if nombre in decisiones:
-                filas.append({"nombre": nombre, "episodio": nombre.split("_")[0],
-                              "ruta": indice.parent / clip["archivo"],
-                              "conservado": decisiones[nombre] == "si",
-                              **{f"base_{k}": clip[k] for k in ("prob_clip", "confianza", "minimo")}})
+                filas.append(
+                    {
+                        "nombre": nombre,
+                        "episodio": nombre.split("_")[0],
+                        "ruta": indice.parent / clip["archivo"],
+                        "conservado": decisiones[nombre] == "si",
+                        **{f"base_{k}": clip[k] for k in ("prob_clip", "confianza", "minimo")},
+                    }
+                )
     return filas
 
 
@@ -85,11 +90,13 @@ def huellas(filas):
     resultado = {}
 
     ecapa = cortar.cargar_modelo()
-    resultado["ecapa"] = np.stack([ecapa.encode_batch(torch.from_numpy(s)[None].to(ecapa.device)).squeeze().cpu().numpy()
-                                   for s in sonidos])
+    resultado["ecapa"] = np.stack(
+        [ecapa.encode_batch(torch.from_numpy(s)[None].to(ecapa.device)).squeeze().cpu().numpy() for s in sonidos]
+    )
     del ecapa
 
     from transformers import AutoFeatureExtractor, WavLMForXVector
+
     extractor = AutoFeatureExtractor.from_pretrained("microsoft/wavlm-base-plus-sv")
     sv = WavLMForXVector.from_pretrained("microsoft/wavlm-base-plus-sv").to(DISPOSITIVO).eval()
     vectores = []
@@ -100,6 +107,7 @@ def huellas(filas):
     del sv
 
     import torchaudio
+
     paquete = torchaudio.pipelines.WAVLM_LARGE
     grande = paquete.get_model().to(DISPOSITIVO).eval()
     vectores = []
@@ -136,7 +144,9 @@ def main() -> None:
     candidatos["las_tres"] = np.hstack([todas["ecapa"], todas["wavlm_sv"], todas["wavlm_large"]])
 
     # La base son los puntajes que ya guarda 04_cortar.py para cada clip.
-    resultado = {f"hoy_{k}": roc_auc_score(y, [f[f"base_{k}"] for f in filas]) for k in ("prob_clip", "confianza", "minimo")}
+    resultado = {
+        f"hoy_{k}": roc_auc_score(y, [f[f"base_{k}"] for f in filas]) for k in ("prob_clip", "confianza", "minimo")
+    }
     for nombre, x in candidatos.items():
         resultado[nombre] = roc_auc_score(y, evaluar(x, y, grupos))
     for nombre, auc in sorted(resultado.items(), key=lambda par: -par[1]):
@@ -147,5 +157,6 @@ def main() -> None:
 if __name__ == "__main__":
     sys.path.insert(0, str(Path(__file__).parent))
     import gpu
+
     gpu.ocupar()
     main()

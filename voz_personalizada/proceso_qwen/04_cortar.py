@@ -125,16 +125,14 @@ def huellas_por_ventana(modelo, audio16: np.ndarray, paso_s: float):
     centros = (inicios + ventana / 2) / TASA
 
     umbral = 10 ** (SILENCIO_DB / 20)
-    con_voz = np.array([
-        np.sqrt(np.mean(audio16[i:i + ventana] ** 2)) > umbral for i in inicios
-    ])
+    con_voz = np.array([np.sqrt(np.mean(audio16[i : i + ventana] ** 2)) > umbral for i in inicios])
 
     huellas = np.full((len(inicios), 192), np.nan, dtype=np.float32)
     indices = np.where(con_voz)[0]
 
     for lote in range(0, len(indices), 128):
-        elegidos = indices[lote:lote + 128]
-        senal = np.stack([audio16[inicios[i]:inicios[i] + ventana] for i in elegidos])
+        elegidos = indices[lote : lote + 128]
+        senal = np.stack([audio16[inicios[i] : inicios[i] + ventana] for i in elegidos])
         with torch.no_grad():
             vectores = modelo.encode_batch(torch.from_numpy(senal).to(modelo.device)).squeeze(1).cpu().numpy()
         vectores /= np.linalg.norm(vectores, axis=1, keepdims=True) + 1e-9
@@ -213,9 +211,7 @@ def niveles(audio: np.ndarray, tasa: int) -> np.ndarray:
 
 
 def umbral_silencio(nivel, tramo):
-    habla = np.concatenate([
-        nivel[int(p["inicio"] / CUADRO_S):int(p["fin"] / CUADRO_S)] for p in tramo
-    ])
+    habla = np.concatenate([nivel[int(p["inicio"] / CUADRO_S) : int(p["fin"] / CUADRO_S)] for p in tramo])
     return max(SILENCIO_DB_BORDE, min(SILENCIO_MAX_DB, float(np.median(habla)) - SNR_BORDE_DB))
 
 
@@ -224,7 +220,7 @@ def silencio_antes(callado, inicio_voz, limite):
     largo = round(SILENCIO_MIN_S / CUADRO_S)
     tope = max(0, int(np.ceil(limite / CUADRO_S)))
     i = int(inicio_voz / CUADRO_S)
-    while i - largo >= tope and not callado[i - largo:i].all():
+    while i - largo >= tope and not callado[i - largo : i].all():
         i -= 1
     if i - largo < tope:
         return None
@@ -239,7 +235,7 @@ def silencio_despues(callado, fin_voz, limite):
     largo = round(SILENCIO_MIN_S / CUADRO_S)
     tope = min(len(callado), int(limite / CUADRO_S))
     i = int(np.ceil(fin_voz / CUADRO_S))
-    while i + largo <= tope and not callado[i:i + largo].all():
+    while i + largo <= tope and not callado[i : i + largo].all():
         i += 1
     if i + largo > tope:
         return None
@@ -303,7 +299,7 @@ def dividir(tramo):
         return [tramo]
     huecos = [tramo[k + 1]["inicio"] - tramo[k]["fin"] for k in range(len(tramo) - 1)]
     k = int(np.argmax(huecos))
-    return dividir(tramo[:k + 1]) + dividir(tramo[k + 1:])
+    return dividir(tramo[: k + 1]) + dividir(tramo[k + 1 :])
 
 
 def armar_clips(palabras, nivel):
@@ -311,10 +307,7 @@ def armar_clips(palabras, nivel):
     tramos, actual = [], []
 
     for i, p in enumerate(palabras):
-        corta = (
-            p["clase"] == "otro"
-            or (actual and p["inicio"] - actual[-1]["fin"] > MAX_PAUSA_S)
-        )
+        corta = p["clase"] == "otro" or (actual and p["inicio"] - actual[-1]["fin"] > MAX_PAUSA_S)
         if corta and actual:
             tramos.extend(dividir(actual))
             actual = []
@@ -342,14 +335,16 @@ def armar_clips(palabras, nivel):
         pesos = np.array([p["fin"] - p["inicio"] for p in tramo])
         parecidos = np.array([p["parecido"] for p in tramo])
         probabilidades = np.array([p["prob"] for p in tramo])
-        clips.append({
-            "inicio": round(max(0.0, inicio), 3),
-            "fin": round(fin, 3),
-            "texto": " ".join(p["texto"] for p in tramo),
-            "puntaje": round(float((parecidos * pesos).sum() / pesos.sum()), 4),
-            "confianza": round(float((probabilidades * pesos).sum() / pesos.sum()), 4),
-            "minimo": round(float(probabilidades.min()), 4),
-        })
+        clips.append(
+            {
+                "inicio": round(max(0.0, inicio), 3),
+                "fin": round(fin, 3),
+                "texto": " ".join(p["texto"] for p in tramo),
+                "puntaje": round(float((parecidos * pesos).sum() / pesos.sum()), 4),
+                "confianza": round(float((probabilidades * pesos).sum() / pesos.sum()), 4),
+                "minimo": round(float(probabilidades.min()), 4),
+            }
+        )
 
     return clips
 
@@ -409,7 +404,7 @@ def main() -> None:
 
         clips = []
         for clip in candidatos:
-            trozo = audio[int(clip["inicio"] * tasa):int(clip["fin"] * tasa)].copy()
+            trozo = audio[int(clip["inicio"] * tasa) : int(clip["fin"] * tasa)].copy()
             senal = torch.from_numpy(a_16k(trozo, tasa))[None].to(modelo.device)
             with torch.no_grad():
                 huella = modelo.encode_batch(senal).squeeze().cpu().numpy()
@@ -445,8 +440,10 @@ def main() -> None:
         )
 
         total = sum(c["duracion"] for c in clips)
-        print(f"{episodio}: {len(clips)} clips, {total / 60:.1f} min "
-              f"({len(candidatos) - len(clips)} descartados por la huella del clip)")
+        print(
+            f"{episodio}: {len(clips)} clips, {total / 60:.1f} min "
+            f"({len(candidatos) - len(clips)} descartados por la huella del clip)"
+        )
 
 
 if __name__ == "__main__":

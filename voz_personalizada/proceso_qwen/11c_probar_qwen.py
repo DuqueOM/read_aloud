@@ -55,18 +55,23 @@ SEMILLA = 1234
 
 def preparar():
     ajuste = json.loads((PUNTOS / "ajuste.json").read_text(encoding="utf-8"))
-    qwen = Qwen3TTSModel.from_pretrained(ajuste["modelo_base"], device_map="cuda:0", dtype=torch.bfloat16,
-                                         attn_implementation="sdpa")
+    qwen = Qwen3TTSModel.from_pretrained(
+        ajuste["modelo_base"], device_map="cuda:0", dtype=torch.bfloat16, attn_implementation="sdpa"
+    )
     modelo = qwen.model
-    inject_adapter_in_model(LoraConfig(r=ajuste["r"], lora_alpha=ajuste["lora_alpha"], lora_dropout=0.0,
-                                       target_modules=ajuste["target_modules"]), modelo.talker)
+    inject_adapter_in_model(
+        LoraConfig(
+            r=ajuste["r"], lora_alpha=ajuste["lora_alpha"], lora_dropout=0.0, target_modules=ajuste["target_modules"]
+        ),
+        modelo.talker,
+    )
     modelo.talker.eval()
 
     # Lo mismo que escribe la receta oficial en el config del modelo afinado.
     voz = load_file(PUNTOS / "voz.safetensors")["voz"]
     with torch.no_grad():
         modelo.talker.model.codec_embedding.weight[ID_VOZ] = voz[0].to(modelo.dtype).to(modelo.device)
-    for config in (modelo.config, ):
+    for config in (modelo.config,):
         config.tts_model_type = "custom_voice"
         config.talker_config.spk_id = {VOZ: ID_VOZ}
         config.talker_config.spk_is_dialect = {VOZ: False}
@@ -76,7 +81,7 @@ def preparar():
 
 
 def nombre_epoca(epoca: str) -> str:
-    """"2" es epoca_02, y "1.5", el punto de mitad de la epoca 2, epoca_01_5."""
+    """ "2" es epoca_02, y "1.5", el punto de mitad de la epoca 2, epoca_01_5."""
     entera, _, fraccion = epoca.partition(".")
     return f"{int(entera):02d}" + (f"_{fraccion}" if fraccion.strip("0") else "")
 
@@ -100,6 +105,7 @@ def main() -> None:
     # Ocupa la tarjeta: Read Aloud lee con Piper mientras tanto.
     sys.path.insert(0, str(Path(__file__).parent))
     import gpu
+
     gpu.ocupar()
     qwen = preparar()
     tiempos = {}
@@ -113,11 +119,12 @@ def main() -> None:
             torch.manual_seed(SEMILLA)
             torch.cuda.synchronize()
             inicio = time.perf_counter()
-            wavs, sr = qwen.generate_custom_voice(text=texto, language=idioma, speaker=VOZ,
-                                                    non_streaming_mode=True)
+            wavs, sr = qwen.generate_custom_voice(text=texto, language=idioma, speaker=VOZ, non_streaming_mode=True)
             torch.cuda.synchronize()
-            tiempos[f"{clave}_{version}"] = {"generacion_s": time.perf_counter() - inicio,
-                                             "duracion_s": len(wavs[0]) / sr}
+            tiempos[f"{clave}_{version}"] = {
+                "generacion_s": time.perf_counter() - inicio,
+                "duracion_s": len(wavs[0]) / sr,
+            }
             sf.write(SALIDA / f"{clave}_{version}.wav", np.asarray(wavs[0], dtype=np.float32), sr)
         print(f"epoca {epoca}: listo", flush=True)
 
@@ -125,10 +132,12 @@ def main() -> None:
     for nombre, indicacion in INDICACIONES.items():
         for clave, idioma, texto in lista[:3]:
             torch.manual_seed(SEMILLA)
-            wavs, sr = qwen.generate_custom_voice(text=texto, language=idioma, speaker=VOZ, instruct=indicacion,
-                                                    non_streaming_mode=True)
-            sf.write(SALIDA / f"{clave}_{prefijo}_e{epocas[-1]}_{nombre}.wav",
-                     np.asarray(wavs[0], dtype=np.float32), sr)
+            wavs, sr = qwen.generate_custom_voice(
+                text=texto, language=idioma, speaker=VOZ, instruct=indicacion, non_streaming_mode=True
+            )
+            sf.write(
+                SALIDA / f"{clave}_{prefijo}_e{epocas[-1]}_{nombre}.wav", np.asarray(wavs[0], dtype=np.float32), sr
+            )
     (RAIZ / "datos" / "11_qwen" / "tiempos.json").write_text(json.dumps(tiempos, indent=1), encoding="utf-8")
 
 

@@ -14,8 +14,9 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parent.parent
 _ARCHIVO = RAIZ / "voz.toml"
 if not _ARCHIVO.exists():
-    raise SystemExit(f"No encuentro {_ARCHIVO}. Copia voz_personalizada\\voz.ejemplo.toml ahi y editalo "
-                     "(instalar.ps1 lo hace solo).")
+    raise SystemExit(
+        f"No encuentro {_ARCHIVO}. Copia voz_personalizada\\voz.ejemplo.toml ahi y editalo (instalar.ps1 lo hace solo)."
+    )
 CONFIG = tomllib.loads(_ARCHIVO.read_text(encoding="utf-8"))
 
 # El nombre es el hablante en el modelo de Qwen3-TTS y va en los nombres de las
@@ -27,15 +28,35 @@ TITULO = CONFIG.get("titulo", NOMBRE)
 # Codigo de dos letras para Whisper; Qwen3-TTS y Qwen3-ASR usan el nombre del
 # idioma en ingles. Qwen3-TTS habla estos diez.
 IDIOMA = CONFIG.get("idioma", "es")
-_IDIOMAS_QWEN = {"es": "spanish", "en": "english", "pt": "portuguese", "fr": "french", "it": "italian",
-                 "de": "german", "ru": "russian", "ja": "japanese", "ko": "korean", "zh": "chinese"}
+_IDIOMAS_QWEN = {
+    "es": "spanish",
+    "en": "english",
+    "pt": "portuguese",
+    "fr": "french",
+    "it": "italian",
+    "de": "german",
+    "ru": "russian",
+    "ja": "japanese",
+    "ko": "korean",
+    "zh": "chinese",
+}
 if IDIOMA not in _IDIOMAS_QWEN:
     raise SystemExit(f"Qwen3-TTS no habla el idioma '{IDIOMA}' de voz.toml. Habla: {', '.join(_IDIOMAS_QWEN)}.")
-IDIOMA_QWEN = _IDIOMAS_QWEN[IDIOMA]     # "spanish": la marca de idioma del modelo al entrenar
+IDIOMA_QWEN = _IDIOMAS_QWEN[IDIOMA]  # "spanish": la marca de idioma del modelo al entrenar
 IDIOMA_TEXTO = IDIOMA_QWEN.capitalize()  # "Spanish": al generar y al transcribir con Qwen3-ASR
 # Como lo nombran las paginas.
-IDIOMA_NOMBRE = {"es": "Español", "en": "Inglés", "pt": "Portugués", "fr": "Francés", "it": "Italiano",
-                 "de": "Alemán", "ru": "Ruso", "ja": "Japonés", "ko": "Coreano", "zh": "Chino"}[IDIOMA]
+IDIOMA_NOMBRE = {
+    "es": "Español",
+    "en": "Inglés",
+    "pt": "Portugués",
+    "fr": "Francés",
+    "it": "Italiano",
+    "de": "Alemán",
+    "ru": "Ruso",
+    "ja": "Japonés",
+    "ko": "Coreano",
+    "zh": "Chino",
+}[IDIOMA]
 
 # Alineador wav2vec2 del idioma (03b_alinear.py).
 _ALINEADORES = {

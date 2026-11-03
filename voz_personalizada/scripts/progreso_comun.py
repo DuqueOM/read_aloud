@@ -86,15 +86,11 @@ def _pagina(estado: dict) -> str:
         for ep in estado["orden"]
     )
     finales = "".join(
-        f"<tr><th colspan='{len(pasos)}'>{NOMBRES[e]}</th>{_celda(estado['etapas'][e])}</tr>"
-        for e in ETAPAS_FINALES
+        f"<tr><th colspan='{len(pasos)}'>{NOMBRES[e]}</th>{_celda(estado['etapas'][e])}</tr>" for e in ETAPAS_FINALES
     )
     eventos = "".join(f"<li><b>{h}</b> {html.escape(t)}</li>" for h, t in estado["eventos"][:40])
     lista = estado["etapas"]["pagina"] == "listo" and REVISION.exists()
-    enlace = (
-        '<a class="boton" href="datos/05_revision/revision.html">Abrir la página de revisión</a>'
-        if lista else ""
-    )
+    enlace = '<a class="boton" href="datos/05_revision/revision.html">Abrir la página de revisión</a>' if lista else ""
     nota = f'<p class="nota">{html.escape(estado["nota"])}</p>' if estado.get("nota") else ""
     refresco = "" if lista else '<meta http-equiv="refresh" content="15">'
     pct = _porcentaje(estado)

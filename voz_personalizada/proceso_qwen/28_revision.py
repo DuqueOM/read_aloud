@@ -46,8 +46,11 @@ def solape(a0, a1, b0, b1):
 
 def main() -> None:
     puntajes = {c["nombre"]: c for c in json.loads((DATOS / "26_puntaje" / "clips.json").read_text(encoding="utf-8"))}
-    lecturas = {m: json.loads((DATOS / "27_textos" / f"{m}.json").read_text(encoding="utf-8"))
-                for m in ("whisper", "qwen") if (DATOS / "27_textos" / f"{m}.json").exists()}
+    lecturas = {
+        m: json.loads((DATOS / "27_textos" / f"{m}.json").read_text(encoding="utf-8"))
+        for m in ("whisper", "qwen")
+        if (DATOS / "27_textos" / f"{m}.json").exists()
+    }
     primera = DATOS / "05_revision" / "decisiones.json"
     decisiones = json.loads(primera.read_text(encoding="utf-8"))["decisiones"] if primera.exists() else {}
     corregidos = textos.referencias()
@@ -77,29 +80,46 @@ def main() -> None:
 
             distintas = []
             for fuente, texto in opciones.items():
-                if texto and textos.normalizar(texto) != textos.normalizar(propuesta) and \
-                        all(textos.normalizar(texto) != textos.normalizar(d["texto"]) for d in distintas):
+                if (
+                    texto
+                    and textos.normalizar(texto) != textos.normalizar(propuesta)
+                    and all(textos.normalizar(texto) != textos.normalizar(d["texto"]) for d in distintas)
+                ):
                     distintas.append({"fuente": fuente, "texto": texto})
             if distintas:
                 avisos.append("lecturas distintas")
 
-            clips.append({"id": nombre, "ep": episodio, "ruta": f"../25_cortes/{episodio}/{clip['archivo']}",
-                          "inicio": clip["inicio"], "dur": clip["duracion"], "texto": propuesta,
-                          "alternativas": distintas, "marcas": avisos, "antes": antes,
-                          "puntaje": puntaje["puntaje"]})
+            clips.append(
+                {
+                    "id": nombre,
+                    "ep": episodio,
+                    "ruta": f"../25_cortes/{episodio}/{clip['archivo']}",
+                    "inicio": clip["inicio"],
+                    "dur": clip["duracion"],
+                    "texto": propuesta,
+                    "alternativas": distintas,
+                    "marcas": avisos,
+                    "antes": antes,
+                    "puntaje": puntaje["puntaje"],
+                }
+            )
 
     clips.sort(key=lambda c: -c["puntaje"])
     SALIDA.mkdir(parents=True, exist_ok=True)
     plantilla = (Path(__file__).parent / "revision2_plantilla.html").read_text(encoding="utf-8")
-    pagina = (plantilla.replace("/*DATOS*/[]", json.dumps(clips, ensure_ascii=False))
-              .replace("/*META*/3600", str(META_S))
-              .replace("/*TITULO*/", html.escape(textos.voz.TITULO))
-              # Va dentro de una cadena de JavaScript: solo letras, numeros y _.
-              .replace("/*NOMBRE*/", re.sub(r"\W", "_", textos.voz.NOMBRE)))
+    pagina = (
+        plantilla.replace("/*DATOS*/[]", json.dumps(clips, ensure_ascii=False))
+        .replace("/*META*/3600", str(META_S))
+        .replace("/*TITULO*/", html.escape(textos.voz.TITULO))
+        # Va dentro de una cadena de JavaScript: solo letras, numeros y _.
+        .replace("/*NOMBRE*/", re.sub(r"\W", "_", textos.voz.NOMBRE))
+    )
     (SALIDA / "revision.html").write_text(pagina, encoding="utf-8")
     total = sum(c["dur"] for c in clips) / 60
-    print(f"{len(clips)} clips, {total:.1f} min; con aviso {sum(bool(c['marcas']) for c in clips)}; "
-          f"con decision anterior {sum(c['antes'] is not None for c in clips)}")
+    print(
+        f"{len(clips)} clips, {total:.1f} min; con aviso {sum(bool(c['marcas']) for c in clips)}; "
+        f"con decision anterior {sum(c['antes'] is not None for c in clips)}"
+    )
     print(f"pagina: {SALIDA / 'revision.html'}")
 
 

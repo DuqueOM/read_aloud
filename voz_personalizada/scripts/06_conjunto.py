@@ -55,9 +55,7 @@ def recortar_silencio(audio: np.ndarray, tasa: int) -> np.ndarray:
     if len(audio) < ventana * 3:
         return audio
 
-    energia = np.array([
-        np.sqrt(np.mean(audio[i:i + ventana] ** 2)) for i in range(0, len(audio) - ventana, ventana)
-    ])
+    energia = np.array([np.sqrt(np.mean(audio[i : i + ventana] ** 2)) for i in range(0, len(audio) - ventana, ventana)])
     umbral = 10 ** (UMBRAL_SILENCIO_DB / 20)
     activos = np.where(energia > umbral)[0]
     if activos.size == 0:
@@ -70,7 +68,7 @@ def recortar_silencio(audio: np.ndarray, tasa: int) -> np.ndarray:
 
 
 def igualar_volumen(audio: np.ndarray) -> np.ndarray:
-    nivel = np.sqrt(np.mean(audio ** 2)) + 1e-9
+    nivel = np.sqrt(np.mean(audio**2)) + 1e-9
     audio = audio * (10 ** (NIVEL_DB / 20) / nivel)
 
     pico = np.max(np.abs(audio)) + 1e-9

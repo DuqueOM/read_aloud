@@ -74,7 +74,7 @@ def huellas_episodio(modelo, episodio: str):
     paso = TRAMO_S - SOLAPE_S
     inicio = 0.0
     while inicio * TASA < len(audio):
-        trozo = audio[int(inicio * TASA):int((inicio + TRAMO_S) * TASA)]
+        trozo = audio[int(inicio * TASA) : int((inicio + TRAMO_S) * TASA)]
         if len(trozo) < TASA // 2:
             break
         capas, _ = modelo.extract_features(torch.from_numpy(trozo)[None].cuda())
@@ -83,7 +83,7 @@ def huellas_episodio(modelo, episodio: str):
         desde = 0 if inicio == 0 else int(SOLAPE_S / 2 / CUADRO_S)
         primero = int(inicio / CUADRO_S)
         hasta = min(len(rep), total - primero)
-        cuadros[primero + desde:primero + hasta] = rep[desde:hasta]
+        cuadros[primero + desde : primero + hasta] = rep[desde:hasta]
         inicio += paso
 
     # Las mismas ventanas que la curva de 04_cortar.py.
@@ -105,6 +105,7 @@ def ventanas_en(centros, inicio, fin):
 def main() -> None:
     pedidos = sys.argv[1:]
     import torchaudio
+
     modelo = torchaudio.pipelines.WAVLM_LARGE.get_model().cuda().eval()
     episodios = pedidos or sorted(p.stem for p in (DATOS / "03_alineado").glob("ep*.json"))
     curvas = {}
@@ -121,11 +122,17 @@ def main() -> None:
     probabilidad = cortar.cargar_calibracion()
     x, y, grupo, clip_de = [], [], [], []
     for n, f in enumerate(filas):
-        clip = next(c for c in json.loads((f["ruta"].parent / "indice.json").read_text(encoding="utf-8"))["clips"]
-                    if c["archivo"] == f["ruta"].name)
+        clip = next(
+            c
+            for c in json.loads((f["ruta"].parent / "indice.json").read_text(encoding="utf-8"))["clips"]
+            if c["archivo"] == f["ruta"].name
+        )
         centros, huellas = curvas[f["episodio"]]
         for i in ventanas_en(centros, clip["inicio"], clip["fin"]):
-            x.append(huellas[i]); y.append(f["conservado"]); grupo.append(f["episodio"]); clip_de.append(n)
+            x.append(huellas[i])
+            y.append(f["conservado"])
+            grupo.append(f["episodio"])
+            clip_de.append(n)
     azar = np.random.default_rng(0)
     for episodio, (centros, huellas) in curvas.items():
         vieja = np.load(DATOS / "04_curvas" / f"{episodio}.npz")
@@ -133,14 +140,19 @@ def main() -> None:
         otras = np.where(prob < 0.05)[0]
         for i in azar.choice(otras, size=min(300, len(otras)), replace=False):
             j = int(np.argmin(np.abs(centros - vieja["centros"][i])))
-            x.append(huellas[j]); y.append(False); grupo.append(episodio); clip_de.append(-1)
+            x.append(huellas[j])
+            y.append(False)
+            grupo.append(episodio)
+            clip_de.append(-1)
     x, y, grupo, clip_de = np.array(x), np.array(y), np.array(grupo), np.array(clip_de)
     print(f"{len(x)} ventanas para aprender ({y.sum()} de la voz)", flush=True)
 
     # Prueba por videos no vistos: promedio de la curva nueva en cada clip.
     puntaje = np.zeros(len(x))
     for entreno, prueba in GroupKFold(n_splits=5).split(x, y, grupo):
-        clasificador = make_pipeline(StandardScaler(), LogisticRegression(C=0.05, max_iter=5000, class_weight="balanced"))
+        clasificador = make_pipeline(
+            StandardScaler(), LogisticRegression(C=0.05, max_iter=5000, class_weight="balanced")
+        )
         clasificador.fit(x[entreno], y[entreno])
         puntaje[prueba] = clasificador.predict_proba(x[prueba])[:, 1]
     marcados = [n for n in range(len(filas)) if (clip_de == n).any()]
@@ -148,23 +160,31 @@ def main() -> None:
     minima = [puntaje[clip_de == n].min() for n in marcados]
     etiquetas = [filas[n]["conservado"] for n in marcados]
     hoy = [filas[n]["base_confianza"] for n in marcados]
-    resultado = {"curva_hoy_confianza": roc_auc_score(etiquetas, hoy),
-                 "curva_nueva_promedio": roc_auc_score(etiquetas, nueva),
-                 "curva_nueva_minimo": roc_auc_score(etiquetas, minima),
-                 "clips": len(marcados)}
+    resultado = {
+        "curva_hoy_confianza": roc_auc_score(etiquetas, hoy),
+        "curva_nueva_promedio": roc_auc_score(etiquetas, nueva),
+        "curva_nueva_minimo": roc_auc_score(etiquetas, minima),
+        "clips": len(marcados),
+    }
     print(json.dumps(resultado, indent=1))
 
     # El clasificador final, con todo, para cortar los videos.
     clasificador = make_pipeline(StandardScaler(), LogisticRegression(C=0.05, max_iter=5000, class_weight="balanced"))
     clasificador.fit(x, y)
     escala, regresion = clasificador.named_steps["standardscaler"], clasificador.named_steps["logisticregression"]
-    np.savez(SALIDA / "clasificador.npz", media=escala.mean_, escala=escala.scale_,
-             pesos=regresion.coef_[0], sesgo=regresion.intercept_)
+    np.savez(
+        SALIDA / "clasificador.npz",
+        media=escala.mean_,
+        escala=escala.scale_,
+        pesos=regresion.coef_[0],
+        sesgo=regresion.intercept_,
+    )
     (SALIDA / "resultado.json").write_text(json.dumps(resultado, indent=1), encoding="utf-8")
 
 
 if __name__ == "__main__":
     sys.path.insert(0, str(Path(__file__).parent))
     import gpu
+
     gpu.ocupar()
     main()

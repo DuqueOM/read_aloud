@@ -72,8 +72,10 @@ def grabaciones() -> dict:
             continue
         episodio = f"ep{int(numero.group(1)):02d}"
         if episodio in encontradas:
-            raise SystemExit(f"Dos archivos dan {episodio}: {encontradas[episodio].name} y {archivo.name}. "
-                             "Ajusta patron_episodio en voz.toml.")
+            raise SystemExit(
+                f"Dos archivos dan {episodio}: {encontradas[episodio].name} y {archivo.name}. "
+                "Ajusta patron_episodio en voz.toml."
+            )
         encontradas[episodio] = archivo
     return dict(sorted(encontradas.items()))
 

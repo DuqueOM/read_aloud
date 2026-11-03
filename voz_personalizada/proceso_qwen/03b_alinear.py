@@ -68,8 +68,10 @@ def normalizar(palabra: str, vocabulario: set) -> str:
 def tramos(palabras):
     grupo = []
     for i, p in enumerate(palabras):
-        if grupo and (p["inicio"] - palabras[grupo[-1]]["fin"] > HUECO_MAX_S
-                      or p["fin"] - palabras[grupo[0]]["inicio"] > TRAMO_MAX_S):
+        if grupo and (
+            p["inicio"] - palabras[grupo[-1]]["fin"] > HUECO_MAX_S
+            or p["fin"] - palabras[grupo[0]]["inicio"] > TRAMO_MAX_S
+        ):
             yield grupo
             grupo = []
         grupo.append(i)
@@ -80,7 +82,7 @@ def tramos(palabras):
 def alinear_tramo(indices, palabras, audio16, modelo, proc, vocab, blanco, separador):
     inicio = max(0.0, palabras[indices[0]]["inicio"] - MARGEN_S)
     fin = min(len(audio16) / TASA, palabras[indices[-1]]["fin"] + MARGEN_S)
-    trozo = audio16[int(inicio * TASA):int(fin * TASA)]
+    trozo = audio16[int(inicio * TASA) : int(fin * TASA)]
 
     textos = [normalizar(palabras[i]["texto"], set(vocab)) for i in indices]
     alineables = [(i, t) for i, t in zip(indices, textos) if t]
@@ -110,14 +112,13 @@ def alinear_tramo(indices, palabras, audio16, modelo, proc, vocab, blanco, separ
     segundos_por_cuadro = (len(trozo) / TASA) / cuadros
 
     for (indice, _), (desde, hasta) in zip(alineables, rangos):
-        letras = tramos_letra[desde:hasta + 1]
+        letras = tramos_letra[desde : hasta + 1]
         nuevo_inicio = inicio + letras[0].start * segundos_por_cuadro
         nuevo_fin = inicio + letras[-1].end * segundos_por_cuadro
         confianza = float(np.mean([t.score for t in letras]))
 
         palabra = palabras[indice]
-        if (abs(nuevo_inicio - palabra["inicio"]) > DESVIO_MAX_S
-                or abs(nuevo_fin - palabra["fin"]) > DESVIO_MAX_S):
+        if abs(nuevo_inicio - palabra["inicio"]) > DESVIO_MAX_S or abs(nuevo_fin - palabra["fin"]) > DESVIO_MAX_S:
             continue
 
         palabra["inicio_whisper"], palabra["fin_whisper"] = palabra["inicio"], palabra["fin"]
@@ -161,11 +162,11 @@ def main() -> None:
 
         alineadas = sum(p["alineada"] for p in palabras)
         desvios = [abs(p["inicio"] - p["inicio_whisper"]) for p in palabras if p["alineada"]]
-        (SALIDA / f"{episodio}.json").write_text(
-            json.dumps(datos, ensure_ascii=False, indent=1), encoding="utf-8"
+        (SALIDA / f"{episodio}.json").write_text(json.dumps(datos, ensure_ascii=False, indent=1), encoding="utf-8")
+        print(
+            f"{episodio}: {alineadas} de {len(palabras)} palabras alineadas, "
+            f"correccion media del inicio {np.mean(desvios) * 1000:.0f} ms"
         )
-        print(f"{episodio}: {alineadas} de {len(palabras)} palabras alineadas, "
-              f"correccion media del inicio {np.mean(desvios) * 1000:.0f} ms")
 
 
 if __name__ == "__main__":

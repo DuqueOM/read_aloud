@@ -77,7 +77,7 @@ def main() -> None:
             # Una referencia larga se trocea: varias huellas de 4 s describen
             # mejor una voz que una sola de dos minutos.
             paso = 4 * TASA
-            trozos = [audio[i:i + paso] for i in range(0, len(audio), paso)]
+            trozos = [audio[i : i + paso] for i in range(0, len(audio), paso)]
             for trozo in trozos:
                 if len(trozo) >= TASA * 1.5:
                     vectores.append(huella(modelo, trozo))

@@ -113,6 +113,7 @@ def tarjeta_pedida() -> bool:
     except (OSError, ValueError):
         return False
     import ctypes
+
     proceso = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
     if not proceso:
         return False
@@ -146,11 +147,14 @@ def cargar(carpeta: Path):
     # Desde la carpeta local de la cache: con el nombre del modelo, el
     # tokenizador consulta Hugging Face aunque ya tenga todo descargado.
     base = snapshot_download(ajuste["modelo_base"], local_files_only=True)
-    qwen = Qwen3TTSModel.from_pretrained(base, device_map="cuda:0", dtype=torch.bfloat16,
-                                         attn_implementation="sdpa")
+    qwen = Qwen3TTSModel.from_pretrained(base, device_map="cuda:0", dtype=torch.bfloat16, attn_implementation="sdpa")
     modelo = qwen.model
-    inject_adapter_in_model(LoraConfig(r=ajuste["r"], lora_alpha=ajuste["lora_alpha"], lora_dropout=0.0,
-                                       target_modules=ajuste["target_modules"]), modelo.talker)
+    inject_adapter_in_model(
+        LoraConfig(
+            r=ajuste["r"], lora_alpha=ajuste["lora_alpha"], lora_dropout=0.0, target_modules=ajuste["target_modules"]
+        ),
+        modelo.talker,
+    )
     estado = load_file(carpeta / "lora.safetensors")
     set_peft_model_state_dict(modelo.talker, {k: v.to(modelo.device) for k, v in estado.items()})
     modelo.talker.eval()
@@ -177,13 +181,13 @@ def pulir(audio: np.ndarray, tasa: int) -> np.ndarray:
     """Quita el silencio de los extremos, iguala el volumen y agrega la pausa final."""
     audio = np.asarray(audio, dtype=np.float32)
     cuadro = int(0.01 * tasa)
-    niveles = 20 * np.log10(np.sqrt(np.convolve(audio ** 2, np.ones(cuadro) / cuadro, mode="same")) + 1e-9)
+    niveles = 20 * np.log10(np.sqrt(np.convolve(audio**2, np.ones(cuadro) / cuadro, mode="same")) + 1e-9)
     con_voz = np.where(niveles > UMBRAL_SILENCIO_DB)[0]
     if con_voz.size:
         margen = int(MARGEN_S * tasa)
-        audio = audio[max(0, con_voz[0] - margen):con_voz[-1] + margen]
+        audio = audio[max(0, con_voz[0] - margen) : con_voz[-1] + margen]
         habla = audio[np.abs(audio) > 10 ** (UMBRAL_SILENCIO_DB / 20)]
-        audio = audio * (10 ** (NIVEL_DB / 20) / (np.sqrt(np.mean(habla ** 2)) + 1e-9))
+        audio = audio * (10 ** (NIVEL_DB / 20) / (np.sqrt(np.mean(habla**2)) + 1e-9))
         pico = np.max(np.abs(audio))
         if pico > 10 ** (PICO_DB / 20):
             audio = audio * (10 ** (PICO_DB / 20) / pico)
@@ -201,10 +205,13 @@ def generar(qwen, ordenes: list[dict]) -> None:
     tope = int(CODIGOS_POR_SEGUNDO * (2.5 * max(len(t) for t in textos) * SEGUNDOS_POR_LETRA + 3))
     pendientes = list(range(len(ordenes)))
     for intento in range(2):
-        wavs, tasa = qwen.generate_custom_voice(text=[textos[i] for i in pendientes],
-                                                language=[idiomas[i] for i in pendientes],
-                                                speaker=[VOZ] * len(pendientes),
-                                                non_streaming_mode=True, max_new_tokens=tope)
+        wavs, tasa = qwen.generate_custom_voice(
+            text=[textos[i] for i in pendientes],
+            language=[idiomas[i] for i in pendientes],
+            speaker=[VOZ] * len(pendientes),
+            non_streaming_mode=True,
+            max_new_tokens=tope,
+        )
         repetir = []
         for i, wav in zip(pendientes, wavs):
             if intento == 0 and not razonable(textos[i], len(wav) / tasa):
@@ -231,8 +238,13 @@ def main() -> int:
     # El modelo chico se graba una vez por tamano de grupo; se hace aqui para
     # que ninguna lectura pague esa espera.
     for lote in sorted({1, min(2, opciones.lote), opciones.lote}):
-        qwen.generate_custom_voice(text=["Hola."] * lote, language=["Spanish"] * lote, speaker=[VOZ] * lote,
-                                   non_streaming_mode=True, max_new_tokens=40)
+        qwen.generate_custom_voice(
+            text=["Hola."] * lote,
+            language=["Spanish"] * lote,
+            speaker=[VOZ] * lote,
+            non_streaming_mode=True,
+            max_new_tokens=40,
+        )
     log(f"modelo cargado en {time.perf_counter() - inicio:.1f} s")
     otros_al_cargar = memoria_de_otros_gb()
     log(f"memoria de la tarjeta en uso por otros al cargar: {otros_al_cargar:.1f} GB")

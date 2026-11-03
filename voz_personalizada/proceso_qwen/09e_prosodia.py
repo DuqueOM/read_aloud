@@ -49,8 +49,11 @@ def medir(archivo: Path, silabas: int) -> dict:
     final = float(np.nanmedian(st[indices[indices >= corte]][-15:]) - np.nanmedian(st[indices[indices < corte]]))
     return {
         "rango": float(np.percentile(validos, 95) - np.percentile(validos, 5)),
-        "movilidad": movilidad, "final": final,
-        "silabas_s": silabas / habla, "pausas": pausas, "curva": st,
+        "movilidad": movilidad,
+        "final": final,
+        "silabas_s": silabas / habla,
+        "pausas": pausas,
+        "curva": st,
     }
 
 
@@ -81,12 +84,13 @@ def main() -> None:
 
     print(f"{'':12s}{'rango st':>10s}{'movil st/s':>12s}{'silabas/s':>11s}{'pausas':>8s}")
     for v, filas in tabla.items():
-        print(f"{v:12s}{np.mean([m['rango'] for m in filas]):>10.1f}"
-              f"{np.mean([m['movilidad'] for m in filas]):>12.1f}"
-              f"{np.mean([m['silabas_s'] for m in filas]):>11.1f}"
-              f"{np.mean([m['pausas'] for m in filas]):>8.1f}")
-    print(f"\ncorrelacion de la curva de tono entrenada-Piper: media {np.mean(corr):.2f} "
-          f"(min {min(corr):.2f})")
+        print(
+            f"{v:12s}{np.mean([m['rango'] for m in filas]):>10.1f}"
+            f"{np.mean([m['movilidad'] for m in filas]):>12.1f}"
+            f"{np.mean([m['silabas_s'] for m in filas]):>11.1f}"
+            f"{np.mean([m['pausas'] for m in filas]):>8.1f}"
+        )
+    print(f"\ncorrelacion de la curva de tono entrenada-Piper: media {np.mean(corr):.2f} (min {min(corr):.2f})")
     print("\npreguntas: subida final del tono, semitonos (real / entrenada)")
     for texto, real, entrenada in preguntas:
         print(f"  {real:+5.1f} / {entrenada:+5.1f}  {texto}")

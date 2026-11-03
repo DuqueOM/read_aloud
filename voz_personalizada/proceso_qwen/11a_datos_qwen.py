@@ -34,15 +34,19 @@ LOTE = 16
 
 def main() -> None:
     SALIDA.mkdir(parents=True, exist_ok=True)
-    textos = {c["archivo"]: c["texto"] for indice in sorted(CORTES.glob("ep*/indice.json"))
-              for c in json.loads(indice.read_text(encoding="utf-8"))["clips"]}
+    textos = {
+        c["archivo"]: c["texto"]
+        for indice in sorted(CORTES.glob("ep*/indice.json"))
+        for c in json.loads(indice.read_text(encoding="utf-8"))["clips"]
+    }
     correcciones = SALIDA / "correcciones.json"
     if correcciones.exists():
         cambios = json.loads(correcciones.read_text(encoding="utf-8"))
         textos.update(cambios)
         print(f"{len(cambios)} textos corregidos a mano")
-    prueba = {f["archivo"] for f in json.loads((RAIZ / "datos" / "09_comparar" / "frases.json")
-                                                .read_text(encoding="utf-8"))}
+    prueba = {
+        f["archivo"] for f in json.loads((RAIZ / "datos" / "09_comparar" / "frases.json").read_text(encoding="utf-8"))
+    }
 
     # La huella de voz de Qwen se calcula a 24 kHz.
     referencia = SALIDA / "referencia.wav"
@@ -50,18 +54,28 @@ def main() -> None:
 
     tokenizador = Qwen3TTSTokenizer.from_pretrained("Qwen/Qwen3-TTS-Tokenizer-12Hz", device_map="cuda:0")
     archivos = sorted(CONJUNTO.glob("*.wav"))
-    grupos = {"entrenamiento": [a for a in archivos if a.name not in prueba],
-              "validacion": [a for a in archivos if a.name in prueba]}
+    grupos = {
+        "entrenamiento": [a for a in archivos if a.name not in prueba],
+        "validacion": [a for a in archivos if a.name in prueba],
+    }
     for grupo, lista in grupos.items():
         lineas = []
         for inicio in range(0, len(lista), LOTE):
-            lote = lista[inicio:inicio + LOTE]
+            lote = lista[inicio : inicio + LOTE]
             codigos = tokenizador.encode([str(a) for a in lote]).audio_codes
             for archivo, codigo in zip(lote, codigos):
-                lineas.append(json.dumps({
-                    "audio": str(archivo), "text": textos[archivo.name], "language": "spanish",
-                    "ref_audio": str(referencia), "audio_codes": codigo.cpu().tolist(),
-                }, ensure_ascii=False))
+                lineas.append(
+                    json.dumps(
+                        {
+                            "audio": str(archivo),
+                            "text": textos[archivo.name],
+                            "language": "spanish",
+                            "ref_audio": str(referencia),
+                            "audio_codes": codigo.cpu().tolist(),
+                        },
+                        ensure_ascii=False,
+                    )
+                )
         (SALIDA / f"{grupo}.jsonl").write_text("\n".join(lineas) + "\n", encoding="utf-8")
         print(f"{grupo}: {len(lineas)} clips")
 

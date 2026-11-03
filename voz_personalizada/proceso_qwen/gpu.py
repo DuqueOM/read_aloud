@@ -36,8 +36,12 @@ def liberar() -> None:
 
 def libre_mib() -> int:
     try:
-        salida = subprocess.run(["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
-                                capture_output=True, text=True, timeout=10).stdout
+        salida = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        ).stdout
         return max(int(x) for x in salida.split())
     except (OSError, ValueError, subprocess.SubprocessError):
         return 0
@@ -45,6 +49,7 @@ def libre_mib() -> int:
 
 def vivo(pid: int) -> bool:
     import ctypes
+
     proceso = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
     if not proceso:
         return False

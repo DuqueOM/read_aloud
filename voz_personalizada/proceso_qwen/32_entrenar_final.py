@@ -46,12 +46,36 @@ MEJORES = conjunto.MEJORES
 PASOS = [
     ("Audio sin eco y volumen igualado", PRINCIPAL, ["31_conjunto_qwen.py", "audio"]),
     ("Códigos de audio de Qwen3-TTS", QWEN, ["31_conjunto_qwen.py", "codigos"]),
-    (f"Entrenamiento con los {conjunto.voz.MINUTOS_FINALES:g} mejores minutos", QWEN,
-     ["11b_entrenar_qwen.py", "--datos", str(DATOS / "31_qwen" / MEJORES), "--salida", f"puntos_{MEJORES}",
-      "--aprendizaje", APRENDIZAJE, "--epocas", EPOCAS]),
-    ("Entrenamiento con todo lo conservado", QWEN,
-     ["11b_entrenar_qwen.py", "--datos", str(DATOS / "31_qwen" / "todos"), "--salida", "puntos_todos",
-      "--aprendizaje", APRENDIZAJE, "--epocas", EPOCAS]),
+    (
+        f"Entrenamiento con los {conjunto.voz.MINUTOS_FINALES:g} mejores minutos",
+        QWEN,
+        [
+            "11b_entrenar_qwen.py",
+            "--datos",
+            str(DATOS / "31_qwen" / MEJORES),
+            "--salida",
+            f"puntos_{MEJORES}",
+            "--aprendizaje",
+            APRENDIZAJE,
+            "--epocas",
+            EPOCAS,
+        ],
+    ),
+    (
+        "Entrenamiento con todo lo conservado",
+        QWEN,
+        [
+            "11b_entrenar_qwen.py",
+            "--datos",
+            str(DATOS / "31_qwen" / "todos"),
+            "--salida",
+            "puntos_todos",
+            "--aprendizaje",
+            APRENDIZAJE,
+            "--epocas",
+            EPOCAS,
+        ],
+    ),
 ]
 
 
@@ -64,7 +88,11 @@ def hecho(argumentos) -> bool:
     if argumentos[:2] == ["31_conjunto_qwen.py", "codigos"]:
         return all((DATOS / "31_qwen" / c / "entrenamiento.jsonl").exists() for c in (MEJORES, "todos"))
     puntos = DATOS / "11_qwen" / argumentos[argumentos.index("--salida") + 1]
-    registro = json.loads((puntos / "registro.json").read_text(encoding="utf-8")) if (puntos / "registro.json").exists() else []
+    registro = (
+        json.loads((puntos / "registro.json").read_text(encoding="utf-8"))
+        if (puntos / "registro.json").exists()
+        else []
+    )
     return len(registro) >= int(EPOCAS) or (puntos / "terminado.json").exists()
 
 
@@ -72,12 +100,14 @@ def main() -> None:
     # La marca queda puesta toda la cadena: si cada paso pusiera la suya, entre
     # uno y otro Read Aloud volveria a cargar la voz para soltarla al minuto.
     import gpu
+
     gpu.ocupar()
-    estado = nuevo(f"Voz de {conjunto.voz.TITULO} · entrenamiento final", [p[0] for p in PASOS], ["estado"],
-                   finales=[])
+    estado = nuevo(f"Voz de {conjunto.voz.TITULO} · entrenamiento final", [p[0] for p in PASOS], ["estado"], finales=[])
     estado["filas"] = "Paso"
-    estado["nota"] = (f"Dos entrenamientos para comparar a ciegas: los {conjunto.voz.MINUTOS_FINALES:g} mejores "
-                      "minutos contra todo lo que conservaste. Mientras corren, Read Aloud lee con Piper.")
+    estado["nota"] = (
+        f"Dos entrenamientos para comparar a ciegas: los {conjunto.voz.MINUTOS_FINALES:g} mejores "
+        "minutos contra todo lo que conservaste. Mientras corren, Read Aloud lee con Piper."
+    )
     guardar(estado)
     revision.REGISTRO = DATOS / "32_entrenar_final.log"
     for nombre, python, argumentos in PASOS:
@@ -93,8 +123,10 @@ def main() -> None:
             estado["nota"] = f"Falló «{nombre}». Detalle en datos/32_entrenar_final.log."
             guardar(estado)
             return
-    estado["nota"] = ("Los dos entrenamientos terminaron. Sigue con 11c_probar_qwen.py y 13_comparar.py para "
-                      "elegir la época de oído (docs\\voz-personalizada.md).")
+    estado["nota"] = (
+        "Los dos entrenamientos terminaron. Sigue con 11c_probar_qwen.py y 13_comparar.py para "
+        "elegir la época de oído (docs\\voz-personalizada.md)."
+    )
     guardar(estado)
 
 

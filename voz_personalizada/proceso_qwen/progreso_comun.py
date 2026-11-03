@@ -32,8 +32,13 @@ ETAPAS_FINALES = ["calibracion", "pagina"]
 _cerrojo = threading.Lock()
 
 
-def nuevo(titulo: str, episodios: list, pasos: list, finales: list | None = None,
-          revision: str = "datos/05_revision/revision.html") -> dict:
+def nuevo(
+    titulo: str,
+    episodios: list,
+    pasos: list,
+    finales: list | None = None,
+    revision: str = "datos/05_revision/revision.html",
+) -> dict:
     """Las filas son los videos (u otras tareas) y las columnas, los pasos.
     finales son las etapas de una sola fila al pie; revision, la pagina que
     se enlaza cuando la etapa "pagina" queda lista."""
@@ -80,8 +85,9 @@ def avance(detalle: str, hecho: int, total: int) -> None:
     """Para un paso largo que corre como otro proceso: deja cuanto lleva, y el
     proceso que lo lanzo lo muestra en la pagina (ver leer_avance)."""
     try:
-        AVANCE.write_text(json.dumps({"detalle": detalle, "hecho": hecho, "total": total}, ensure_ascii=False),
-                          encoding="utf-8")
+        AVANCE.write_text(
+            json.dumps({"detalle": detalle, "hecho": hecho, "total": total}, ensure_ascii=False), encoding="utf-8"
+        )
     except OSError:
         pass
 
@@ -122,10 +128,7 @@ def _pagina(estado: dict) -> str:
     eventos = "".join(f"<li><b>{h}</b> {html.escape(t)}</li>" for h, t in estado["eventos"][:40])
     revision = estado.get("revision", "datos/05_revision/revision.html")
     lista = estado["etapas"].get("pagina") == "listo" and (RAIZ / revision).exists()
-    enlace = (
-        f'<a class="boton" href="{revision}">Abrir la página de revisión</a>'
-        if lista else ""
-    )
+    enlace = f'<a class="boton" href="{revision}">Abrir la página de revisión</a>' if lista else ""
     nota = f'<p class="nota">{html.escape(estado["nota"])}</p>' if estado.get("nota") else ""
     refresco = "" if lista else '<meta http-equiv="refresh" content="15">'
     pct = _porcentaje(estado)

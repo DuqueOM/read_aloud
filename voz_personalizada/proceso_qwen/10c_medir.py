@@ -50,10 +50,15 @@ def error_caracteres(esperado: str, obtenido: str) -> float:
 
 def main() -> None:
     import voz
+
     frases = json.loads((RAIZ / "datos" / "09_comparar" / "frases.json").read_text(encoding="utf-8"))
     textos = {f"{voz.IDIOMA}{f['n']}": f["texto"] for f in frases}
-    textos.update({"en1": "Wait, are you serious? I can't believe we actually made it!",
-                   "en2": "The function returns a list of results, sorted by date."})
+    textos.update(
+        {
+            "en1": "Wait, are you serious? I can't believe we actually made it!",
+            "en2": "The function returns a list of results, sorted by date.",
+        }
+    )
 
     huella = cortar.cargar_modelo()
     centro, refs = cortar.referencias(huella)
@@ -80,8 +85,10 @@ def main() -> None:
     print(f"{'version':34s}{'forma':>7s}{'voz':>8s}{'error':>7s}")
     for version, datos in sorted(por_version.items(), key=lambda x: -forma.get(x[0], -1)):
         f = forma.get(version)
-        print(f"{version:34s}{(f'{f:+.2f}' if f is not None else '  -'):>7s}"
-              f"{np.mean(datos['prob']):>8.0%}{np.mean(datos['error']):>7.0%}")
+        print(
+            f"{version:34s}{(f'{f:+.2f}' if f is not None else '  -'):>7s}"
+            f"{np.mean(datos['prob']):>8.0%}{np.mean(datos['error']):>7.0%}"
+        )
     print("\nfrases con mas de 15 % de error:")
     for nombre, d in detalle.items():
         if d["error"] > 0.15:

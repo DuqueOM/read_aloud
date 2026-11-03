@@ -92,8 +92,7 @@ def tramos_naturales(fuente: Path) -> list:
     for episodio, desde, hasta in elegidos:
         archivo = VOZ / f"{episodio}_voz.wav"
         tasa = sf.info(archivo).samplerate
-        audio, _ = sf.read(archivo, dtype="float32", always_2d=False,
-                           start=int(desde * tasa), stop=int(hasta * tasa))
+        audio, _ = sf.read(archivo, dtype="float32", always_2d=False, start=int(desde * tasa), stop=int(hasta * tasa))
         audio = audio if audio.ndim == 1 else audio.mean(axis=1)
         if tono_mediano([librosa.resample(audio, orig_sr=tasa, target_sr=16000)]) < MIN_TONO_HZ:
             continue
@@ -117,9 +116,18 @@ def main() -> None:
     for n, (voz, texto) in enumerate(FEMENINAS, 1):
         destino = fuente / f"femenina_{n}.wav"
         if not destino.exists():
-            subprocess.run([str(PIPER / "bin" / "piper" / "piper.exe"),
-                            "--model", str(PIPER / "voices" / f"{voz}.onnx"), "--output_file", str(destino)],
-                           input=texto.encode("utf-8"), check=True, capture_output=True)
+            subprocess.run(
+                [
+                    str(PIPER / "bin" / "piper" / "piper.exe"),
+                    "--model",
+                    str(PIPER / "voices" / f"{voz}.onnx"),
+                    "--output_file",
+                    str(destino),
+                ],
+                input=texto.encode("utf-8"),
+                check=True,
+                capture_output=True,
+            )
         fuentes[f"femenina_{n}"] = ("femenina", destino)
     for destino in tramos_naturales(fuente):
         fuentes[destino.stem] = ("natural", destino)
@@ -148,9 +156,14 @@ def main() -> None:
             if destino.exists():
                 continue
             convertidor.convert_audio(
-                audio_input_path=str(origen), audio_output_path=str(destino),
-                model_path=str(archivo), index_path=indice, pitch=semitonos,
-                f0_method="rmvpe", index_rate=INDICE, protect=PROTECCION,
+                audio_input_path=str(origen),
+                audio_output_path=str(destino),
+                model_path=str(archivo),
+                index_path=indice,
+                pitch=semitonos,
+                f0_method="rmvpe",
+                index_rate=INDICE,
+                protect=PROTECCION,
             )
 
     (SALIDA / "fuentes.json").write_text(json.dumps(resumen, ensure_ascii=False, indent=1), encoding="utf-8")

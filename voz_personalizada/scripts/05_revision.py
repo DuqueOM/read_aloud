@@ -34,26 +34,28 @@ def main() -> None:
     for carpeta in sorted(p for p in CORTES.iterdir() if p.is_dir()):
         indice = json.loads((carpeta / "indice.json").read_text(encoding="utf-8"))
         for clip in indice["clips"]:
-            candidatas.append({
-                "id": clip["archivo"].replace(".wav", ""),
-                "ep": carpeta.name,
-                "ruta": f"../04_cortes/{carpeta.name}/{clip['archivo']}",
-                "inicio": clip["inicio"],
-                "dur": clip["duracion"],
-                "confianza": clip["confianza"],
-                "minimo": clip["minimo"],
-                "clip": clip["prob_clip"],
-                "texto": clip["texto"],
-            })
+            candidatas.append(
+                {
+                    "id": clip["archivo"].replace(".wav", ""),
+                    "ep": carpeta.name,
+                    "ruta": f"../04_cortes/{carpeta.name}/{clip['archivo']}",
+                    "inicio": clip["inicio"],
+                    "dur": clip["duracion"],
+                    "confianza": clip["confianza"],
+                    "minimo": clip["minimo"],
+                    "clip": clip["prob_clip"],
+                    "texto": clip["texto"],
+                }
+            )
 
     candidatas.sort(key=lambda c: c["confianza"], reverse=True)
 
     SALIDA.mkdir(parents=True, exist_ok=True)
     plantilla = (Path(__file__).parent / "revision_plantilla.html").read_text(encoding="utf-8")
     # Cada voz guarda sus decisiones aparte en el navegador.
-    pagina = (plantilla
-              .replace("/*DATOS*/[]", json.dumps(candidatas, ensure_ascii=False))
-              .replace("/*NOMBRE*/'voz'", json.dumps(NOMBRE)))
+    pagina = plantilla.replace("/*DATOS*/[]", json.dumps(candidatas, ensure_ascii=False)).replace(
+        "/*NOMBRE*/'voz'", json.dumps(NOMBRE)
+    )
     destino = SALIDA / "revision.html"
     destino.write_text(pagina, encoding="utf-8")
 

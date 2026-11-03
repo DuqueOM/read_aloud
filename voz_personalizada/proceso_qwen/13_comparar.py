@@ -39,7 +39,7 @@ PICO_DB = -1.0
 def igualar(origen: Path, destino: Path) -> None:
     audio, tasa = sf.read(origen, dtype="float32", always_2d=False)
     audio = audio if audio.ndim == 1 else audio.mean(axis=1)
-    audio = audio * (10 ** (NIVEL_DB / 20) / (np.sqrt(np.mean(audio ** 2)) + 1e-9))
+    audio = audio * (10 ** (NIVEL_DB / 20) / (np.sqrt(np.mean(audio**2)) + 1e-9))
     pico = np.max(np.abs(audio)) + 1e-9
     limite = 10 ** (PICO_DB / 20)
     sf.write(destino, audio * (limite / pico) if pico > limite else audio, tasa, subtype="PCM_24")
@@ -54,34 +54,54 @@ def main() -> None:
     audio_dir = SALIDA / "audio"
     audio_dir.mkdir(parents=True, exist_ok=True)
 
-    frases = [(f"{voz.IDIOMA}{f['n']}", f["texto"], COMPARAR / "audio" / f"f{f['n']}_real.wav",
-               COMPARAR / "audio" / f"f{f['n']}_piper.wav")
-              for f in json.loads((COMPARAR / "frases.json").read_text(encoding="utf-8"))]
+    frases = [
+        (
+            f"{voz.IDIOMA}{f['n']}",
+            f["texto"],
+            COMPARAR / "audio" / f"f{f['n']}_real.wav",
+            COMPARAR / "audio" / f"f{f['n']}_piper.wav",
+        )
+        for f in json.loads((COMPARAR / "frases.json").read_text(encoding="utf-8"))
+    ]
     if voz.IDIOMA != "en":
-        frases += [(clave, texto, None, RAIZ / "datos" / "09_puntos" / "fuente" / f"{fuente}.wav")
-                   for clave, (texto, fuente) in INGLES.items()]
+        frases += [
+            (clave, texto, None, RAIZ / "datos" / "09_puntos" / "fuente" / f"{fuente}.wav")
+            for clave, (texto, fuente) in INGLES.items()
+        ]
 
     bloques = {"propias": [], "en": []}
     for clave, texto, real, app in frases:
         if app_version:
             app = MOTORES / f"{clave}_{app_version}.wav"
         filas = []
-        for etiqueta, origen, clase in ([(f"{voz.TITULO} real", real, "real")] if real else []) + \
-                [("Voz actual de la app", app, "app")] + \
-                [(e, MOTORES / f"{clave}_{v}.wav", "") for v, e in candidatas]:
+        for etiqueta, origen, clase in (
+            ([(f"{voz.TITULO} real", real, "real")] if real else [])
+            + [("Voz actual de la app", app, "app")]
+            + [(e, MOTORES / f"{clave}_{v}.wav", "") for v, e in candidatas]
+        ):
             if not origen.exists():
                 continue
             nombre = f"{clave}_{origen.stem.split('_', 1)[-1] if clase == '' else clase}.wav"
             igualar(origen, audio_dir / nombre)
-            filas.append(f'<div class="fila {clase}"><span>{html.escape(etiqueta)}</span>'
-                         f'<audio controls preload="none" src="audio/{nombre}"></audio></div>')
+            filas.append(
+                f'<div class="fila {clase}"><span>{html.escape(etiqueta)}</span>'
+                f'<audio controls preload="none" src="audio/{nombre}"></audio></div>'
+            )
         bloques["en" if clave in INGLES else "propias"].append(
-            f'<div class="par"><b>{html.escape(texto)}</b>{"".join(filas)}</div>')
+            f'<div class="par"><b>{html.escape(texto)}</b>{"".join(filas)}</div>'
+        )
 
     titulo = html.escape(voz.TITULO)
-    ingles = (f'<h2>Inglés</h2>\n<p>Sin original: la voz real no habla inglés en las grabaciones.</p>\n'
-              f'{"".join(bloques["en"])}') if bloques["en"] else ""
-    (SALIDA / "comparar.html").write_text(f"""<!doctype html>
+    ingles = (
+        (
+            f"<h2>Inglés</h2>\n<p>Sin original: la voz real no habla inglés en las grabaciones.</p>\n"
+            f"{''.join(bloques['en'])}"
+        )
+        if bloques["en"]
+        else ""
+    )
+    (SALIDA / "comparar.html").write_text(
+        f"""<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Voz de {titulo}</title>
@@ -103,7 +123,9 @@ def main() -> None:
 <h2>{voz.IDIOMA_NOMBRE}</h2>
 {"".join(bloques["propias"])}
 {ingles}
-</main></body></html>""", encoding="utf-8")
+</main></body></html>""",
+        encoding="utf-8",
+    )
     print(f"pagina: {SALIDA / 'comparar.html'}")
 
 

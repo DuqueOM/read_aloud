@@ -49,7 +49,7 @@ PICO_DB = -1.0
 
 
 def igualar(audio: np.ndarray) -> np.ndarray:
-    audio = audio * (10 ** (NIVEL_DB / 20) / (np.sqrt(np.mean(audio ** 2)) + 1e-9))
+    audio = audio * (10 ** (NIVEL_DB / 20) / (np.sqrt(np.mean(audio**2)) + 1e-9))
     pico = np.max(np.abs(audio)) + 1e-9
     limite = 10 ** (PICO_DB / 20)
     return audio * (limite / pico) if pico > limite else audio
@@ -76,8 +76,9 @@ def main() -> None:
     escucha.mkdir(exist_ok=True)
 
     azar = random.Random(0)
-    tono_voz = np.nanmedian(np.concatenate([tono(librosa.load(a, sr=TASA)[0])
-                                          for a in azar.sample(sorted(CONJUNTO.glob("*.wav")), 40)]))
+    tono_voz = np.nanmedian(
+        np.concatenate([tono(librosa.load(a, sr=TASA)[0]) for a in azar.sample(sorted(CONJUNTO.glob("*.wav")), 40)])
+    )
 
     sys.path.insert(0, str(APPLIO))
     os.chdir(APPLIO)
@@ -95,9 +96,14 @@ def main() -> None:
         # la diferencia que quede.
         semitonos = int(np.clip(round(tono_voz - np.nanmedian(tono(librosa.load(origen, sr=TASA)[0]))), -12, 12))
         convertidor.convert_audio(
-            audio_input_path=str(origen), audio_output_path=str(destino),
-            model_path=str(PESOS), index_path=indice, pitch=semitonos,
-            f0_method="rmvpe", index_rate=INDICE, protect=PROTECCION,
+            audio_input_path=str(origen),
+            audio_output_path=str(destino),
+            model_path=str(PESOS),
+            index_path=indice,
+            pitch=semitonos,
+            f0_method="rmvpe",
+            index_rate=INDICE,
+            protect=PROTECCION,
         )
 
     # Las versiones de referencia salen de las pruebas anteriores.
@@ -121,7 +127,7 @@ def main() -> None:
     parecido = defaultdict(list)
     for f in espanol:
         real = librosa.load(escucha / f"es{f['n']}_real.wav", sr=TASA)[0]
-        for (clave, version) in fuentes:
+        for clave, version in fuentes:
             if clave == f"es{f['n']}" and version != "real":
                 parecido[version].append(forma(real, librosa.load(escucha / f"{clave}_{version}.wav", sr=TASA)[0]))
     resumen = {v: float(np.mean(c)) for v, c in parecido.items()}
@@ -144,20 +150,31 @@ def main() -> None:
 
     # Primero lo entrenado, que es lo que se esta evaluando; despues los motores sin entrenar.
     afinadas = sorted({v.removesuffix("_rvc") for _, v in fuentes if v.startswith("qwen_mi_voz")})
-    orden = (["real"] + [v for base in afinadas for v in (base, f"{base}_rvc")] + ["piper_rvc"]
-             + [v for base in list(NOMBRES)[2:] for v in (base, f"{base}_rvc")])
+    orden = (
+        ["real"]
+        + [v for base in afinadas for v in (base, f"{base}_rvc")]
+        + ["piper_rvc"]
+        + [v for base in list(NOMBRES)[2:] for v in (base, f"{base}_rvc")]
+    )
     textos = {f"es{f['n']}": f["texto"] for f in espanol}
-    textos.update({"en1": "Wait, are you serious? I can't believe we actually made it!",
-                   "en2": "The function returns a list of results, sorted by date."})
+    textos.update(
+        {
+            "en1": "Wait, are you serious? I can't believe we actually made it!",
+            "en2": "The function returns a list of results, sorted by date.",
+        }
+    )
     bloques = []
     for clave, texto in textos.items():
         filas = "".join(
             f'<div class="fila{" real" if v == "real" else ""}"><span>{html.escape(nombre(v))}</span>'
             f'<audio controls preload="none" src="escucha/{clave}_{v}.wav"></audio></div>'
-            for v in orden if (clave, v) in fuentes)
+            for v in orden
+            if (clave, v) in fuentes
+        )
         bloques.append(f'<div class="par"><b>{html.escape(texto)}</b>{filas}</div>')
 
-    (SALIDA / "motores.html").write_text(f"""<!doctype html>
+    (SALIDA / "motores.html").write_text(
+        f"""<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Motores de voz</title>
@@ -181,7 +198,9 @@ que afina el timbre sin cambiar la entonación. Todo al mismo volumen. Las frase
 {"".join(b for b, c in zip(bloques, textos) if c.startswith("es"))}
 <h2>Inglés</h2>
 {"".join(b for b, c in zip(bloques, textos) if c.startswith("en"))}
-</main></body></html>""", encoding="utf-8")
+</main></body></html>""",
+        encoding="utf-8",
+    )
     print(f"pagina: {SALIDA / 'motores.html'}")
 
 

@@ -24,8 +24,10 @@ CADA_S = 30
 # Sin novedades en el registro durante este tiempo, algo se detuvo.
 QUIETO_S = 10 * 60
 
-LINEA = re.compile(r"epoch=(\d+) \| step=(\d+) \| time=([\d:]+) \| training_speed=(\d+):(\d\d):(\d\d)"
-                   r"(?: \| lowest_value=([\d.]+))?")
+LINEA = re.compile(
+    r"epoch=(\d+) \| step=(\d+) \| time=([\d:]+) \| training_speed=(\d+):(\d\d):(\d\d)"
+    r"(?: \| lowest_value=([\d.]+))?"
+)
 
 
 def leer() -> dict:
@@ -34,7 +36,8 @@ def leer() -> dict:
     for m in LINEA.finditer(texto):
         h, mi, s = int(m.group(4)), int(m.group(5)), int(m.group(6))
         epocas[int(m.group(1))] = {
-            "hora": m.group(3), "duracion": h * 3600 + mi * 60 + s,
+            "hora": m.group(3),
+            "duracion": h * 3600 + mi * 60 + s,
             "minimo": float(m.group(7)) if m.group(7) else None,
         }
     error = None
@@ -45,10 +48,13 @@ def leer() -> dict:
     pasos_por_epoca = 84
     for m in re.finditer(r"epoch=(\d+) \| step=(\d+) \| time", texto):
         pasos_por_epoca = int(m.group(2)) / int(m.group(1))
-    guardados = sorted(round(int(re.search(r"G_(\d+)\.pth", p.name).group(1)) / pasos_por_epoca)
-                       for p in MODELO.glob("G_*.pth"))
+    guardados = sorted(
+        round(int(re.search(r"G_(\d+)\.pth", p.name).group(1)) / pasos_por_epoca) for p in MODELO.glob("G_*.pth")
+    )
     return {
-        "epocas": epocas, "error": error, "guardados": guardados,
+        "epocas": epocas,
+        "error": error,
+        "guardados": guardados,
         "indice": any(MODELO.glob("*.index")),
         "quieto": REGISTRO.exists() and time.time() - REGISTRO.stat().st_mtime > QUIETO_S,
     }
@@ -66,11 +72,13 @@ def grafico(epocas: dict) -> str:
         f"{8 + (e - 1) / max(1, EPOCAS - 1) * (ancho - 16):.1f},{8 + (alto_v - v) / rango * (alto - 16):.1f}"
         for e, v in puntos
     )
-    return (f'<svg viewBox="0 0 {ancho} {alto}" class="grafico" role="img" '
-            f'aria-label="Pérdida más baja por época">'
-            f'<polyline points="{trazo}" fill="none" stroke="#60a5fa" stroke-width="2"/></svg>'
-            f'<p class="sub">Pérdida más baja hasta cada época: de {alto_v:.2f} a {bajo:.2f}. '
-            f'Mientras baja, el modelo sigue aprendiendo; si se aplana, ya aprendió lo principal.</p>')
+    return (
+        f'<svg viewBox="0 0 {ancho} {alto}" class="grafico" role="img" '
+        f'aria-label="Pérdida más baja por época">'
+        f'<polyline points="{trazo}" fill="none" stroke="#60a5fa" stroke-width="2"/></svg>'
+        f'<p class="sub">Pérdida más baja hasta cada época: de {alto_v:.2f} a {bajo:.2f}. '
+        f"Mientras baja, el modelo sigue aprendiendo; si se aplana, ya aprendió lo principal.</p>"
+    )
 
 
 def pagina(datos: dict) -> tuple[str, bool]:
@@ -100,7 +108,8 @@ def pagina(datos: dict) -> tuple[str, bool]:
     refresco = "" if final else f'<meta http-equiv="refresh" content="{CADA_S}">'
     minimo = next((epocas[e]["minimo"] for e in sorted(epocas, reverse=True) if epocas[e]["minimo"]), None)
 
-    return f"""<!doctype html>
+    return (
+        f"""<!doctype html>
 <html lang="es"><head><meta charset="utf-8">{refresco}
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Entrenamiento · voz propia</title>
@@ -134,7 +143,9 @@ def pagina(datos: dict) -> tuple[str, bool]:
 {grafico(epocas)}
 <p class="sub">Puntos de control guardados en las épocas: {guardados}. Se guarda uno cada 25 épocas;
 al final se comparan cinco a ciegas para elegir el que suene mejor.</p>
-</main></body></html>""", final
+</main></body></html>""",
+        final,
+    )
 
 
 def main() -> None:

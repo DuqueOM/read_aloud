@@ -58,8 +58,9 @@ def generar(qwen, textos, semilla=probar.SEMILLA):
     torch.manual_seed(semilla)
     torch.cuda.synchronize()
     inicio = time.perf_counter()
-    wavs, sr = qwen.generate_custom_voice(text=textos, language=["Spanish"] * len(textos),
-                                          speaker=[probar.VOZ] * len(textos), non_streaming_mode=True)
+    wavs, sr = qwen.generate_custom_voice(
+        text=textos, language=["Spanish"] * len(textos), speaker=[probar.VOZ] * len(textos), non_streaming_mode=True
+    )
     torch.cuda.synchronize()
     return wavs, sr, time.perf_counter() - inicio
 
@@ -70,20 +71,28 @@ def medir(qwen, frases, etiqueta, guardar=None):
     for lote in LOTES:
         total_gen = total_audio = 0.0
         for i in range(0, len(frases), lote):
-            wavs, sr, segundos = generar(qwen, frases[i:i + lote])
+            wavs, sr, segundos = generar(qwen, frases[i : i + lote])
             total_gen += segundos
             total_audio += sum(len(w) for w in wavs) / sr
             if guardar is not None and lote == 1:
                 sf.write(guardar / f"f{i + 1}.wav", np.asarray(wavs[0], dtype=np.float32), sr)
-        resultados[lote] = {"generacion_s": round(total_gen, 1), "audio_s": round(total_audio, 1),
-                            "veces_tiempo_real": round(total_gen / total_audio, 2)}
-        print(f"{etiqueta}, lote {lote}: {total_gen:.1f} s para {total_audio:.1f} s de audio "
-              f"({total_gen / total_audio:.2f} x)", flush=True)
+        resultados[lote] = {
+            "generacion_s": round(total_gen, 1),
+            "audio_s": round(total_audio, 1),
+            "veces_tiempo_real": round(total_gen / total_audio, 2),
+        }
+        print(
+            f"{etiqueta}, lote {lote}: {total_gen:.1f} s para {total_audio:.1f} s de audio "
+            f"({total_gen / total_audio:.2f} x)",
+            flush=True,
+        )
     return resultados
 
 
 def main() -> None:
-    frases = [f["texto"] for f in json.loads((RAIZ / "datos" / "09_comparar" / "frases.json").read_text(encoding="utf-8"))]
+    frases = [
+        f["texto"] for f in json.loads((RAIZ / "datos" / "09_comparar" / "frases.json").read_text(encoding="utf-8"))
+    ]
     probar.PUNTOS = PUNTOS
     qwen = probar.preparar()
     estado = load_file(PUNTOS / f"epoca_{EPOCA:02d}.safetensors")

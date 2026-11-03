@@ -49,7 +49,7 @@ PICO_DB = -1.0
 
 
 def igualar(audio: np.ndarray) -> np.ndarray:
-    audio = audio * (10 ** (NIVEL_DB / 20) / (np.sqrt(np.mean(audio ** 2)) + 1e-9))
+    audio = audio * (10 ** (NIVEL_DB / 20) / (np.sqrt(np.mean(audio**2)) + 1e-9))
     pico = np.max(np.abs(audio)) + 1e-9
     limite = 10 ** (PICO_DB / 20)
     return audio * (limite / pico) if pico > limite else audio
@@ -83,9 +83,18 @@ def main() -> None:
     for n, (voz, texto) in enumerate(FRASES, 1):
         destino = fuente / f"frase{n}.wav"
         if not destino.exists():
-            subprocess.run([str(PIPER / "bin" / "piper" / "piper.exe"), "--model", str(PIPER / "voices" / f"{voz}.onnx"),
-                            "--output_file", str(destino)], input=texto.encode("utf-8"), check=True,
-                           capture_output=True)
+            subprocess.run(
+                [
+                    str(PIPER / "bin" / "piper" / "piper.exe"),
+                    "--model",
+                    str(PIPER / "voices" / f"{voz}.onnx"),
+                    "--output_file",
+                    str(destino),
+                ],
+                input=texto.encode("utf-8"),
+                check=True,
+                capture_output=True,
+            )
 
     azar = random.Random(0)
     tono_voz = tono_mediano(azar.sample(sorted(CONJUNTO.glob("*.wav")), 40))
@@ -101,7 +110,7 @@ def main() -> None:
     puntos = puntos_de_control()
     print("puntos de control:", {e: p.name for e, p in puntos.items()}, "indice:", Path(indice).name)
 
-    letras = "ABCDEFGH"[:len(puntos)]
+    letras = "ABCDEFGH"[: len(puntos)]
     clave, clips = {}, []
     for n, (voz, texto) in enumerate(FRASES, 1):
         origen = fuente / f"frase{n}.wav"
@@ -112,9 +121,14 @@ def main() -> None:
         for letra, (epoca, pesos) in zip(orden, puntos.items()):
             temporal = prueba / "audio" / f"clip{n}_{letra}_crudo.wav"
             convertidor.convert_audio(
-                audio_input_path=str(origen), audio_output_path=str(temporal),
-                model_path=str(pesos), index_path=indice, pitch=semitonos,
-                f0_method="rmvpe", index_rate=INDICE, protect=PROTECCION,
+                audio_input_path=str(origen),
+                audio_output_path=str(temporal),
+                model_path=str(pesos),
+                index_path=indice,
+                pitch=semitonos,
+                f0_method="rmvpe",
+                index_rate=INDICE,
+                protect=PROTECCION,
             )
             audio, tasa = sf.read(temporal, dtype="float32")
             sf.write(prueba / "audio" / f"clip{n}_{letra}.wav", igualar(audio), tasa, subtype="PCM_24")
@@ -125,11 +139,12 @@ def main() -> None:
 
     (prueba / "clave.json").write_text(json.dumps(clave, ensure_ascii=False, indent=1), encoding="utf-8")
     plantilla = (Path(__file__).parent / "prueba_plantilla.html").read_text(encoding="utf-8")
-    pagina = (plantilla
-              .replace("/*CLIPS*/[]", json.dumps(clips, ensure_ascii=False))
-              .replace("/*TITULO*/'Prueba a ciegas de mejora de audio'", "'Prueba a ciegas de puntos de control'")
-              .replace("/*VERSIONES*/4", str(len(letras)))
-              .replace("/*CLAVE*/'mi_voz_prueba_mejora_v1'", "'mi_voz_prueba_puntos_v1'"))
+    pagina = (
+        plantilla.replace("/*CLIPS*/[]", json.dumps(clips, ensure_ascii=False))
+        .replace("/*TITULO*/'Prueba a ciegas de mejora de audio'", "'Prueba a ciegas de puntos de control'")
+        .replace("/*VERSIONES*/4", str(len(letras)))
+        .replace("/*CLAVE*/'mi_voz_prueba_mejora_v1'", "'mi_voz_prueba_puntos_v1'")
+    )
     (prueba / "prueba.html").write_text(pagina, encoding="utf-8")
     print(f"pagina: {prueba / 'prueba.html'}")
 

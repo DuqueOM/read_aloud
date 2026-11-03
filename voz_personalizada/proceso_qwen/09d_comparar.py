@@ -42,7 +42,7 @@ PICO_DB = -1.0
 
 
 def igualar(audio: np.ndarray) -> np.ndarray:
-    audio = audio * (10 ** (NIVEL_DB / 20) / (np.sqrt(np.mean(audio ** 2)) + 1e-9))
+    audio = audio * (10 ** (NIVEL_DB / 20) / (np.sqrt(np.mean(audio**2)) + 1e-9))
     pico = np.max(np.abs(audio)) + 1e-9
     limite = 10 ** (PICO_DB / 20)
     return audio * (limite / pico) if pico > limite else audio
@@ -59,9 +59,12 @@ def tono_mediano(audios) -> float:
 def elegir() -> list:
     """Frases del conjunto final, mitad preguntas o exclamaciones."""
     final = {a.name for a in CONJUNTO.glob("*.wav")}
-    clips = [c for indice in sorted(CORTES.glob("ep*/indice.json"))
-             for c in json.loads(indice.read_text(encoding="utf-8"))["clips"]
-             if c["archivo"] in final and MIN_S <= c["duracion"] <= MAX_S]
+    clips = [
+        c
+        for indice in sorted(CORTES.glob("ep*/indice.json"))
+        for c in json.loads(indice.read_text(encoding="utf-8"))["clips"]
+        if c["archivo"] in final and MIN_S <= c["duracion"] <= MAX_S
+    ]
     azar = random.Random(0)
     expresivas = [c for c in clips if any(s in c["texto"] for s in "¿?¡!")]
     llanas = [c for c in clips if c not in expresivas]
@@ -85,16 +88,31 @@ def main() -> None:
     frases = []
     for n, clip in enumerate(elegir(), 1):
         piper = audio_dir / f"f{n}_piper.wav"
-        subprocess.run([str(PIPER / "bin" / "piper" / "piper.exe"),
-                        "--model", str(PIPER / "voices" / f"{VOZ_PIPER}.onnx"), "--output_file", str(piper)],
-                       input=clip["texto"].encode("utf-8"), check=True, capture_output=True)
-        semitonos = int(np.clip(round(12 * np.log2(tono_voz / tono_mediano([librosa.load(piper, sr=16000)[0]]))),
-                                -24, 24))
+        subprocess.run(
+            [
+                str(PIPER / "bin" / "piper" / "piper.exe"),
+                "--model",
+                str(PIPER / "voices" / f"{VOZ_PIPER}.onnx"),
+                "--output_file",
+                str(piper),
+            ],
+            input=clip["texto"].encode("utf-8"),
+            check=True,
+            capture_output=True,
+        )
+        semitonos = int(
+            np.clip(round(12 * np.log2(tono_voz / tono_mediano([librosa.load(piper, sr=16000)[0]]))), -24, 24)
+        )
         crudo = audio_dir / f"f{n}_crudo.wav"
         convertidor.convert_audio(
-            audio_input_path=str(piper), audio_output_path=str(crudo),
-            model_path=str(PESOS), index_path=indice, pitch=semitonos,
-            f0_method="rmvpe", index_rate=INDICE, protect=PROTECCION,
+            audio_input_path=str(piper),
+            audio_output_path=str(crudo),
+            model_path=str(PESOS),
+            index_path=indice,
+            pitch=semitonos,
+            f0_method="rmvpe",
+            index_rate=INDICE,
+            protect=PROTECCION,
         )
         for origen, destino in ((CONJUNTO / clip["archivo"], "real"), (piper, "piper"), (crudo, "entrenada")):
             audio, tasa = sf.read(origen, dtype="float32", always_2d=False)
@@ -109,8 +127,11 @@ def main() -> None:
         f'<div class="fila"><span>Voz real</span><audio controls preload="none" src="audio/f{f["n"]}_real.wav"></audio></div>'
         f'<div class="fila"><span>Voz entrenada</span><audio controls preload="none" src="audio/f{f["n"]}_entrenada.wav"></audio></div>'
         f'<div class="fila"><span>Piper, la fuente</span><audio controls preload="none" src="audio/f{f["n"]}_piper.wav"></audio></div>'
-        f'</div>' for f in frases)
-    (SALIDA / "comparar.html").write_text(f"""<!doctype html>
+        f"</div>"
+        for f in frases
+    )
+    (SALIDA / "comparar.html").write_text(
+        f"""<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Voz real y voz entrenada</title>
@@ -128,7 +149,9 @@ def main() -> None:
 <p>Cada frase la dijo la voz real en las grabaciones. La voz entrenada dice el mismo texto: Piper lo lee
 y el modelo le pone el timbre de la voz. Abajo está Piper solo, para oír de dónde sale. Todo al mismo volumen.</p>
 {filas}
-</main></body></html>""", encoding="utf-8")
+</main></body></html>""",
+        encoding="utf-8",
+    )
     (SALIDA / "frases.json").write_text(json.dumps(frases, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"pagina: {SALIDA / 'comparar.html'}")
 

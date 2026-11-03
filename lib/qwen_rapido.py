@@ -53,8 +53,13 @@ class PredictorRapido:
         for paso in range(POSICIONES - 1):
             ocultos = p.small_to_mtp_projection(entrada)
             for capa in modelo.layers:
-                ocultos = capa(ocultos, attention_mask=g.mascara, position_ids=g.posiciones,
-                               position_embeddings=g.rotacion, use_cache=False)
+                ocultos = capa(
+                    ocultos,
+                    attention_mask=g.mascara,
+                    position_ids=g.posiciones,
+                    position_embeddings=g.rotacion,
+                    use_cache=False,
+                )
                 ocultos = ocultos[0] if isinstance(ocultos, tuple) else ocultos
             ocultos = modelo.norm(ocultos)
             codigo = self._muestrear(p.lm_head[paso](ocultos[:, paso + 1]), *g.muestreo)
@@ -66,15 +71,21 @@ class PredictorRapido:
 
     def _preparar(self, lote, muestreo, dispositivo, tipo):
         modelo = self.p.model
-        tam = self.p.small_to_mtp_projection.in_features if hasattr(self.p.small_to_mtp_projection, "in_features") \
+        tam = (
+            self.p.small_to_mtp_projection.in_features
+            if hasattr(self.p.small_to_mtp_projection, "in_features")
             else modelo.config.hidden_size
+        )
         g = SimpleNamespace()
         g.entrada = torch.zeros(lote, POSICIONES, tam, device=dispositivo, dtype=tipo)
         g.codigos = torch.zeros(lote, POSICIONES - 1, device=dispositivo, dtype=torch.long)
         g.posiciones = torch.arange(POSICIONES, device=dispositivo)[None].expand(lote, -1)
         causal = torch.ones(POSICIONES, POSICIONES, device=dispositivo, dtype=torch.bool).tril()
-        g.mascara = torch.zeros(POSICIONES, POSICIONES, device=dispositivo, dtype=tipo).masked_fill(
-            ~causal, torch.finfo(tipo).min)[None, None].expand(lote, 1, -1, -1)
+        g.mascara = (
+            torch.zeros(POSICIONES, POSICIONES, device=dispositivo, dtype=tipo)
+            .masked_fill(~causal, torch.finfo(tipo).min)[None, None]
+            .expand(lote, 1, -1, -1)
+        )
         g.rotacion = modelo.rotary_emb(g.entrada, g.posiciones)
         g.muestreo = muestreo
 
@@ -108,6 +119,9 @@ def activar(modelo) -> None:
     """Cambia el generate() del modelo chico por la version grabada."""
     talker = modelo.talker
     rapido = PredictorRapido(talker.code_predictor)
-    talker.code_predictor.generate = lambda inputs_embeds, max_new_tokens=None, do_sample=True, top_p=1.0, \
-        top_k=50, temperature=0.9, **kw: rapido.generar(inputs_embeds, do_sample, top_p, top_k, temperature)
+    talker.code_predictor.generate = (
+        lambda inputs_embeds, max_new_tokens=None, do_sample=True, top_p=1.0, top_k=50, temperature=0.9, **kw: (
+            rapido.generar(inputs_embeds, do_sample, top_p, top_k, temperature)
+        )
+    )
     talker._predictor_rapido = rapido

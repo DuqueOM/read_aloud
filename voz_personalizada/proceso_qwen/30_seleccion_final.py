@@ -74,8 +74,14 @@ def elegir_validacion(candidatos: list) -> list:
     textos = defaultdict(int)
     for c in candidatos:
         textos[normalizar(c["texto"])] += 1
-    aptos = sorted((c for c in candidatos if VALIDACION_S[0] <= c["duracion"] <= VALIDACION_S[1]
-                    and textos[normalizar(c["texto"])] == 1), key=lambda c: -c["calidad"])
+    aptos = sorted(
+        (
+            c
+            for c in candidatos
+            if VALIDACION_S[0] <= c["duracion"] <= VALIDACION_S[1] and textos[normalizar(c["texto"])] == 1
+        ),
+        key=lambda c: -c["calidad"],
+    )
     elegidos, episodios = [], set()
 
     def tomar(c):
@@ -119,9 +125,13 @@ def main() -> None:
     for indice in sorted((DATOS / "25_cortes").glob("ep*/indice.json")):
         for c in json.loads(indice.read_text(encoding="utf-8"))["clips"]:
             clave = c["archivo"].removesuffix(".wav")
-            clips[clave] = {"clave": clave, "episodio": indice.parent.name, "duracion": c["duracion"],
-                            "texto": revision["textos"].get(clave, c["texto"]),
-                            "ruta": str(indice.parent / c["archivo"])}
+            clips[clave] = {
+                "clave": clave,
+                "episodio": indice.parent.name,
+                "duracion": c["duracion"],
+                "texto": revision["textos"].get(clave, c["texto"]),
+                "ruta": str(indice.parent / c["archivo"]),
+            }
     conservados = [clips[k] for k, v in revision["decisiones"].items() if v == "si"]
 
     # Calidad: promedio de percentiles, sobre todos los conservados.
@@ -168,8 +178,9 @@ def main() -> None:
             quitados.append(dict(c, motivo=f"menos calidad que los {META_MIN:g} minutos elegidos"))
 
     SALIDA.mkdir(parents=True, exist_ok=True)
-    (SALIDA / "seleccion.json").write_text(json.dumps({"elegidos": elegidos, "quitados": quitados},
-                                                      ensure_ascii=False, indent=1), encoding="utf-8")
+    (SALIDA / "seleccion.json").write_text(
+        json.dumps({"elegidos": elegidos, "quitados": quitados}, ensure_ascii=False, indent=1), encoding="utf-8"
+    )
     minutos = lambda lista: sum(c["duracion"] for c in lista) / 60
     print(f"conservados por el usuario: {len(conservados)} clips, {minutos(conservados):.1f} min")
     motivos = defaultdict(list)
@@ -177,11 +188,15 @@ def main() -> None:
         motivos[c["motivo"]].append(c)
     for motivo, lista in motivos.items():
         print(f"  quitados, {motivo}: {len(lista)} clips, {minutos(lista):.1f} min")
-    print(f"elegidos: {len(elegidos)} clips, {minutos(elegidos):.1f} min; "
-          f"calidad del peor elegido {min(c['calidad'] for c in elegidos):.2f}")
+    print(
+        f"elegidos: {len(elegidos)} clips, {minutos(elegidos):.1f} min; "
+        f"calidad del peor elegido {min(c['calidad'] for c in elegidos):.2f}"
+    )
     duraciones = np.array([c["duracion"] for c in elegidos])
-    print(f"  duracion: mediana {np.median(duraciones):.1f} s; 1-2 s {(duraciones < 2).sum()}, "
-          f"2-5 s {((duraciones >= 2) & (duraciones < 5)).sum()}, mas de 5 s {(duraciones >= 5).sum()}")
+    print(
+        f"  duracion: mediana {np.median(duraciones):.1f} s; 1-2 s {(duraciones < 2).sum()}, "
+        f"2-5 s {((duraciones >= 2) & (duraciones < 5)).sum()}, mas de 5 s {(duraciones >= 5).sum()}"
+    )
     for nombre in MEDIDAS:
         todos = np.median([medidas[c["clave"]][nombre] for c in conservados])
         elegido = np.median([medidas[c["clave"]][nombre] for c in elegidos])

@@ -79,21 +79,23 @@ def segmentar(archivo: Path, modelo) -> dict:
         if duracion < MIN_SEGUNDOS:
             continue
 
-        trozo = mono[int(inicio * tasa):int(fin * tasa)]
+        trozo = mono[int(inicio * tasa) : int(fin * tasa)]
         pico = float(np.max(np.abs(trozo))) if trozo.size else 0.0
-        nivel = float(np.sqrt(np.mean(trozo ** 2))) if trozo.size else 0.0
+        nivel = float(np.sqrt(np.mean(trozo**2))) if trozo.size else 0.0
 
         nombre = f"{episodio}_{numero:04d}.wav"
         sf.write(carpeta / nombre, trozo, tasa, subtype="PCM_24")
 
-        frases.append({
-            "archivo": nombre,
-            "inicio": round(inicio, 3),
-            "fin": round(fin, 3),
-            "duracion": round(duracion, 3),
-            "pico": round(pico, 4),
-            "nivel_db": round(20 * np.log10(nivel + 1e-9), 1),
-        })
+        frases.append(
+            {
+                "archivo": nombre,
+                "inicio": round(inicio, 3),
+                "fin": round(fin, 3),
+                "duracion": round(duracion, 3),
+                "pico": round(pico, 4),
+                "nivel_db": round(20 * np.log10(nivel + 1e-9), 1),
+            }
+        )
 
     indice = {"episodio": episodio, "tasa": tasa, "frases": frases}
     (carpeta / "indice.json").write_text(json.dumps(indice, indent=1), encoding="utf-8")

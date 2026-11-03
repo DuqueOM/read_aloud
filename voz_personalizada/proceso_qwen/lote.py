@@ -46,7 +46,7 @@ VOZ = RAIZ / "datos" / "02_voz"
 TRANSCRIPCION = RAIZ / "datos" / "03_transcripcion"
 
 EXTENSIONES = {".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4a", ".mp3", ".wav", ".flac", ".ogg", ".aac"}
-PASOS =["extraccion", "separacion", "transcripcion", "alineacion", "curva"]
+PASOS = ["extraccion", "separacion", "transcripcion", "alineacion", "curva"]
 
 # Medido en los videos 1 a 3, en la tarjeta a media precision.
 MINUTOS_TRANSCRIPCION = 2
@@ -58,8 +58,12 @@ DESCARGA_ABANDONADA_S = 30 * 60
 
 def ejecutar(*argumentos) -> bool:
     resultado = subprocess.run(
-        [str(a) for a in argumentos], cwd=str(RAIZ),
-        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        [str(a) for a in argumentos],
+        cwd=str(RAIZ),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     if resultado.returncode != 0:
         detalle = (resultado.stderr or resultado.stdout).strip().splitlines()[-1:] or ["sin detalle"]
@@ -71,7 +75,8 @@ def descargas_en_curso(origenes: list) -> bool:
     ahora = time.time()
     return any(
         ahora - parcial.stat().st_mtime < DESCARGA_ABANDONADA_S
-        for origen in origenes for parcial in origen.glob("*.crdownload")
+        for origen in origenes
+        for parcial in origen.glob("*.crdownload")
     )
 
 
@@ -89,16 +94,20 @@ def numero_de_capitulo(nombre: str):
     if voz.PATRON_EPISODIO:
         numero = re.search(voz.PATRON_EPISODIO, nombre, re.IGNORECASE)
     else:
-        numero = (re.search(r"(?:Episode|Episodio|cap[ií]?tulo)\s*(\d+)", nombre, re.IGNORECASE)
-                  or re.match(r"\s*(\d+)\D", nombre) or re.search(r"(\d+)", nombre))
+        numero = (
+            re.search(r"(?:Episode|Episodio|cap[ií]?tulo)\s*(\d+)", nombre, re.IGNORECASE)
+            or re.match(r"\s*(\d+)\D", nombre)
+            or re.search(r"(\d+)", nombre)
+        )
     return int(numero.group(1)) if numero else None
 
 
 def buscar_capitulos(origenes: list) -> dict:
     """Videos de los origenes que aun no estan procesados, por numero."""
     encontrados = {}
-    for video in (v for origen in origenes for v in sorted(origen.iterdir())
-                  if v.is_file() and v.suffix.lower() in EXTENSIONES):
+    for video in (
+        v for origen in origenes for v in sorted(origen.iterdir()) if v.is_file() and v.suffix.lower() in EXTENSIONES
+    ):
         numero = numero_de_capitulo(video.name)
         if numero is None:
             continue
@@ -116,8 +125,9 @@ def main() -> None:
         return
 
     episodios = list(capitulos)
-    estado = nuevo(f"Preparación de la voz de {voz.TITULO} · videos {episodios[0][2:]} a {episodios[-1][2:]}",
-                   episodios, PASOS)
+    estado = nuevo(
+        f"Preparación de la voz de {voz.TITULO} · videos {episodios[0][2:]} a {episodios[-1][2:]}", episodios, PASOS
+    )
     estado["eventos"].insert(0, [time.strftime("%H:%M"), f"Lote iniciado con {len(episodios)} videos"])
     guardar(estado)
 
@@ -135,14 +145,14 @@ def main() -> None:
                 estado["orden"].append(episodio)
                 estado["episodios"][episodio] = {p: "pendiente" for p in PASOS}
             estado["orden"].sort()
-            estado["titulo"] = (f"Preparación de la voz de {voz.TITULO} · videos "
-                                f"{estado['orden'][0][2:]} a {estado['orden'][-1][2:]}")
-        marcar(estado, "calibracion", "pendiente",
-               evento=f"Descarga completa, se suman: {', '.join(nuevos)}")
+            estado["titulo"] = (
+                f"Preparación de la voz de {voz.TITULO} · videos {estado['orden'][0][2:]} a {estado['orden'][-1][2:]}"
+            )
+        marcar(estado, "calibracion", "pendiente", evento=f"Descarga completa, se suman: {', '.join(nuevos)}")
         return sorted(nuevos)
 
-    separados = []          # cola de videos listos para transcribir
-    transcritos = []        # cola de videos listos para alinear
+    separados = []  # cola de videos listos para transcribir
+    transcritos = []  # cola de videos listos para alinear
     fin_separacion = threading.Event()
     fin_transcripcion = threading.Event()
     # Separar, transcribir, alinear y calcular la curva usan la tarjeta: uno a
@@ -166,13 +176,23 @@ def main() -> None:
                 with uso_tarjeta:
                     marcar(estado, "alineacion", "en curso", episodio)
                     ok = ejecutar(PYTHON, SCRIPTS / "03b_alinear.py", episodio)
-                    marcar(estado, "alineacion", "listo" if ok else "con error", episodio,
-                           f"{episodio}: alineación {'lista' if ok else 'con error'}")
+                    marcar(
+                        estado,
+                        "alineacion",
+                        "listo" if ok else "con error",
+                        episodio,
+                        f"{episodio}: alineación {'lista' if ok else 'con error'}",
+                    )
                     if ok:
                         marcar(estado, "curva", "en curso", episodio)
                         ok = ejecutar(PYTHON, SCRIPTS / "24_curva_wavlm.py", episodio)
-                        marcar(estado, "curva", "listo" if ok else "con error", episodio,
-                               f"{episodio}: curva de quién habla {'calculada' if ok else 'con error'}")
+                        marcar(
+                            estado,
+                            "curva",
+                            "listo" if ok else "con error",
+                            episodio,
+                            f"{episodio}: curva de quién habla {'calculada' if ok else 'con error'}",
+                        )
                 alineados.add(episodio)
                 continue
 
@@ -187,8 +207,20 @@ def main() -> None:
                 capitulos[episodio] = buscar_capitulos(origen).get(episodio, capitulos[episodio])
                 marcar(estado, "extraccion", "en curso", episodio)
                 ok = destino.exists() or ejecutar(
-                    FFMPEG, "-hide_banner", "-loglevel", "error", "-y", "-i", capitulos[episodio],
-                    "-vn", "-map", "0:a:0", "-c:a", "pcm_f32le", destino)
+                    FFMPEG,
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-y",
+                    "-i",
+                    capitulos[episodio],
+                    "-vn",
+                    "-map",
+                    "0:a:0",
+                    "-c:a",
+                    "pcm_f32le",
+                    destino,
+                )
                 marcar(estado, "extraccion", "listo" if ok else "con error", episodio)
                 if not ok:
                     continue
@@ -196,8 +228,13 @@ def main() -> None:
                 marcar(estado, "separacion", "en curso", episodio)
                 with uso_tarjeta:
                     ok = ejecutar(PYTHON, SCRIPTS / "02_separar_voz.py", episodio)
-                marcar(estado, "separacion", "listo" if ok else "con error", episodio,
-                       f"{episodio}: voz separada" if ok else f"{episodio}: la separación falló")
+                marcar(
+                    estado,
+                    "separacion",
+                    "listo" if ok else "con error",
+                    episodio,
+                    f"{episodio}: voz separada" if ok else f"{episodio}: la separación falló",
+                )
                 if ok:
                     with cerrojo:
                         separados.append(episodio)
@@ -230,8 +267,11 @@ def main() -> None:
                     inicio = time.time()
                     marcar(estado, "transcripcion", "en curso", episodio)
                     proceso = subprocess.Popen(
-                        [PYTHON, str(SCRIPTS / "03_transcribir.py"), episodio], cwd=str(RAIZ),
-                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        [PYTHON, str(SCRIPTS / "03_transcribir.py"), episodio],
+                        cwd=str(RAIZ),
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
                     while proceso.poll() is None:
                         pct = min(95, round(100 * (time.time() - inicio) / 60 / MINUTOS_TRANSCRIPCION))
                         marcar(estado, "transcripcion", f"en curso, ~{pct} %", episodio)
@@ -240,8 +280,13 @@ def main() -> None:
 
                 ok = proceso.returncode == 0 and (TRANSCRIPCION / f"{episodio}.json").exists()
                 minutos = (time.time() - inicio) / 60
-                marcar(estado, "transcripcion", "listo" if ok else "con error", episodio,
-                       f"{episodio}: transcripción {'terminada' if ok else 'con error'} en {minutos:.0f} min")
+                marcar(
+                    estado,
+                    "transcripcion",
+                    "listo" if ok else "con error",
+                    episodio,
+                    f"{episodio}: transcripción {'terminada' if ok else 'con error'} en {minutos:.0f} min",
+                )
                 hechos.add(episodio)
                 if ok:
                     with cerrojo:
@@ -259,8 +304,10 @@ def main() -> None:
     for h in hilos:
         h.join()
 
-    estado["nota"] = ("Los videos nuevos están preparados. Sigue con la primera revisión o, si ya la "
-                      "hiciste, con 24_curva_wavlm.py y 25_cortar_frases.py (docs\\voz-personalizada.md).")
+    estado["nota"] = (
+        "Los videos nuevos están preparados. Sigue con la primera revisión o, si ya la "
+        "hiciste, con 24_curva_wavlm.py y 25_cortar_frases.py (docs\\voz-personalizada.md)."
+    )
     marcar(estado, "calibracion", "pendiente", evento="Preparación automática terminada")
     print("listo", time.strftime("%H:%M"), flush=True)
 

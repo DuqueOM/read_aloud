@@ -78,13 +78,20 @@ def lote_tensores(items, procesador, config, idioma_id, voz):
     """
     tc = config.talker_config
     # Sin idioma queda el prefijo de la receta oficial: nothink, think_bos, think_eos.
-    etiquetas = ([tc.codec_nothink_id, tc.codec_think_bos_id, tc.codec_think_eos_id] if idioma_id is None
-                 else [tc.codec_think_id, tc.codec_think_bos_id, idioma_id, tc.codec_think_eos_id])
+    etiquetas = (
+        [tc.codec_nothink_id, tc.codec_think_bos_id, tc.codec_think_eos_id]
+        if idioma_id is None
+        else [tc.codec_think_id, tc.codec_think_bos_id, idioma_id, tc.codec_think_eos_id]
+    )
     pos_voz = 3 + len(etiquetas)  # 7; en la receta oficial, sin idioma, es 6
     inicio_texto = pos_voz + 2
 
-    textos = [procesador(text=f"<|im_start|>assistant\n{i['text']}<|im_end|>\n<|im_start|>assistant\n",
-                         return_tensors="pt")["input_ids"][0][:-5] for i in items]
+    textos = [
+        procesador(text=f"<|im_start|>assistant\n{i['text']}<|im_end|>\n<|im_start|>assistant\n", return_tensors="pt")[
+            "input_ids"
+        ][0][:-5]
+        for i in items
+    ]
     codigos = [torch.tensor(i["audio_codes"], dtype=torch.long) for i in items]
     largo = max(t.shape[0] + c.shape[0] for t, c in zip(textos, codigos)) + inicio_texto + 2
     b = len(items)
@@ -104,32 +111,37 @@ def lote_tensores(items, procesador, config, idioma_id, voz):
 
         # canal de texto
         input_ids[i, :3, 0] = t[:3]
-        input_ids[i, 3:pos_voz + 1, 0] = config.tts_pad_token_id
+        input_ids[i, 3 : pos_voz + 1, 0] = config.tts_pad_token_id
         input_ids[i, pos_voz + 1, 0] = config.tts_bos_token_id
         input_ids[i, inicio_texto:fin_texto, 0] = t[3:]
         input_ids[i, fin_texto, 0] = config.tts_eos_token_id
-        input_ids[i, fin_texto + 1:inicio_audio + nc + 1, 0] = config.tts_pad_token_id
-        mascara_texto[i, :inicio_audio + nc + 1] = True
+        input_ids[i, fin_texto + 1 : inicio_audio + nc + 1, 0] = config.tts_pad_token_id
+        mascara_texto[i, : inicio_audio + nc + 1] = True
 
         # canal de codigos
         input_ids[i, 3:pos_voz, 1] = torch.tensor(etiquetas)
         input_ids[i, pos_voz + 1, 1] = tc.codec_pad_id
-        input_ids[i, inicio_texto:fin_texto + 1, 1] = tc.codec_pad_id
+        input_ids[i, inicio_texto : fin_texto + 1, 1] = tc.codec_pad_id
         input_ids[i, fin_texto + 1, 1] = tc.codec_bos_id
-        input_ids[i, inicio_audio:inicio_audio + nc, 1] = c[:, 0]
+        input_ids[i, inicio_audio : inicio_audio + nc, 1] = c[:, 0]
         input_ids[i, inicio_audio + nc, 1] = tc.codec_eos_token_id
-        etiquetas_0[i, inicio_audio:inicio_audio + nc] = c[:, 0]
+        etiquetas_0[i, inicio_audio : inicio_audio + nc] = c[:, 0]
         etiquetas_0[i, inicio_audio + nc] = tc.codec_eos_token_id
-        codec_ids[i, inicio_audio:inicio_audio + nc, :] = c
-        mascara_codec[i, 3:inicio_audio + nc + 1] = True
+        codec_ids[i, inicio_audio : inicio_audio + nc, :] = c
+        mascara_codec[i, 3 : inicio_audio + nc + 1] = True
         mascara_codec[i, pos_voz] = False
-        mascara_audio[i, inicio_audio:inicio_audio + nc] = True
-        atencion[i, :inicio_audio + nc + 1] = 1
+        mascara_audio[i, inicio_audio : inicio_audio + nc] = True
+        atencion[i, : inicio_audio + nc + 1] = 1
 
     return {
-        "input_ids": input_ids, "codec_ids": codec_ids, "atencion": atencion,
-        "mascara_texto": mascara_texto.unsqueeze(-1), "mascara_codec": mascara_codec.unsqueeze(-1),
-        "mascara_audio": mascara_audio, "etiquetas_0": etiquetas_0, "pos_voz": pos_voz,
+        "input_ids": input_ids,
+        "codec_ids": codec_ids,
+        "atencion": atencion,
+        "mascara_texto": mascara_texto.unsqueeze(-1),
+        "mascara_codec": mascara_codec.unsqueeze(-1),
+        "mascara_audio": mascara_audio,
+        "etiquetas_0": etiquetas_0,
+        "pos_voz": pos_voz,
     }
 
 
@@ -140,26 +152,33 @@ def perdida(modelo, lote, voz):
     codec_ids = lote["codec_ids"].to(d)
     mascara_audio = lote["mascara_audio"].to(d)
 
-    emb_texto = (modelo.talker.text_projection(modelo.talker.model.text_embedding(input_ids[:, :, 0]))
-                 * lote["mascara_texto"].to(d))
+    emb_texto = modelo.talker.text_projection(modelo.talker.model.text_embedding(input_ids[:, :, 0])) * lote[
+        "mascara_texto"
+    ].to(d)
     emb_codec = modelo.talker.model.codec_embedding(input_ids[:, :, 1]) * lote["mascara_codec"].to(d)
     emb_codec[:, lote["pos_voz"], :] = voz
     entrada = emb_texto + emb_codec
     for i in range(1, 16):
-        entrada = entrada + (modelo.talker.code_predictor.get_input_embeddings()[i - 1](codec_ids[:, :, i])
-                             * mascara_audio.unsqueeze(-1))
+        entrada = entrada + (
+            modelo.talker.code_predictor.get_input_embeddings()[i - 1](codec_ids[:, :, i]) * mascara_audio.unsqueeze(-1)
+        )
 
     # La funcion de perdida desplaza las etiquetas una posicion por su cuenta:
     # la salida de la posicion i se compara con la etiqueta i + 1.
-    salida = modelo.talker(inputs_embeds=entrada[:, :-1, :], attention_mask=lote["atencion"][:, :-1].to(d),
-                           labels=lote["etiquetas_0"][:, :-1].to(d), output_hidden_states=True)
+    salida = modelo.talker(
+        inputs_embeds=entrada[:, :-1, :],
+        attention_mask=lote["atencion"][:, :-1].to(d),
+        labels=lote["etiquetas_0"][:, :-1].to(d),
+        output_hidden_states=True,
+    )
     # Al generar, el cuadro p sale del estado oculto de la posicion p - 1.
     ocultos = salida.hidden_states[0][-1][mascara_audio[:, 1:]]
     codigos = codec_ids[mascara_audio]
     logits_sub, _ = modelo.talker.forward_sub_talker_finetune(codigos, ocultos)
     # Sus logits ya estan alineados con las capas 1 a 15: sin desplazar.
-    perdida_sub = torch.nn.functional.cross_entropy(logits_sub.float().reshape(-1, logits_sub.shape[-1]),
-                                                    codigos[:, 1:].reshape(-1))
+    perdida_sub = torch.nn.functional.cross_entropy(
+        logits_sub.float().reshape(-1, logits_sub.shape[-1]), codigos[:, 1:].reshape(-1)
+    )
     return salida.loss + 0.3 * perdida_sub, salida.loss, perdida_sub
 
 
@@ -169,14 +188,23 @@ def main() -> None:
     argumentos.add_argument("--salida", default="puntos")
     argumentos.add_argument("--aprendizaje", type=float, default=APRENDIZAJE)
     argumentos.add_argument("--epocas", type=int, default=EPOCAS)
-    argumentos.add_argument("--datos", default=str(DATOS),
-                            help="carpeta con entrenamiento.jsonl y validacion.jsonl (31_conjunto_qwen.py)")
-    argumentos.add_argument("--reanudar", action="store_true",
-                            help="seguir despues de la ultima epoca guardada, si la hay")
-    argumentos.add_argument("--paciencia", type=int, default=0,
-                            help="parar cuando la validacion empeore esta cantidad de epocas seguidas; 0 es nunca")
-    argumentos.add_argument("--medias", action="store_true",
-                            help="guardar y validar tambien a mitad de cada epoca (epoca_01_5 es la mitad de la 2)")
+    argumentos.add_argument(
+        "--datos", default=str(DATOS), help="carpeta con entrenamiento.jsonl y validacion.jsonl (31_conjunto_qwen.py)"
+    )
+    argumentos.add_argument(
+        "--reanudar", action="store_true", help="seguir despues de la ultima epoca guardada, si la hay"
+    )
+    argumentos.add_argument(
+        "--paciencia",
+        type=int,
+        default=0,
+        help="parar cuando la validacion empeore esta cantidad de epocas seguidas; 0 es nunca",
+    )
+    argumentos.add_argument(
+        "--medias",
+        action="store_true",
+        help="guardar y validar tambien a mitad de cada epoca (epoca_01_5 es la mitad de la 2)",
+    )
     a = argumentos.parse_args()
     EPOCAS, APRENDIZAJE = a.epocas, a.aprendizaje
     datos = Path(a.datos)
@@ -185,6 +213,7 @@ def main() -> None:
     # Entrenar ocupa toda la tarjeta: Read Aloud lee con Piper mientras tanto.
     sys.path.insert(0, str(Path(__file__).parent))
     import gpu
+
     gpu.ocupar()
 
     random.seed(SEMILLA)
@@ -192,8 +221,9 @@ def main() -> None:
     torch.manual_seed(SEMILLA)
     PUNTOS.mkdir(parents=True, exist_ok=True)
 
-    qwen = Qwen3TTSModel.from_pretrained(MODELO_BASE, device_map="cuda:0", dtype=torch.bfloat16,
-                                         attn_implementation="sdpa")
+    qwen = Qwen3TTSModel.from_pretrained(
+        MODELO_BASE, device_map="cuda:0", dtype=torch.bfloat16, attn_implementation="sdpa"
+    )
     modelo, procesador, config = qwen.model, qwen.processor, qwen.model.config
 
     entrenamiento = [json.loads(l) for l in (datos / "entrenamiento.jsonl").read_text(encoding="utf-8").splitlines()]
@@ -205,8 +235,16 @@ def main() -> None:
     # Huella de voz de la muestra, la misma para todos los clips (como
     # recomienda la receta). Queda guardada para el modelo final.
     referencia = librosa.load(entrenamiento[0]["ref_audio"], sr=24000)[0]
-    mel = mel_spectrogram(torch.from_numpy(referencia)[None], n_fft=1024, num_mels=128, sampling_rate=24000,
-                          hop_size=256, win_size=1024, fmin=0, fmax=12000).transpose(1, 2)
+    mel = mel_spectrogram(
+        torch.from_numpy(referencia)[None],
+        n_fft=1024,
+        num_mels=128,
+        sampling_rate=24000,
+        hop_size=256,
+        win_size=1024,
+        fmin=0,
+        fmax=12000,
+    ).transpose(1, 2)
     with torch.no_grad():
         voz = modelo.speaker_encoder(mel.to(modelo.device).to(modelo.dtype)).detach()
     save_file({"voz": voz.cpu().float().contiguous()}, PUNTOS / "voz.safetensors")
@@ -219,11 +257,24 @@ def main() -> None:
     for p in entrenables:
         p.data = p.data.float()
     print(f"parametros LoRA: {sum(p.numel() for p in entrenables) / 1e6:.1f} M", flush=True)
-    (PUNTOS / "ajuste.json").write_text(json.dumps({
-        "r": RANGO, "lora_alpha": ALFA, "lora_dropout": ABANDONO, "target_modules": CAPAS,
-        "modelo_base": MODELO_BASE, "idioma": idioma,
-        "aprendizaje": APRENDIZAJE, "epocas": EPOCAS, "datos": str(datos),
-        "clips": len(entrenamiento)}, indent=1), encoding="utf-8")
+    (PUNTOS / "ajuste.json").write_text(
+        json.dumps(
+            {
+                "r": RANGO,
+                "lora_alpha": ALFA,
+                "lora_dropout": ABANDONO,
+                "target_modules": CAPAS,
+                "modelo_base": MODELO_BASE,
+                "idioma": idioma,
+                "aprendizaje": APRENDIZAJE,
+                "epocas": EPOCAS,
+                "datos": str(datos),
+                "clips": len(entrenamiento),
+            },
+            indent=1,
+        ),
+        encoding="utf-8",
+    )
 
     optimizador = torch.optim.AdamW(entrenables, lr=APRENDIZAJE, weight_decay=0.01)
     pasos_epoca = math.ceil(len(entrenamiento) / LOTE / ACUMULAR)
@@ -243,8 +294,11 @@ def main() -> None:
         valores = []
         with torch.no_grad(), torch.autocast("cuda", dtype=torch.bfloat16):
             for i in range(0, len(validacion), LOTE):
-                valores.append(perdida(modelo, lote_tensores(validacion[i:i + LOTE], procesador, config,
-                                                             idioma_id, voz), voz)[0].item())
+                valores.append(
+                    perdida(modelo, lote_tensores(validacion[i : i + LOTE], procesador, config, idioma_id, voz), voz)[
+                        0
+                    ].item()
+                )
         modelo.talker.train()
         return float(np.mean(valores))
 
@@ -256,8 +310,13 @@ def main() -> None:
     paso = 0
     if a.reanudar and reanudar.exists():
         guardado = torch.load(reanudar, weights_only=False)
-        set_peft_model_state_dict(modelo.talker, {k: v.to(modelo.device) for k, v in
-                                                  load_file(PUNTOS / f"epoca_{guardado['epoca']:02d}.safetensors").items()})
+        set_peft_model_state_dict(
+            modelo.talker,
+            {
+                k: v.to(modelo.device)
+                for k, v in load_file(PUNTOS / f"epoca_{guardado['epoca']:02d}.safetensors").items()
+            },
+        )
         optimizador.load_state_dict(guardado["optimizador"])
         planificador.load_state_dict(guardado["planificador"])
         random.setstate(guardado["azar"]["random"])
@@ -268,9 +327,11 @@ def main() -> None:
         print(f"retomado despues de la epoca {guardado['epoca']}", flush=True)
 
     from progreso_comun import avance
+
     if primera == 1:
         print(f"epoca 0  validacion {validar():.4f}", flush=True)
     modelo.talker.train()
+
     def guardar_capas(nombre):
         estado = {k: v.detach().cpu().contiguous() for k, v in get_peft_model_state_dict(modelo.talker).items()}
         save_file(estado, PUNTOS / f"epoca_{nombre}.safetensors")
@@ -283,7 +344,7 @@ def main() -> None:
         for n in range(0, len(entrenamiento), LOTE):
             if n % (LOTE * 20) == 0:
                 avance(f"época {epoca} de {EPOCAS}, clips", n, len(entrenamiento))
-            lote = lote_tensores(entrenamiento[n:n + LOTE], procesador, config, idioma_id, voz)
+            lote = lote_tensores(entrenamiento[n : n + LOTE], procesador, config, idioma_id, voz)
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 total_l, _, _ = perdida(modelo, lote, voz)
             (total_l / ACUMULAR).backward()
@@ -300,27 +361,52 @@ def main() -> None:
                 # mejor punto cae en medio.
                 if a.medias and pasos_aqui == pasos_epoca // 2:
                     val = validar()
-                    registro.append({"epoca": epoca - 0.5, "entrenamiento": float(np.mean(acumulado)),
-                                     "validacion": val, "segundos": round(time.time() - inicio)})
+                    registro.append(
+                        {
+                            "epoca": epoca - 0.5,
+                            "entrenamiento": float(np.mean(acumulado)),
+                            "validacion": val,
+                            "segundos": round(time.time() - inicio),
+                        }
+                    )
                     print(f"epoca {epoca - 0.5}  validacion {val:.4f}", flush=True)
                     guardar_capas(f"{epoca - 1:02d}_5")
                     (PUNTOS / "registro.json").write_text(json.dumps(registro, indent=1), encoding="utf-8")
 
         val = validar()
-        fila = {"epoca": epoca, "entrenamiento": float(np.mean(acumulado)), "validacion": val,
-                "segundos": round(time.time() - inicio), "memoria_gb": round(torch.cuda.max_memory_allocated() / 2**30, 1)}
+        fila = {
+            "epoca": epoca,
+            "entrenamiento": float(np.mean(acumulado)),
+            "validacion": val,
+            "segundos": round(time.time() - inicio),
+            "memoria_gb": round(torch.cuda.max_memory_allocated() / 2**30, 1),
+        }
         registro.append(fila)
-        print(f"epoca {epoca}  entrenamiento {fila['entrenamiento']:.4f}  validacion {val:.4f}  "
-              f"{fila['segundos']} s  {fila['memoria_gb']} GB", flush=True)
+        print(
+            f"epoca {epoca}  entrenamiento {fila['entrenamiento']:.4f}  validacion {val:.4f}  "
+            f"{fila['segundos']} s  {fila['memoria_gb']} GB",
+            flush=True,
+        )
         guardar_capas(f"{epoca:02d}")
         (PUNTOS / "registro.json").write_text(json.dumps(registro, indent=1), encoding="utf-8")
         # Primero a un temporal: si se corta la luz justo al escribir, el
         # guardado anterior sigue entero.
-        torch.save({"epoca": epoca, "paso": paso, "registro": registro, "optimizador": optimizador.state_dict(),
-                    "planificador": planificador.state_dict(),
-                    "azar": {"random": random.getstate(), "numpy": np.random.get_state(),
-                             "torch": torch.get_rng_state(), "cuda": torch.cuda.get_rng_state()}},
-                   reanudar.with_suffix(".tmp"))
+        torch.save(
+            {
+                "epoca": epoca,
+                "paso": paso,
+                "registro": registro,
+                "optimizador": optimizador.state_dict(),
+                "planificador": planificador.state_dict(),
+                "azar": {
+                    "random": random.getstate(),
+                    "numpy": np.random.get_state(),
+                    "torch": torch.get_rng_state(),
+                    "cuda": torch.cuda.get_rng_state(),
+                },
+            },
+            reanudar.with_suffix(".tmp"),
+        )
         os.replace(reanudar.with_suffix(".tmp"), reanudar)
 
         # Pasado su mejor punto, el modelo memoriza: la validacion sube epoca

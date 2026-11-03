@@ -73,14 +73,18 @@ def sin_deepspeed() -> None:
     raiz.DeepSpeedConfig = type("DeepSpeedConfig", (), {})
     raiz.accelerator, raiz.runtime = acelerador, runtime
     runtime.engine, runtime.utils = motor, utilidades
-    for nombre, modulo in [("deepspeed", raiz), ("deepspeed.accelerator", acelerador),
-                           ("deepspeed.runtime", runtime), ("deepspeed.runtime.engine", motor),
-                           ("deepspeed.runtime.utils", utilidades)]:
+    for nombre, modulo in [
+        ("deepspeed", raiz),
+        ("deepspeed.accelerator", acelerador),
+        ("deepspeed.runtime", runtime),
+        ("deepspeed.runtime.engine", motor),
+        ("deepspeed.runtime.utils", utilidades),
+    ]:
         sys.modules[nombre] = modulo
 
 
 def igualar(audio: np.ndarray) -> np.ndarray:
-    audio = audio * (10 ** (NIVEL_DB / 20) / (np.sqrt(np.mean(audio ** 2)) + 1e-9))
+    audio = audio * (10 ** (NIVEL_DB / 20) / (np.sqrt(np.mean(audio**2)) + 1e-9))
     pico = np.max(np.abs(audio)) + 1e-9
     limite = 10 ** (PICO_DB / 20)
     return audio * (limite / pico) if pico > limite else audio
@@ -95,7 +99,7 @@ def elegir() -> list:
             continue
         episodio = archivo.stem.split("_")[0]
         crudo, _ = sf.read(CORTES / episodio / archivo.name, dtype="float32")
-        nivel = 20 * np.log10(np.sqrt(np.mean(crudo ** 2)) + 1e-9)
+        nivel = 20 * np.log10(np.sqrt(np.mean(crudo**2)) + 1e-9)
         candidatos.append({"id": archivo.stem, "ep": episodio, "eco": eco[archivo.stem], "nivel": nivel})
 
     candidatos.sort(key=lambda c: c["eco"], reverse=True)
@@ -138,8 +142,9 @@ def main() -> None:
 
         versiones = {"original": (original, tasa), "sin_reverb": (seco, tasa)}
         for nombre, base in [("resemble", original), ("sin_reverb+resemble", seco)]:
-            salida, tasa_salida = enhance(torch.from_numpy(base), tasa, dispositivo,
-                                          nfe=PASOS, solver="midpoint", lambd=LIMPIEZA, tau=TEMPERATURA)
+            salida, tasa_salida = enhance(
+                torch.from_numpy(base), tasa, dispositivo, nfe=PASOS, solver="midpoint", lambd=LIMPIEZA, tau=TEMPERATURA
+            )
             versiones[nombre] = (salida.cpu().numpy().astype(np.float32), tasa_salida)
 
         letras = list("ABCD")
@@ -158,9 +163,9 @@ def main() -> None:
 
     (PRUEBA / "clave.json").write_text(json.dumps(clave, ensure_ascii=False, indent=1), encoding="utf-8")
     plantilla = (Path(__file__).parent / "prueba_plantilla.html").read_text(encoding="utf-8")
-    pagina = (plantilla
-              .replace("/*CLIPS*/[]", json.dumps(clips, ensure_ascii=False))
-              .replace("/*CLAVE*/'prueba_mejora'", json.dumps(f"prueba_mejora_{NOMBRE}")))
+    pagina = plantilla.replace("/*CLIPS*/[]", json.dumps(clips, ensure_ascii=False)).replace(
+        "/*CLAVE*/'prueba_mejora'", json.dumps(f"prueba_mejora_{NOMBRE}")
+    )
     (PRUEBA / "prueba.html").write_text(pagina, encoding="utf-8")
     print(f"pagina: {PRUEBA / 'prueba.html'}")
 

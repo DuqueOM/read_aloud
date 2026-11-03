@@ -29,8 +29,21 @@ def main() -> None:
             print(f"{episodio}: ya estaba extraido")
             continue
         subprocess.run(
-            [str(HERRAMIENTAS / "ffmpeg.exe"), "-hide_banner", "-loglevel", "error", "-y",
-             "-i", str(archivo), "-vn", "-map", "0:a:0", "-c:a", "pcm_f32le", str(destino)],
+            [
+                str(HERRAMIENTAS / "ffmpeg.exe"),
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-i",
+                str(archivo),
+                "-vn",
+                "-map",
+                "0:a:0",
+                "-c:a",
+                "pcm_f32le",
+                str(destino),
+            ],
             check=True,
         )
         print(f"{episodio}: {archivo.name}")

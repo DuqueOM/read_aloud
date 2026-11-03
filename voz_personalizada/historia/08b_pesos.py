@@ -43,18 +43,35 @@ def main() -> None:
         if destino.exists():
             continue
         punto = torch.load(MODELO / f"G_{paso}.pth", map_location="cpu", weights_only=True)
-        extract_model(ckpt=punto["model"], sr=hps.data.sample_rate, name=NOMBRE, model_path=str(destino),
-                      epoch=epoca, step=paso, hps=hps, vocoder=VOCODER)
+        extract_model(
+            ckpt=punto["model"],
+            sr=hps.data.sample_rate,
+            name=NOMBRE,
+            model_path=str(destino),
+            epoch=epoca,
+            step=paso,
+            hps=hps,
+            vocoder=VOCODER,
+        )
 
     # La epoca final la saco tambien aparte, para compararla con la de Applio.
     final = pasos[-1]
     prueba = MODELO / "comprobacion.pth"
     punto = torch.load(MODELO / f"G_{final}.pth", map_location="cpu", weights_only=True)
-    extract_model(ckpt=punto["model"], sr=hps.data.sample_rate, name=NOMBRE, model_path=str(prueba),
-                  epoch=final // por_epoca, step=final, hps=hps, vocoder=VOCODER)
+    extract_model(
+        ckpt=punto["model"],
+        sr=hps.data.sample_rate,
+        name=NOMBRE,
+        model_path=str(prueba),
+        epoch=final // por_epoca,
+        step=final,
+        hps=hps,
+        vocoder=VOCODER,
+    )
     mio = torch.load(prueba, map_location="cpu", weights_only=False)["weight"]
-    suyo = torch.load(next(MODELO.glob(f"{NOMBRE}_{final // por_epoca}e_*s.pth")), map_location="cpu",
-                      weights_only=False)["weight"]
+    suyo = torch.load(
+        next(MODELO.glob(f"{NOMBRE}_{final // por_epoca}e_*s.pth")), map_location="cpu", weights_only=False
+    )["weight"]
     prueba.unlink()
     distintos = [k for k in suyo if k not in mio or not torch.equal(mio[k], suyo[k])]
     print(f"comprobacion contra el de Applio: {len(suyo)} tensores, {len(distintos)} distintos")

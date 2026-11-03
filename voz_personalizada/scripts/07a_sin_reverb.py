@@ -56,8 +56,10 @@ def main() -> None:
     sf.write(temporal / "todo.wav", np.concatenate(partes), tasa, subtype="FLOAT")
 
     separador = Separator(
-        output_dir=str(temporal), model_file_dir=str(MODELOS),
-        output_format="WAV", sample_rate=tasa,
+        output_dir=str(temporal),
+        model_file_dir=str(MODELOS),
+        output_format="WAV",
+        sample_rate=tasa,
     )
     separador.load_model(model_filename=MODELO)
     separador.separate(str(temporal / "todo.wav"), {"noreverb": "seco", "reverb": "eco"})
@@ -70,7 +72,7 @@ def main() -> None:
     for nombre, desde, hasta in posiciones:
         clip_seco = seco[desde:hasta]
         clip_original = original[desde:hasta]
-        quitado = np.sum((clip_original - clip_seco) ** 2) / (np.sum(clip_original ** 2) + 1e-12)
+        quitado = np.sum((clip_original - clip_seco) ** 2) / (np.sum(clip_original**2) + 1e-12)
         medidas[nombre] = round(float(10 * np.log10(quitado + 1e-12)), 2)
         sf.write(destino / f"{nombre}.wav", clip_seco, tasa, subtype="PCM_24")
 
@@ -81,8 +83,10 @@ def main() -> None:
 
     valores = np.array(list(medidas.values()))
     print(f"{len(medidas)} clips sin reverberacion en {destino}")
-    print("energia quitada respecto al clip, dB: "
-          f"mediana {np.median(valores):.1f}, p90 {np.percentile(valores, 90):.1f}, max {valores.max():.1f}")
+    print(
+        "energia quitada respecto al clip, dB: "
+        f"mediana {np.median(valores):.1f}, p90 {np.percentile(valores, 90):.1f}, max {valores.max():.1f}"
+    )
 
 
 if __name__ == "__main__":

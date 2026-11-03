@@ -27,6 +27,7 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parent.parent
 os.environ.setdefault("HF_HOME", str(RAIZ / "modelos" / "hf"))
 import voz  # noqa: E402
+
 sys.path.insert(0, str(voz.lector() / "lib"))  # qwen_rapido vive con el servidor de Read Aloud
 
 import torch
@@ -51,12 +52,16 @@ def guiado(predictor, x, codigos):
     ocultos = predictor.small_to_mtp_projection(historia)
     posiciones = torch.arange(P, device=x.device)[None].expand(x.shape[0], -1)
     causal = torch.ones(P, P, device=x.device, dtype=torch.bool).tril()
-    mascara = torch.zeros(causal.shape, device=x.device, dtype=x.dtype).masked_fill(
-        ~causal, torch.finfo(x.dtype).min)[None, None].expand(x.shape[0], 1, -1, -1)
+    mascara = (
+        torch.zeros(causal.shape, device=x.device, dtype=x.dtype)
+        .masked_fill(~causal, torch.finfo(x.dtype).min)[None, None]
+        .expand(x.shape[0], 1, -1, -1)
+    )
     rotacion = predictor.model.rotary_emb(ocultos, posiciones)
     for capa in predictor.model.layers:
-        ocultos = capa(ocultos, attention_mask=mascara, position_ids=posiciones,
-                       position_embeddings=rotacion, use_cache=False)[0]
+        ocultos = capa(
+            ocultos, attention_mask=mascara, position_ids=posiciones, position_embeddings=rotacion, use_cache=False
+        )[0]
     ocultos = predictor.model.norm(ocultos)
     return torch.stack([predictor.lm_head[k](ocultos[:, k + 1]) for k in range(P - 1)], dim=1)
 
@@ -64,13 +69,22 @@ def guiado(predictor, x, codigos):
 def libreria(predictor, x, cache, codigos=None):
     """Logits de cada paso de la libreria. Con codigos, se le fuerza esa historia."""
     if codigos is None:
-        salida = predictor.generate(inputs_embeds=x, max_new_tokens=P - 1, do_sample=False, use_cache=cache,
-                                    output_logits=True, return_dict_in_generate=True)
+        salida = predictor.generate(
+            inputs_embeds=x,
+            max_new_tokens=P - 1,
+            do_sample=False,
+            use_cache=cache,
+            output_logits=True,
+            return_dict_in_generate=True,
+        )
         return torch.stack(salida.logits, dim=1), salida.sequences
     pasos = []
     for k in range(P - 1):
-        entrada = x if k == 0 else torch.cat([x] + [predictor.model.codec_embedding[j](codigos[:, j:j + 1])
-                                                     for j in range(k)], dim=1)
+        entrada = (
+            x
+            if k == 0
+            else torch.cat([x] + [predictor.model.codec_embedding[j](codigos[:, j : j + 1]) for j in range(k)], dim=1)
+        )
         # Sin cache, la libreria recalcula todas las posiciones en cada paso.
         ocultos = predictor.model(inputs_embeds=predictor.small_to_mtp_projection(entrada), use_cache=False)
         pasos.append(predictor.lm_head[k](ocultos.last_hidden_state[:, -1]))
@@ -83,13 +97,18 @@ def comparar(a, b):
     distinto = a.argmax(-1) != b.argmax(-1)
     dos = a.float().softmax(-1).topk(2, dim=-1).values
     brecha = (dos[..., 0] - dos[..., 1])[distinto]
-    return {"kl_media": kl.mean().item(), "kl_p99": kl.flatten().quantile(0.99).item(),
-            "mismo_codigo": 1 - distinto.float().mean().item(),
-            "brecha_media_donde_cambia": brecha.mean().item() if brecha.numel() else 0.0}
+    return {
+        "kl_media": kl.mean().item(),
+        "kl_p99": kl.flatten().quantile(0.99).item(),
+        "mismo_codigo": 1 - distinto.float().mean().item(),
+        "brecha_media_donde_cambia": brecha.mean().item() if brecha.numel() else 0.0,
+    }
 
 
 def main() -> None:
-    frases = [f["texto"] for f in json.loads((RAIZ / "datos" / "09_comparar" / "frases.json").read_text(encoding="utf-8"))]
+    frases = [
+        f["texto"] for f in json.loads((RAIZ / "datos" / "09_comparar" / "frases.json").read_text(encoding="utf-8"))
+    ]
     probar.PUNTOS = velocidad.PUNTOS
     qwen = probar.preparar()
     estado = load_file(velocidad.PUNTOS / f"epoca_{velocidad.EPOCA:02d}.safetensors")
@@ -118,7 +137,8 @@ def main() -> None:
 
     informe = {}
     for nombre, pares in resultados.items():
-        a = torch.cat([p[0] for p in pares]); b = torch.cat([p[1] for p in pares])
+        a = torch.cat([p[0] for p in pares])
+        b = torch.cat([p[1] for p in pares])
         informe[nombre] = comparar(a, b)
         print(nombre, json.dumps({k: round(v, 5) for k, v in informe[nombre].items()}), flush=True)
     (velocidad.SALIDA / "ruido_bf16.json").write_text(json.dumps(informe, indent=1), encoding="utf-8")

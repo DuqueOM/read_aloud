@@ -84,8 +84,9 @@ PICO_DB = -1.0
 
 def frases_crudas() -> list[dict]:
     serie = json.loads((DATOS / "09_comparar" / "frases.json").read_text(encoding="utf-8"))
-    return ([{"clave": f"serie{f['n']:02d}", "grupo": "serie", "texto": f["texto"], "n": f["n"]} for f in serie]
-            + [{"clave": f"app{i:02d}", "grupo": "app", "texto": t} for i, t in enumerate(FRASES_APP, 1)])
+    return [{"clave": f"serie{f['n']:02d}", "grupo": "serie", "texto": f["texto"], "n": f["n"]} for f in serie] + [
+        {"clave": f"app{i:02d}", "grupo": "app", "texto": t} for i, t in enumerate(FRASES_APP, 1)
+    ]
 
 
 def frases() -> list[dict]:
@@ -94,9 +95,20 @@ def frases() -> list[dict]:
         SALIDA.mkdir(parents=True, exist_ok=True)
         crudas = SALIDA / "crudas.json"
         crudas.write_text(json.dumps(frases_crudas(), ensure_ascii=False, indent=1), encoding="utf-8")
-        subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
-                        str(Path(__file__).parent / "34_frases.ps1"), str(LECTOR), str(crudas), str(destino)],
-                       check=True)
+        subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                str(Path(__file__).parent / "34_frases.ps1"),
+                str(LECTOR),
+                str(crudas),
+                str(destino),
+            ],
+            check=True,
+        )
     lista = json.loads(destino.read_text(encoding="utf-8-sig"))
     numeros = {f["clave"]: f.get("n") for f in frases_crudas()}
     for f in lista:
@@ -127,6 +139,7 @@ def cargar_voz(carpeta: Path, epoca: str):
     from peft.tuners.lora import LoraLayer
     from qwen_tts import Qwen3TTSModel
     from safetensors.torch import load_file
+
     sys.path.insert(0, str(LECTOR / "lib"))
     import qwen_rapido
 
@@ -139,11 +152,19 @@ def cargar_voz(carpeta: Path, epoca: str):
                 fundir(hijo)
 
     ajuste = json.loads((carpeta / "ajuste.json").read_text(encoding="utf-8"))
-    qwen = Qwen3TTSModel.from_pretrained(snapshot_download(ajuste["modelo_base"], local_files_only=True),
-                                         device_map="cuda:0", dtype=torch.bfloat16, attn_implementation="sdpa")
+    qwen = Qwen3TTSModel.from_pretrained(
+        snapshot_download(ajuste["modelo_base"], local_files_only=True),
+        device_map="cuda:0",
+        dtype=torch.bfloat16,
+        attn_implementation="sdpa",
+    )
     modelo = qwen.model
-    inject_adapter_in_model(LoraConfig(r=ajuste["r"], lora_alpha=ajuste["lora_alpha"], lora_dropout=0.0,
-                                       target_modules=ajuste["target_modules"]), modelo.talker)
+    inject_adapter_in_model(
+        LoraConfig(
+            r=ajuste["r"], lora_alpha=ajuste["lora_alpha"], lora_dropout=0.0, target_modules=ajuste["target_modules"]
+        ),
+        modelo.talker,
+    )
     estado = load_file(carpeta / f"epoca_{epoca}.safetensors")
     set_peft_model_state_dict(modelo.talker, {k: v.to(modelo.device) for k, v in estado.items()})
     modelo.talker.eval()
@@ -162,13 +183,13 @@ def cargar_voz(carpeta: Path, epoca: str):
 def pulir(audio: np.ndarray, tasa: int) -> np.ndarray:
     audio = np.asarray(audio, dtype=np.float32)
     cuadro = int(0.01 * tasa)
-    niveles = 20 * np.log10(np.sqrt(np.convolve(audio ** 2, np.ones(cuadro) / cuadro, mode="same")) + 1e-9)
+    niveles = 20 * np.log10(np.sqrt(np.convolve(audio**2, np.ones(cuadro) / cuadro, mode="same")) + 1e-9)
     con_voz = np.where(niveles > UMBRAL_SILENCIO_DB)[0]
     if con_voz.size:
         margen = int(MARGEN_S * tasa)
-        audio = audio[max(0, con_voz[0] - margen):con_voz[-1] + margen]
+        audio = audio[max(0, con_voz[0] - margen) : con_voz[-1] + margen]
         habla = audio[np.abs(audio) > 10 ** (UMBRAL_SILENCIO_DB / 20)]
-        audio = audio * (10 ** (NIVEL_APP_DB / 20) / (np.sqrt(np.mean(habla ** 2)) + 1e-9))
+        audio = audio * (10 ** (NIVEL_APP_DB / 20) / (np.sqrt(np.mean(habla**2)) + 1e-9))
         pico = np.max(np.abs(audio))
         if pico > 10 ** (PICO_DB / 20):
             audio = audio * (10 ** (PICO_DB / 20) / pico)
@@ -179,8 +200,13 @@ def decir(qwen, texto: str, idioma: str):
     esperado = max(0.6, len(texto) * SEGUNDOS_POR_LETRA)
     tope = int(CODIGOS_POR_SEGUNDO * (2.5 * len(texto) * SEGUNDOS_POR_LETRA + 3))
     for intento in range(2):
-        wavs, tasa = qwen.generate_custom_voice(text=[texto], language=[IDIOMAS.get(idioma, "Spanish")],
-                                                speaker=[config_voz.NOMBRE], non_streaming_mode=True, max_new_tokens=tope)
+        wavs, tasa = qwen.generate_custom_voice(
+            text=[texto],
+            language=[IDIOMAS.get(idioma, "Spanish")],
+            speaker=[config_voz.NOMBRE],
+            non_streaming_mode=True,
+            max_new_tokens=tope,
+        )
         segundos = len(wavs[0]) / tasa
         if 0.35 * esperado <= segundos <= 2.5 * esperado + 1.0:
             break
@@ -191,12 +217,15 @@ def generar() -> None:
     import torch
     import gpu
     from progreso_comun import avance
+
     gpu.ocupar()
     lista = frases()
     AUDIO.mkdir(parents=True, exist_ok=True)
     total, hechos = len(VOCES) * len(lista) * len(SEMILLAS), 0
     for voz, (carpeta, epoca, _) in VOCES.items():
-        faltan = [(f, t, s) for f in lista for t, s in enumerate(SEMILLAS, 1) if not archivo(f["clave"], voz, t).exists()]
+        faltan = [
+            (f, t, s) for f in lista for t, s in enumerate(SEMILLAS, 1) if not archivo(f["clave"], voz, t).exists()
+        ]
         hechos += len(lista) * len(SEMILLAS) - len(faltan)
         if not faltan:
             continue
@@ -205,8 +234,9 @@ def generar() -> None:
             avance("tomas", hechos, total)
             torch.manual_seed(semilla)
             partes = [decir(qwen, frag["texto"], frag["idioma"]) for frag in f["fragmentos"]]
-            sf.write(archivo(f["clave"], voz, toma), np.concatenate([p for p, _ in partes]), partes[0][1],
-                     subtype="PCM_16")
+            sf.write(
+                archivo(f["clave"], voz, toma), np.concatenate([p for p, _ in partes]), partes[0][1], subtype="PCM_16"
+            )
             hechos += 1
         del qwen
         torch.cuda.empty_cache()
@@ -229,6 +259,7 @@ def medir() -> None:
     import whisper
     import gpu
     from progreso_comun import avance
+
     gpu.ocupar()
     os.environ["PATH"] = str(RAIZ / "herramientas") + os.pathsep + os.environ["PATH"]
     cortar = modulo("cortar", "04_cortar.py")
@@ -250,7 +281,7 @@ def medir() -> None:
         return v / (np.linalg.norm(v) + 1e-9)
 
     conjunto = sorted((DATOS / "31_final" / "audio").glob("*.wav"))
-    centro = np.mean([huella(r) for r in conjunto[::max(1, len(conjunto) // 300)]], axis=0)
+    centro = np.mean([huella(r) for r in conjunto[:: max(1, len(conjunto) // 300)]], axis=0)
     centro /= np.linalg.norm(centro)
     reales = [DATOS / "09_comparar" / "audio" / f"f{f['n']}_real.wav" for f in lista if f["grupo"] == "serie"]
     resultado = {"_real": float(np.mean([huella(r) @ centro for r in reales]))}
@@ -272,8 +303,9 @@ def medir() -> None:
         f = por_clave[ruta.stem.split("_", 1)[0]]
         idioma = "en" if all(g["idioma"] == "en" for g in f["fragmentos"]) else "es"
         esperado = " ".join(g["texto"] for g in f["fragmentos"])
-        dicho = oido.transcribe(whisper.load_audio(str(ruta)), language=idioma, fp16=True, temperature=0.0,
-                                condition_on_previous_text=False)["text"].strip()
+        dicho = oido.transcribe(
+            whisper.load_audio(str(ruta)), language=idioma, fp16=True, temperature=0.0, condition_on_previous_text=False
+        )["text"].strip()
         resultado[ruta.stem].update({"error": medida.error_caracteres(esperado, dicho), "dicho": dicho})
     (SALIDA / "medicion.json").write_text(json.dumps(resultado, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"medidas: {len(rutas)} tomas", flush=True)
@@ -285,7 +317,7 @@ def medir() -> None:
 def igualar(origen: Path, destino: Path) -> None:
     audio, tasa = sf.read(origen, dtype="float32", always_2d=False)
     audio = audio if audio.ndim == 1 else audio.mean(axis=1)
-    audio = audio * (10 ** (NIVEL_DB / 20) / (np.sqrt(np.mean(audio ** 2)) + 1e-9))
+    audio = audio * (10 ** (NIVEL_DB / 20) / (np.sqrt(np.mean(audio**2)) + 1e-9))
     pico = np.max(np.abs(audio)) + 1e-9
     limite = 10 ** (PICO_DB / 20)
     sf.write(destino, audio * (limite / pico) if pico > limite else audio, tasa, subtype="PCM_24")
@@ -293,7 +325,11 @@ def igualar(origen: Path, destino: Path) -> None:
 
 def pagina() -> None:
     lista = frases()
-    medicion = json.loads((SALIDA / "medicion.json").read_text(encoding="utf-8")) if (SALIDA / "medicion.json").exists() else {}
+    medicion = (
+        json.loads((SALIDA / "medicion.json").read_text(encoding="utf-8"))
+        if (SALIDA / "medicion.json").exists()
+        else {}
+    )
     ESCUCHA.mkdir(parents=True, exist_ok=True)
     azar = random.Random(2026)
     mapa, tarjetas = {}, []
@@ -305,8 +341,10 @@ def pagina() -> None:
         filas = []
         if f["grupo"] == "serie":
             igualar(DATOS / "09_comparar" / "audio" / f"f{f['n']}_real.wav", ESCUCHA / f"{f['clave']}_real.wav")
-            filas.append(f'<div class="fila real"><span>{html.escape(config_voz.TITULO)} real</span>'
-                         f'<audio controls preload="none" src="escucha/{f["clave"]}_real.wav"></audio></div>')
+            filas.append(
+                f'<div class="fila real"><span>{html.escape(config_voz.TITULO)} real</span>'
+                f'<audio controls preload="none" src="escucha/{f["clave"]}_real.wav"></audio></div>'
+            )
         for letra, voz in letras.items():
             tomas = []
             for toma in (1, 2):
@@ -316,14 +354,20 @@ def pagina() -> None:
                 tomas.append(f'<audio controls preload="none" src="escucha/{nombre}"></audio>')
             filas.append(f'<div class="fila"><span>{letra}</span><div class="tomas">{"".join(tomas)}</div></div>')
         botones = "".join(f'<button data-voto="{v}">{v}</button>' for v in ("A", "B", "C", "Iguales"))
-        tarjetas.append(f'<div class="par" data-clave="{f["clave"]}" data-grupo="{f["grupo"]}">'
-                        f'<b>{html.escape(f["texto"])}</b>{"".join(filas)}<div class="votos">{botones}</div></div>')
+        tarjetas.append(
+            f'<div class="par" data-clave="{f["clave"]}" data-grupo="{f["grupo"]}">'
+            f'<b>{html.escape(f["texto"])}</b>{"".join(filas)}<div class="votos">{botones}</div></div>'
+        )
 
     resumen = {}
     for voz in VOCES:
-        tomas = [v for k, v in medicion.items() if not k.startswith("_") and k.split("_", 1)[1].rsplit("_t", 1)[0] == voz]
-        resumen[voz] = {"parecido": float(np.mean([t["parecido"] for t in tomas])) if tomas else None,
-                        "error": float(np.mean([t["error"] for t in tomas])) if tomas and "error" in tomas[0] else None}
+        tomas = [
+            v for k, v in medicion.items() if not k.startswith("_") and k.split("_", 1)[1].rsplit("_t", 1)[0] == voz
+        ]
+        resumen[voz] = {
+            "parecido": float(np.mean([t["parecido"] for t in tomas])) if tomas else None,
+            "error": float(np.mean([t["error"] for t in tomas])) if tomas and "error" in tomas[0] else None,
+        }
     # Una toma "con error" lee notablemente peor que la mejor toma de esa frase:
     # asi no cuenta lo que Whisper transcribe distinto en todas por igual (cifras, siglas).
     errores = {voz: [] for voz in VOCES}
@@ -334,17 +378,25 @@ def pagina() -> None:
             continue
         for (voz, t), m in tomas.items():
             if "error" in m and m["error"] - min(valores) > 0.08:
-                errores[voz].append({"frase": f["texto"], "toma": t, "dicho": m["dicho"],
-                                     "error": round(m["error"], 3)})
-    datos = {"mapa": mapa, "voces": {v: e for v, (_, _, e) in VOCES.items()}, "resumen": resumen,
-             # "_real", o "_<nombre>_real" en las mediciones de versiones anteriores.
-             "errores": errores, "real": next((v for k, v in medicion.items()
-                                               if k.startswith("_") and k.endswith("_real")), None)}
+                errores[voz].append(
+                    {"frase": f["texto"], "toma": t, "dicho": m["dicho"], "error": round(m["error"], 3)}
+                )
+    datos = {
+        "mapa": mapa,
+        "voces": {v: e for v, (_, _, e) in VOCES.items()},
+        "resumen": resumen,
+        # "_real", o "_<nombre>_real" en las mediciones de versiones anteriores.
+        "errores": errores,
+        "real": next((v for k, v in medicion.items() if k.startswith("_") and k.endswith("_real")), None),
+    }
 
-    (SALIDA / "votar.html").write_text(PLANTILLA.replace("{{TARJETAS}}", "".join(tarjetas))
-                                       .replace("{{TITULO}}", html.escape(config_voz.TITULO))
-                                       .replace("{{NOMBRE}}", re.sub(r"\W", "_", config_voz.NOMBRE))
-                                       .replace("{{DATOS}}", json.dumps(datos, ensure_ascii=False)), encoding="utf-8")
+    (SALIDA / "votar.html").write_text(
+        PLANTILLA.replace("{{TARJETAS}}", "".join(tarjetas))
+        .replace("{{TITULO}}", html.escape(config_voz.TITULO))
+        .replace("{{NOMBRE}}", re.sub(r"\W", "_", config_voz.NOMBRE))
+        .replace("{{DATOS}}", json.dumps(datos, ensure_ascii=False)),
+        encoding="utf-8",
+    )
     print(f"pagina: {SALIDA / 'votar.html'}", flush=True)
 
 
@@ -457,12 +509,16 @@ pintar();
 def cadena() -> None:
     import gpu
     from progreso_comun import guardar, marcar, nuevo
+
     revision = modulo("revision", "29_preparar_revision.py")
     gpu.ocupar()  # toda la cadena: si no, entre paso y paso Read Aloud recargaria la voz
     qwen = RAIZ / ".venv_qwen" / "Scripts" / "python.exe"
     principal = RAIZ / ".venv" / "Scripts" / "python.exe"
-    pasos = [("Dos tomas de cada voz", qwen, "generar"), ("Errores de lectura y parecido", principal, "medir"),
-             ("Página de votación", principal, "pagina")]
+    pasos = [
+        ("Dos tomas de cada voz", qwen, "generar"),
+        ("Errores de lectura y parecido", principal, "medir"),
+        ("Página de votación", principal, "pagina"),
+    ]
     estado = nuevo(f"Voz de {config_voz.TITULO} · votación a ciegas", [p[0] for p in pasos], ["estado"], finales=[])
     estado["filas"] = "Paso"
     estado["nota"] = "Se generan las tomas para votar. Mientras tanto, Read Aloud lee con Piper."

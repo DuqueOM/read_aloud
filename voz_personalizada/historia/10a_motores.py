@@ -42,8 +42,7 @@ SEMILLA = 1234
 
 def frases() -> list:
     espanol = json.loads((RAIZ / "datos" / "09_comparar" / "frases.json").read_text(encoding="utf-8"))
-    return ([(f"es{f['n']}", "es", f["texto"]) for f in espanol]
-            + [(f"en{n}", "en", t) for n, t in enumerate(INGLES, 1)])
+    return [(f"es{f['n']}", "es", f["texto"]) for f in espanol] + [(f"en{n}", "en", t) for n, t in enumerate(INGLES, 1)]
 
 
 def semilla() -> None:
@@ -64,11 +63,25 @@ def chatterbox():
     from chatterbox.models.tokenizers import MTLTokenizer
     from chatterbox.models.voice_encoder import VoiceEncoder
 
-    base = Path(snapshot_download("ResembleAI/chatterbox", allow_patterns=[
-        "ve.pt", "t3_mtl23ls_v3.safetensors", "s3gen.pt", "grapheme_mtl_merged_expanded_v1.json",
-        "conds.pt", "Cangjie5_TC.json"]))
-    es_mx = Path(snapshot_download("ResembleAI/Chatterbox-Multilingual-es-mx-latam", allow_patterns=[
-        "t3_es_mx_latam.safetensors", "s3gen_v3.pt"]))
+    base = Path(
+        snapshot_download(
+            "ResembleAI/chatterbox",
+            allow_patterns=[
+                "ve.pt",
+                "t3_mtl23ls_v3.safetensors",
+                "s3gen.pt",
+                "grapheme_mtl_merged_expanded_v1.json",
+                "conds.pt",
+                "Cangjie5_TC.json",
+            ],
+        )
+    )
+    es_mx = Path(
+        snapshot_download(
+            "ResembleAI/Chatterbox-Multilingual-es-mx-latam",
+            allow_patterns=["t3_es_mx_latam.safetensors", "s3gen_v3.pt"],
+        )
+    )
 
     def cargar(t3_archivo: Path, s3gen_archivo: Path):
         # Igual que ChatterboxMultilingualTTS.from_local, pero con archivos de
@@ -85,13 +98,22 @@ def chatterbox():
         if sobran or set(faltan) - {"tokenizer._mel_filters", "tokenizer.window"}:
             raise RuntimeError(f"{s3gen_archivo.name} no encaja: faltan {faltan}, sobran {sobran}")
         modelo = ChatterboxMultilingualTTS(
-            t3.eval(), s3gen.eval(), ve.eval(), MTLTokenizer(str(base / "grapheme_mtl_merged_expanded_v1.json")),
-            "cuda", conds=Conditionals.load(base / "conds.pt").to("cuda"))
-        modelo.t3.to("cuda"); modelo.s3gen.to("cuda"); modelo.ve.to("cuda")
+            t3.eval(),
+            s3gen.eval(),
+            ve.eval(),
+            MTLTokenizer(str(base / "grapheme_mtl_merged_expanded_v1.json")),
+            "cuda",
+            conds=Conditionals.load(base / "conds.pt").to("cuda"),
+        )
+        modelo.t3.to("cuda")
+        modelo.s3gen.to("cuda")
+        modelo.ve.to("cuda")
         return modelo
 
-    ajustes = {"normal": {"exaggeration": 0.5, "cfg_weight": 0.5},
-               "expresivo": {"exaggeration": 0.7, "cfg_weight": 0.3}}
+    ajustes = {
+        "normal": {"exaggeration": 0.5, "cfg_weight": 0.5},
+        "expresivo": {"exaggeration": 0.7, "cfg_weight": 0.3},
+    }
     for nombre, t3_archivo, s3gen_archivo, idiomas in (
         ("chatterbox", base / "t3_mtl23ls_v3.safetensors", base / "s3gen.pt", {"es", "en"}),
         ("chatterbox_es_mx", es_mx / "t3_es_mx_latam.safetensors", es_mx / "s3gen_v3.pt", {"es"}),
@@ -100,8 +122,7 @@ def chatterbox():
 
         def generar(texto, idioma, ajuste, modelo=modelo):
             semilla()
-            wav = modelo.generate(texto, language_id=idioma, audio_prompt_path=str(MUESTRA),
-                                  **ajustes[ajuste])
+            wav = modelo.generate(texto, language_id=idioma, audio_prompt_path=str(MUESTRA), **ajustes[ajuste])
             return wav.squeeze(0).cpu().numpy(), modelo.sr
 
         yield nombre, generar, idiomas, list(ajustes)
@@ -113,16 +134,16 @@ def qwen():
     """Qwen3-TTS 1.7B Base, clonando con la muestra y su transcripcion."""
     from qwen_tts import Qwen3TTSModel
 
-    modelo = Qwen3TTSModel.from_pretrained("Qwen/Qwen3-TTS-12Hz-1.7B-Base", device_map="cuda:0",
-                                           dtype=torch.bfloat16, attn_implementation="sdpa")
+    modelo = Qwen3TTSModel.from_pretrained(
+        "Qwen/Qwen3-TTS-12Hz-1.7B-Base", device_map="cuda:0", dtype=torch.bfloat16, attn_implementation="sdpa"
+    )
     audio, tasa = sf.read(MUESTRA, dtype="float32")
     indicacion = modelo.create_voice_clone_prompt(ref_audio=(audio, tasa), ref_text=MUESTRA_TEXTO)
     idiomas = {"es": "Spanish", "en": "English"}
 
     def generar(texto, idioma, ajuste):
         semilla()
-        wavs, sr = modelo.generate_voice_clone(text=texto, language=idiomas[idioma],
-                                               voice_clone_prompt=indicacion)
+        wavs, sr = modelo.generate_voice_clone(text=texto, language=idiomas[idioma], voice_clone_prompt=indicacion)
         return wavs[0], sr
 
     yield "qwen", generar, {"es", "en"}, ["normal"]

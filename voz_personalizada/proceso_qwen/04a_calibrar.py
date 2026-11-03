@@ -45,9 +45,9 @@ def ajustar(x, medias, desvios, pesos, iteraciones=500):
 
 
 def main() -> None:
-    valores = np.concatenate([
-        (lambda c: c[~np.isnan(c)])(np.load(f)["parecido"]) for f in sorted(CURVAS.glob("ep*.npz"))
-    ])
+    valores = np.concatenate(
+        [(lambda c: c[~np.isnan(c)])(np.load(f)["parecido"]) for f in sorted(CURVAS.glob("ep*.npz"))]
+    )
 
     # Tres campanas: dos para el resto de las voces y una para la voz, que es
     # la de media mas alta.
@@ -78,11 +78,20 @@ def main() -> None:
     print(f"  ventanas con probabilidad > 70 %: {(prob(valores) > 0.7).mean():.1%}")
 
     CURVAS.mkdir(parents=True, exist_ok=True)
-    (CURVAS / "calibracion.json").write_text(json.dumps({
-        "medias": medias.tolist(), "desvios": desvios.tolist(), "pesos": pesos.tolist(),
-        "malla": malla[::4].round(4).tolist(), "probabilidad": pm[::4].round(4).tolist(),
-        "umbrales": umbrales,
-    }, indent=1), encoding="utf-8")
+    (CURVAS / "calibracion.json").write_text(
+        json.dumps(
+            {
+                "medias": medias.tolist(),
+                "desvios": desvios.tolist(),
+                "pesos": pesos.tolist(),
+                "malla": malla[::4].round(4).tolist(),
+                "probabilidad": pm[::4].round(4).tolist(),
+                "umbrales": umbrales,
+            },
+            indent=1,
+        ),
+        encoding="utf-8",
+    )
     print(f"calibracion guardada en {CURVAS / 'calibracion.json'}")
 
 

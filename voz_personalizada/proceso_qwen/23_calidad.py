@@ -59,6 +59,7 @@ FIN_FRASE = re.compile(r"[.?!…]$")
 
 def eco(filas) -> dict:
     from audio_separator.separator import Separator
+
     temporal = SALIDA / "temporal"
     temporal.mkdir(parents=True, exist_ok=True)
     tasa = sf.info(filas[0]["ruta"]).samplerate
@@ -72,10 +73,12 @@ def eco(filas) -> dict:
         posiciones.append((f["nombre"], cursor, cursor + len(audio)))
         cursor += len(audio) + tasa
     sf.write(temporal / "todo.wav", np.concatenate(partes), tasa, subtype="FLOAT")
-    separador = Separator(output_dir=str(temporal), model_file_dir=str(RAIZ / "modelos"),
-                          output_format="WAV", sample_rate=tasa)
+    separador = Separator(
+        output_dir=str(temporal), model_file_dir=str(RAIZ / "modelos"), output_format="WAV", sample_rate=tasa
+    )
     separador.load_model(model_filename="dereverb_mel_band_roformer_mono_anvuew.ckpt")
     from progreso_comun import avance
+
     avance("eco, todos los clips de una vez", 0, len(filas))
     separador.separate(str(temporal / "todo.wav"), {"noreverb": "seco", "reverb": "eco"})
     seco, _ = sf.read(temporal / "seco.wav", dtype="float32", always_2d=False)
@@ -83,7 +86,9 @@ def eco(filas) -> dict:
     original = np.concatenate(partes)
     medidas = {}
     for nombre, desde, hasta in posiciones:
-        quitado = np.sum((original[desde:hasta] - seco[desde:hasta]) ** 2) / (np.sum(original[desde:hasta] ** 2) + 1e-12)
+        quitado = np.sum((original[desde:hasta] - seco[desde:hasta]) ** 2) / (
+            np.sum(original[desde:hasta] ** 2) + 1e-12
+        )
         medidas[nombre] = float(10 * np.log10(quitado + 1e-12))
     for archivo in temporal.iterdir():
         archivo.unlink()
@@ -94,8 +99,10 @@ def eco(filas) -> dict:
 @torch.no_grad()
 def squim(filas) -> dict:
     import torchaudio
+
     modelo = torchaudio.pipelines.SQUIM_OBJECTIVE.get_model().to("cuda").eval()
     from progreso_comun import avance
+
     medidas = {}
     for n, f in enumerate(filas):
         if n % 50 == 0:
@@ -111,15 +118,24 @@ def niveles_de_clip(f, palabras):
     audio = cortar.mono(audio)
     nivel = cortar.niveles(audio, tasa)  # dB cada 10 ms
     dentro = [p for p in palabras if p["inicio"] >= f["inicio"] - 0.05 and p["fin"] <= f["fin"] + 0.05]
-    habla = np.concatenate([nivel[max(0, int((p["inicio"] - f["inicio"]) / 0.01)):int((p["fin"] - f["inicio"]) / 0.01)]
-                            for p in dentro] or [nivel])
+    habla = np.concatenate(
+        [nivel[max(0, int((p["inicio"] - f["inicio"]) / 0.01)) : int((p["fin"] - f["inicio"]) / 0.01)] for p in dentro]
+        or [nivel]
+    )
     referencia = float(np.median(habla))
     borde = max(float(np.max(nivel[:6])), float(np.max(nivel[-6:]))) - referencia
-    pausas = [nivel[int((a["fin"] - f["inicio"]) / 0.01) + 2:int((b["inicio"] - f["inicio"]) / 0.01) - 2]
-              for a, b in zip(dentro, dentro[1:]) if b["inicio"] - a["fin"] > 0.12]
+    pausas = [
+        nivel[int((a["fin"] - f["inicio"]) / 0.01) + 2 : int((b["inicio"] - f["inicio"]) / 0.01) - 2]
+        for a, b in zip(dentro, dentro[1:])
+        if b["inicio"] - a["fin"] > 0.12
+    ]
     pausas = np.concatenate([p for p in pausas if p.size] or [np.array([-120.0])])
-    return {"borde": borde, "pausas": float(np.percentile(pausas, 90)) - referencia,
-            "recorte": float(np.mean(np.abs(audio) > 0.99)), "dentro": dentro}
+    return {
+        "borde": borde,
+        "pausas": float(np.percentile(pausas, 90)) - referencia,
+        "recorte": float(np.mean(np.abs(audio) > 0.99)),
+        "dentro": dentro,
+    }
 
 
 def main() -> None:
@@ -143,7 +159,9 @@ def main() -> None:
         for f in filas:
             ep = f["episodio"]
             if ep not in transcripciones:
-                transcripciones[ep] = json.loads((DATOS / "03_alineado" / f"{ep}.json").read_text(encoding="utf-8"))["palabras"]
+                transcripciones[ep] = json.loads((DATOS / "03_alineado" / f"{ep}.json").read_text(encoding="utf-8"))[
+                    "palabras"
+                ]
             palabras = transcripciones[ep]
             n = niveles_de_clip(f, palabras)
             dentro = n.pop("dentro")
@@ -151,8 +169,11 @@ def main() -> None:
             if dentro:
                 a = palabras.index(dentro[0])
                 previa = palabras[a - 1] if a else None
-                medidas[f["nombre"]]["empieza"] = float(previa is None or bool(FIN_FRASE.search(previa["texto"]))
-                                                        or dentro[0]["inicio"] - previa["fin"] > 1.0)
+                medidas[f["nombre"]]["empieza"] = float(
+                    previa is None
+                    or bool(FIN_FRASE.search(previa["texto"]))
+                    or dentro[0]["inicio"] - previa["fin"] > 1.0
+                )
                 medidas[f["nombre"]]["termina"] = float(bool(FIN_FRASE.search(dentro[-1]["texto"])))
             medidas[f["nombre"]]["duracion"] = f["fin"] - f["inicio"]
         cache.write_text(json.dumps(medidas, indent=1), encoding="utf-8")
@@ -166,15 +187,29 @@ def main() -> None:
     for f, p in zip(filas, puntaje_hablante):
         medidas[f["nombre"]]["hablante"] = float(p)
 
-    nombres = ["eco", "stoi", "pesq", "si_sdr", "borde", "pausas", "recorte", "empieza", "termina", "duracion", "hablante"]
+    nombres = [
+        "eco",
+        "stoi",
+        "pesq",
+        "si_sdr",
+        "borde",
+        "pausas",
+        "recorte",
+        "empieza",
+        "termina",
+        "duracion",
+        "hablante",
+    ]
     x = np.array([[medidas[f["nombre"]].get(n, np.nan) for n in nombres] for f in filas])
     x = np.where(np.isnan(x), np.nanmedian(x, axis=0), x)
     resultado = {}
     print(f"{len(filas)} clips; AUC de cada medida (0.5 es azar; menos de 0.5, mejor si es baja):")
     for i, n in enumerate(nombres):
         resultado[n] = roc_auc_score(y, x[:, i])
-        print(f"  {n:9s} {resultado[n]:.3f}   mediana conservados {np.median(x[y, i]):8.3f}   "
-              f"descartados {np.median(x[~y, i]):8.3f}")
+        print(
+            f"  {n:9s} {resultado[n]:.3f}   mediana conservados {np.median(x[y, i]):8.3f}   "
+            f"descartados {np.median(x[~y, i]):8.3f}"
+        )
     resultado["todas"] = roc_auc_score(y, hablante.evaluar(x, y, grupos))
     resultado["todas_y_huella"] = roc_auc_score(y, hablante.evaluar(np.hstack([x, huellas]), y, grupos))
     print(f"  todas juntas {resultado['todas']:.3f}; con la huella de WavLM entera {resultado['todas_y_huella']:.3f}")
@@ -184,5 +219,6 @@ def main() -> None:
 if __name__ == "__main__":
     sys.path.insert(0, str(Path(__file__).parent))
     import gpu
+
     gpu.ocupar()
     main()

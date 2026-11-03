@@ -58,15 +58,19 @@ AVISOS = [
 @torch.no_grad()
 def huellas_wavlm(filas):
     import torchaudio
+
     modelo = torchaudio.pipelines.WAVLM_LARGE.get_model().to("cuda").eval()
     from progreso_comun import avance
+
     vectores = []
     for n, f in enumerate(filas):
         if n % 50 == 0:
             avance("huella de voz (WavLM)", n, len(filas))
         audio = torch.from_numpy(hablante.audio16(f["ruta"]))[None].to("cuda")
         capas, _ = modelo.extract_features(audio)
-        vectores.append(torch.stack([capas[i].mean(dim=1).squeeze(0) for i in hablante.CAPAS_WAVLM]).mean(0).cpu().numpy())
+        vectores.append(
+            torch.stack([capas[i].mean(dim=1).squeeze(0) for i in hablante.CAPAS_WAVLM]).mean(0).cpu().numpy()
+        )
     v = np.stack(vectores)
     return v / (np.linalg.norm(v, axis=1, keepdims=True) + 1e-9)
 
@@ -91,10 +95,18 @@ def main() -> None:
     nuevos = []
     for indice in sorted((DATOS / "25_cortes").glob("ep*/indice.json")):
         for clip in json.loads(indice.read_text(encoding="utf-8"))["clips"]:
-            nuevos.append(dict(clip, nombre=clip["archivo"].removesuffix(".wav"), episodio=indice.parent.name,
-                               ruta=indice.parent / clip["archivo"]))
-    palabras_de = {ep: json.loads((DATOS / "03_alineado" / f"{ep}.json").read_text(encoding="utf-8"))["palabras"]
-                   for ep in {f["episodio"] for f in nuevos}}
+            nuevos.append(
+                dict(
+                    clip,
+                    nombre=clip["archivo"].removesuffix(".wav"),
+                    episodio=indice.parent.name,
+                    ruta=indice.parent / clip["archivo"],
+                )
+            )
+    palabras_de = {
+        ep: json.loads((DATOS / "03_alineado" / f"{ep}.json").read_text(encoding="utf-8"))["palabras"]
+        for ep in {f["episodio"] for f in nuevos}
+    }
     print(f"{len(nuevos)} clips nuevos", flush=True)
 
     cache = SALIDA / "medidas.json"
@@ -130,9 +142,15 @@ def main() -> None:
     salida = []
     for f, p in zip(nuevos, puntaje):
         m = medidas[f["nombre"]]
-        salida.append({"nombre": f["nombre"], "episodio": f["episodio"], "puntaje": round(float(p), 4),
-                       "avisos": [texto for clave, regla, texto in AVISOS if regla(m[clave])],
-                       "medidas": {k: round(v, 3) for k, v in m.items()}})
+        salida.append(
+            {
+                "nombre": f["nombre"],
+                "episodio": f["episodio"],
+                "puntaje": round(float(p), 4),
+                "avisos": [texto for clave, regla, texto in AVISOS if regla(m[clave])],
+                "medidas": {k: round(v, 3) for k, v in m.items()},
+            }
+        )
     (SALIDA / "clips.json").write_text(json.dumps(salida, ensure_ascii=False, indent=1), encoding="utf-8")
     p = np.array([s["puntaje"] for s in salida])
     d = np.array([f["duracion"] for f in nuevos])
@@ -143,5 +161,6 @@ def main() -> None:
 if __name__ == "__main__":
     sys.path.insert(0, str(Path(__file__).parent))
     import gpu
+
     gpu.ocupar()
     main()

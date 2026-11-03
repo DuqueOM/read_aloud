@@ -26,6 +26,7 @@ RAIZ = Path(__file__).resolve().parent.parent
 os.environ["PATH"] = str(RAIZ / "herramientas") + os.pathsep + os.environ["PATH"]
 
 from audio_separator.separator import Separator  # noqa: E402
+
 ENTRADA = RAIZ / "datos" / "01_audio"
 SALIDA = RAIZ / "datos" / "02_voz"
 MODELOS = RAIZ / "modelos"

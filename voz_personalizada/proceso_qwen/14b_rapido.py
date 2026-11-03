@@ -25,6 +25,7 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parent.parent
 os.environ.setdefault("HF_HOME", str(RAIZ / "modelos" / "hf"))
 import voz  # noqa: E402
+
 sys.path.insert(0, str(voz.lector() / "lib"))  # qwen_rapido vive con el servidor de Read Aloud
 
 import torch
@@ -46,7 +47,9 @@ probar = velocidad.probar
 
 
 def main() -> None:
-    frases = [f["texto"] for f in json.loads((RAIZ / "datos" / "09_comparar" / "frases.json").read_text(encoding="utf-8"))]
+    frases = [
+        f["texto"] for f in json.loads((RAIZ / "datos" / "09_comparar" / "frases.json").read_text(encoding="utf-8"))
+    ]
     probar.PUNTOS = velocidad.PUNTOS
     qwen = probar.preparar()
     estado = load_file(velocidad.PUNTOS / f"epoca_{velocidad.EPOCA:02d}.safetensors")
@@ -73,8 +76,13 @@ def main() -> None:
     iguales = total = guiados = 0
     with torch.no_grad():
         for x in entradas:
-            libreria = original(inputs_embeds=x, max_new_tokens=15, do_sample=False,
-                                output_hidden_states=True, return_dict_in_generate=True).sequences
+            libreria = original(
+                inputs_embeds=x,
+                max_new_tokens=15,
+                do_sample=False,
+                output_hidden_states=True,
+                return_dict_in_generate=True,
+            ).sequences
             grabado = rapido.generar(x, do_sample=False).sequences
             iguales += (libreria == grabado).sum().item()
             total += libreria.numel()
@@ -85,18 +93,31 @@ def main() -> None:
                 historia[:, k + 2] = predictor.model.codec_embedding[k](libreria[:, k])
             ocultos = predictor.small_to_mtp_projection(historia)
             posiciones = torch.arange(qwen_rapido.POSICIONES, device=x.device)[None].expand(x.shape[0], -1)
-            causal = torch.ones(qwen_rapido.POSICIONES, qwen_rapido.POSICIONES, device=x.device, dtype=torch.bool).tril()
-            mascara = torch.zeros(causal.shape, device=x.device, dtype=x.dtype).masked_fill(
-                ~causal, torch.finfo(x.dtype).min)[None, None].expand(x.shape[0], 1, -1, -1)
+            causal = torch.ones(
+                qwen_rapido.POSICIONES, qwen_rapido.POSICIONES, device=x.device, dtype=torch.bool
+            ).tril()
+            mascara = (
+                torch.zeros(causal.shape, device=x.device, dtype=x.dtype)
+                .masked_fill(~causal, torch.finfo(x.dtype).min)[None, None]
+                .expand(x.shape[0], 1, -1, -1)
+            )
             rotacion = predictor.model.rotary_emb(ocultos, posiciones)
             for capa in predictor.model.layers:
-                ocultos = capa(ocultos, attention_mask=mascara, position_ids=posiciones,
-                               position_embeddings=rotacion, use_cache=False)[0]
+                ocultos = capa(
+                    ocultos,
+                    attention_mask=mascara,
+                    position_ids=posiciones,
+                    position_embeddings=rotacion,
+                    use_cache=False,
+                )[0]
             ocultos = predictor.model.norm(ocultos)
             for k in range(qwen_rapido.POSICIONES - 1):
                 guiados += (predictor.lm_head[k](ocultos[:, k + 1]).argmax(-1) == libreria[:, k]).sum().item()
-    print(f"mismos codigos con muestreo apagado: generacion completa {100 * iguales / total:.2f} %, "
-          f"paso a paso {100 * guiados / total:.2f} % de {total}", flush=True)
+    print(
+        f"mismos codigos con muestreo apagado: generacion completa {100 * iguales / total:.2f} %, "
+        f"paso a paso {100 * guiados / total:.2f} % de {total}",
+        flush=True,
+    )
     informe = {"coincidencia_completa": iguales / total, "coincidencia_paso_a_paso": guiados / total}
 
     # 2. Fundir LoRA redondea los pesos a bf16. Se compara lo que predice el
@@ -105,9 +126,16 @@ def main() -> None:
     def primeras_predicciones():
         salidas = []
         gancho = qwen.model.talker.codec_head.register_forward_hook(
-            lambda m, entrada, salida: salidas.append(salida[:, -1].float().log_softmax(-1)))
-        qwen.generate_custom_voice(text=frases, language=["Spanish"] * len(frases), speaker=[probar.VOZ] * len(frases),
-                                   non_streaming_mode=True, max_new_tokens=4, do_sample=False)
+            lambda m, entrada, salida: salidas.append(salida[:, -1].float().log_softmax(-1))
+        )
+        qwen.generate_custom_voice(
+            text=frases,
+            language=["Spanish"] * len(frases),
+            speaker=[probar.VOZ] * len(frases),
+            non_streaming_mode=True,
+            max_new_tokens=4,
+            do_sample=False,
+        )
         gancho.remove()
         return salidas[0]
 
@@ -119,8 +147,11 @@ def main() -> None:
     informe["fundir_kl_max"] = kl.max().item()
     informe["fundir_mismo_primero"] = (antes.argmax(-1) == despues.argmax(-1)).float().mean().item()
     informe["fundir_prob_elegida"] = [round(p, 4) for p in antes.exp().max(-1).values.tolist()]
-    print(f"fundir: KL media {informe['fundir_kl_media']:.5f}, max {informe['fundir_kl_max']:.5f}, "
-          f"mismo codigo mas probable {100 * informe['fundir_mismo_primero']:.0f} %", flush=True)
+    print(
+        f"fundir: KL media {informe['fundir_kl_media']:.5f}, max {informe['fundir_kl_max']:.5f}, "
+        f"mismo codigo mas probable {100 * informe['fundir_mismo_primero']:.0f} %",
+        flush=True,
+    )
 
     # 3. Velocidad con LoRA fundido y el modelo chico grabado.
     qwen_rapido.activar(qwen.model)

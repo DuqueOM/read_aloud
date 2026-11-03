@@ -60,6 +60,7 @@ def main() -> None:
     # LayerNorm se quedan en float32: Whisper las calcula asi de todos modos.
     sys.path.insert(0, str(Path(__file__).parent))
     import gpu
+
     gpu.ocupar()
     # Se carga en el procesador y se pasa a la tarjeta ya en media precision:
     # cargarlo directo en la tarjeta deja reservados los 6 GB de float32 y el
@@ -92,12 +93,14 @@ def main() -> None:
         palabras = []
         for segmento in resultado["segments"]:
             for p in segmento.get("words", []):
-                palabras.append({
-                    "texto": p["word"].strip(),
-                    "inicio": round(float(p["start"]), 3),
-                    "fin": round(float(p["end"]), 3),
-                    "prob": round(float(p.get("probability", 0.0)), 3),
-                })
+                palabras.append(
+                    {
+                        "texto": p["word"].strip(),
+                        "inicio": round(float(p["start"]), 3),
+                        "fin": round(float(p["end"]), 3),
+                        "prob": round(float(p.get("probability", 0.0)), 3),
+                    }
+                )
 
         destino.write_text(
             json.dumps({"episodio": episodio, "palabras": palabras}, ensure_ascii=False, indent=1),

@@ -81,13 +81,21 @@ def con_whisper() -> None:
     # whisper.load_audio llama a ffmpeg por su nombre.
     os.environ["PATH"] = str(RAIZ / "herramientas") + os.pathsep + os.environ["PATH"]
     import whisper
+
     modelo = whisper.load_model("large-v3", device="cuda", download_root=str(RAIZ / "modelos" / "whisper"))
     for nombre, contexto in (("whisper", None), ("whisper_contexto", CONTEXTO)):
         textos = {}
         for clave in sorted(referencias()):
             audio = whisper.load_audio(str(FINAL / f"{clave}.wav"))
-            textos[clave] = modelo.transcribe(audio, language=voz.IDIOMA, beam_size=5, best_of=5, fp16=False,
-                                              condition_on_previous_text=False, initial_prompt=contexto)["text"].strip()
+            textos[clave] = modelo.transcribe(
+                audio,
+                language=voz.IDIOMA,
+                beam_size=5,
+                best_of=5,
+                fp16=False,
+                condition_on_previous_text=False,
+                initial_prompt=contexto,
+            )["text"].strip()
         guardar(nombre, textos)
         print(f"{nombre}: listo", flush=True)
 
@@ -95,15 +103,18 @@ def con_whisper() -> None:
 def con_qwen() -> None:
     import torch
     from qwen_asr import Qwen3ASRModel
-    modelo = Qwen3ASRModel.from_pretrained("Qwen/Qwen3-ASR-1.7B", dtype=torch.bfloat16, device_map="cuda:0",
-                                           max_inference_batch_size=16)
+
+    modelo = Qwen3ASRModel.from_pretrained(
+        "Qwen/Qwen3-ASR-1.7B", dtype=torch.bfloat16, device_map="cuda:0", max_inference_batch_size=16
+    )
     claves = sorted(referencias())
     rutas = [str(FINAL / f"{c}.wav") for c in claves]
     for nombre, contexto in (("qwen", ""), ("qwen_contexto", CONTEXTO)):
         textos = {}
         for i in range(0, len(rutas), 16):
-            for clave, r in zip(claves[i:i + 16], modelo.transcribe(rutas[i:i + 16], context=contexto,
-                                                                    language=voz.IDIOMA_TEXTO)):
+            for clave, r in zip(
+                claves[i : i + 16], modelo.transcribe(rutas[i : i + 16], context=contexto, language=voz.IDIOMA_TEXTO)
+            ):
                 textos[clave] = r.text.strip()
         guardar(nombre, textos)
         print(f"{nombre}: listo", flush=True)
@@ -155,15 +166,21 @@ def comparar() -> None:
             if normalizar(sistemas["hoy"].get(clave, "")) != v:  # los que el usuario corrigio
                 corregidos[0] += e
                 corregidos[1] += len(v)
-        resultado[nombre] = {"cer": errores / caracteres, "cer_en_los_corregidos": corregidos[0] / corregidos[1],
-                             "signo_final": signos / len(ref)}
-        print(f"{nombre:18s} CER {100 * errores / caracteres:5.2f} %   en los que el usuario corrigio "
-              f"{100 * corregidos[0] / corregidos[1]:5.2f} %   signo final {100 * signos / len(ref):5.1f} %")
+        resultado[nombre] = {
+            "cer": errores / caracteres,
+            "cer_en_los_corregidos": corregidos[0] / corregidos[1],
+            "signo_final": signos / len(ref),
+        }
+        print(
+            f"{nombre:18s} CER {100 * errores / caracteres:5.2f} %   en los que el usuario corrigio "
+            f"{100 * corregidos[0] / corregidos[1]:5.2f} %   signo final {100 * signos / len(ref):5.1f} %"
+        )
     (SALIDA / "resultado.json").write_text(json.dumps(resultado, indent=1), encoding="utf-8")
 
 
 if __name__ == "__main__":
     if sys.argv[1] != "comparar":
         import gpu
+
         gpu.ocupar()
     {"whisper": con_whisper, "qwen": con_qwen, "comparar": comparar}[sys.argv[1]]()

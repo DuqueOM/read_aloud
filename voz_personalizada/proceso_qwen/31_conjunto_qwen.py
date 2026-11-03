@@ -134,8 +134,9 @@ def audio() -> None:
         cursor += len(a) + len(hueco)
     sf.write(temporal / "todo.wav", np.concatenate(partes), tasa, subtype="FLOAT")
 
-    separador = Separator(output_dir=str(temporal), model_file_dir=str(RAIZ / "modelos"), output_format="WAV",
-                          sample_rate=tasa)
+    separador = Separator(
+        output_dir=str(temporal), model_file_dir=str(RAIZ / "modelos"), output_format="WAV", sample_rate=tasa
+    )
     separador.load_model(model_filename="dereverb_mel_band_roformer_mono_anvuew.ckpt")
     separador.separate(str(temporal / "todo.wav"), {"noreverb": "seco", "reverb": "eco"})
     seco, _ = sf.read(temporal / "seco.wav", dtype="float32", always_2d=False)
@@ -167,6 +168,7 @@ def referencia(elegidos: list) -> Path:
 
 def codigos() -> None:
     from qwen_tts import Qwen3TTSTokenizer
+
     tokenizador = Qwen3TTSTokenizer.from_pretrained("Qwen/Qwen3-TTS-Tokenizer-12Hz", device_map="cuda:0")
     grupos = conjuntos()
     muestra = referencia(grupos[MEJORES])
@@ -175,15 +177,26 @@ def codigos() -> None:
     def lineas(lista):
         salida = []
         for inicio in range(0, len(lista), 16):
-            lote = lista[inicio:inicio + 16]
+            lote = lista[inicio : inicio + 16]
             faltan = [c for c in lote if c["clave"] not in hechos]
             if faltan:
-                for c, codigo in zip(faltan, tokenizador.encode([str(AUDIO / f"{c['clave']}.wav") for c in faltan]).audio_codes):
+                for c, codigo in zip(
+                    faltan, tokenizador.encode([str(AUDIO / f"{c['clave']}.wav") for c in faltan]).audio_codes
+                ):
                     hechos[c["clave"]] = codigo.cpu().tolist()
             for c in lote:
-                salida.append(json.dumps({"audio": str(AUDIO / f"{c['clave']}.wav"), "text": c["texto"],
-                                          "language": voz.IDIOMA_QWEN, "ref_audio": str(muestra),
-                                          "audio_codes": hechos[c["clave"]]}, ensure_ascii=False))
+                salida.append(
+                    json.dumps(
+                        {
+                            "audio": str(AUDIO / f"{c['clave']}.wav"),
+                            "text": c["texto"],
+                            "language": voz.IDIOMA_QWEN,
+                            "ref_audio": str(muestra),
+                            "audio_codes": hechos[c["clave"]],
+                        },
+                        ensure_ascii=False,
+                    )
+                )
         return salida
 
     # La validacion se codifica una vez y queda en datos/11_qwen, como la de
@@ -209,15 +222,22 @@ def mejores(minutos: float) -> None:
             total += c["duracion"]
     nombre = f"mejores{minutos:g}"
     origen, carpeta = SALIDA / MEJORES, SALIDA / nombre
-    lineas = [l for l in (origen / "entrenamiento.jsonl").read_text(encoding="utf-8").splitlines()
-              if Path(json.loads(l)["audio"]).stem in claves]
+    lineas = [
+        l
+        for l in (origen / "entrenamiento.jsonl").read_text(encoding="utf-8").splitlines()
+        if Path(json.loads(l)["audio"]).stem in claves
+    ]
     assert len(lineas) == len(claves)
     carpeta.mkdir(parents=True, exist_ok=True)
     (carpeta / "entrenamiento.jsonl").write_text("\n".join(lineas) + "\n", encoding="utf-8")
-    (carpeta / "validacion.jsonl").write_text((origen / "validacion.jsonl").read_text(encoding="utf-8"),
-                                              encoding="utf-8")
-    print(f"{nombre}: {len(lineas)} clips, {total / 60:.1f} min, calidad del peor "
-          f"{min(c['calidad'] for c in elegidos if c['clave'] in claves):.2f}", flush=True)
+    (carpeta / "validacion.jsonl").write_text(
+        (origen / "validacion.jsonl").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    print(
+        f"{nombre}: {len(lineas)} clips, {total / 60:.1f} min, calidad del peor "
+        f"{min(c['calidad'] for c in elegidos if c['clave'] in claves):.2f}",
+        flush=True,
+    )
 
 
 if __name__ == "__main__":
@@ -225,5 +245,6 @@ if __name__ == "__main__":
         mejores(float(sys.argv[2]))
     else:
         import gpu
+
         gpu.ocupar()
         {"audio": audio, "codigos": codigos}[sys.argv[1]]()
