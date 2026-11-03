@@ -36,6 +36,7 @@ function Get-ReadAloudPaths {
         UserSettingsFile = Join-Path $runtimeDir 'ajustes.json'
         TermsFile   = Join-Path $root 'config\terms_es.tsv'
         SettingsFile= Join-Path $root 'config\settings.psd1'
+        LocalSettingsFile = Join-Path $root 'config\settings.local.psd1'
         DaemonScript= Join-Path $root 'read_aloud_daemon.ps1'
         PipeName    = 'read_aloud_pipe'
     }
@@ -80,14 +81,17 @@ function Get-ReadAloudSettings {
         PanelOnShow         = 'recordar'
     }
 
-    if (Test-Path -LiteralPath $Paths.SettingsFile) {
+    # settings.local.psd1, ignorado por Git, lleva lo que es de este equipo (la
+    # carpeta de la voz propia, por ejemplo) y manda sobre settings.psd1.
+    foreach ($archivo in @($Paths.SettingsFile, $Paths.LocalSettingsFile)) {
+        if (-not $archivo -or -not (Test-Path -LiteralPath $archivo)) { continue }
         try {
-            $loaded = Read-PowerShellDataFile -Path $Paths.SettingsFile
+            $loaded = Read-PowerShellDataFile -Path $archivo
             foreach ($key in @($loaded.Keys)) {
                 $defaults[$key] = $loaded[$key]
             }
         } catch {
-            Write-Warning "No pude leer config\settings.psd1; uso los valores por defecto. $($_.Exception.Message)"
+            Write-Warning "No pude leer $(Split-Path -Leaf $archivo); uso los valores anteriores. $($_.Exception.Message)"
         }
     }
 

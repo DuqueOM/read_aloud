@@ -20,7 +20,10 @@
     # Piper. Si Qwen falla mientras lee, se sigue con Piper.
     EngineEs = 'auto'
     EngineEn = 'auto'
-    QwenWorkDir = 'D:\voces\mi_voz'
+    # La carpeta de trabajo de la voz propia es de cada equipo: ponla en
+    # config\settings.local.psd1, que no se versiona y manda sobre este
+    # archivo. Vacia, no hay voz propia.
+    QwenWorkDir = ''
     QwenMinVramGB = 7
 
     # Frases que se generan juntas con Qwen: mas es mas rapido en total, pero

@@ -148,7 +148,7 @@ if ($SoloLectura) {
     Write-Step 'Listo para leer'
     Write-Host "    Copia la voz entrenada (ajuste.json, voz.safetensors y lora.safetensors) a" -ForegroundColor Green
     Write-Host "    $(Join-Path $Trabajo 'modelos\voz_app') y pon QwenWorkDir = '$Trabajo'" -ForegroundColor Green
-    Write-Host "    en config\settings.psd1. Ver docs\configuracion.md." -ForegroundColor Green
+    Write-Host "    en config\settings.local.psd1. Ver docs\configuracion.md." -ForegroundColor Green
     return
 }
 

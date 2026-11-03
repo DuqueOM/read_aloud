@@ -8,6 +8,20 @@ botón de la tuerca del reproductor (ver [Panel de ajustes](#panel-de-ajustes)).
 Lo que elijas ahí se guarda en `read_aloud_piper\runtime\ajustes.json` y manda
 sobre `settings.psd1`.
 
+Lo que es de tu equipo, como la carpeta de la voz propia (`QwenWorkDir`), va
+en `config\settings.local.psd1`: el mismo formato que `settings.psd1`, solo
+con las claves que cambian. No se versiona, manda sobre `settings.psd1` y el
+botón "Restablecer todo" del panel no lo toca:
+
+```powershell
+@{
+    QwenWorkDir = 'D:\voces\mi_voz'
+}
+```
+
+El orden, de menos a más prioridad: los valores por defecto,
+`settings.psd1`, `settings.local.psd1` y `ajustes.json`.
+
 Después de cambiar algo en `settings.psd1`, reinicia el proceso residente:
 
 ```powershell

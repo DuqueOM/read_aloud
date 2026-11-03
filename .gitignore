@@ -3,6 +3,9 @@ read_aloud_piper/bin/
 read_aloud_piper/voices/
 read_aloud_piper/tmp/
 
+# Ajustes propios de este equipo (rutas locales): ver docs/configuracion.md
+config/settings.local.psd1
+
 # Estado en tiempo de ejecucion
 read_aloud_piper/runtime/
 *.wav

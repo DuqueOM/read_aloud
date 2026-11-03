@@ -368,13 +368,16 @@ Copy-Item "$p\ajuste.json", "$p\voz.safetensors" $v
 Copy-Item "$p\epoca_02.safetensors" "$v\lora.safetensors"
 ```
 
-Y en `config\settings.psd1` de Read Aloud, apunta a la carpeta de trabajo:
+Y en `config\settings.local.psd1` de Read Aloud (créalo si no está; no se
+versiona), apunta a la carpeta de trabajo:
 
 ```powershell
-EngineEs = 'auto'
-EngineEn = 'auto'
-QwenWorkDir = 'D:\voces\mi_voz'
+@{
+    QwenWorkDir = 'D:\voces\mi_voz'
+}
 ```
+
+`EngineEs` y `EngineEn` ya valen `'auto'` en `settings.psd1`.
 
 Reinicia el proceso residente. Con `auto`, la voz se usa si está instalada y
 hay una tarjeta NVIDIA de al menos 7 GB; si no, se lee con Piper. Todos los
