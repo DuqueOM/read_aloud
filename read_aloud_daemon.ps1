@@ -793,7 +793,7 @@ $window = [Windows.Markup.XamlReader]::Load($xmlReader)
 
 $ui = @{}
 foreach ($name in @('Root','LangBadge','BtnBack','BtnPlay','BtnFwd','BtnSpeed','BufferBar','Seek','TimeLabel','BtnText','BtnClose','TextPanel','TextView','Bar','Bordes',
-                    'Asa','Zoom','BtnSettings','SpeedPopup','SpeedList')) {
+                    'Asa','Zoom','BtnSettings','SpeedPopup','SpeedList','Escala')) {
     $ui[$name] = $window.FindName($name)
 }
 
@@ -1071,6 +1071,36 @@ function Set-PlayIcon {
     }
 }
 
+# La ventana es translucida (AllowsTransparency) y Windows guarda la ultima
+# imagen que dibujo: al volver a mostrarla, ensenaba un cuadro de la lectura
+# anterior (su texto, su idioma y su tiempo) antes de dibujar la nueva. Por eso
+# primero se vacia y se esconde cuando WPF ya dibujo la ventana vacia; si
+# llega otra lectura en ese rato, sigue a la vista.
+$script:ocultando = $false
+$relojOcultar = New-Object Windows.Threading.DispatcherTimer
+$relojOcultar.Interval = [TimeSpan]::FromMilliseconds(120)
+$relojOcultar.Add_Tick({
+    $relojOcultar.Stop()
+    if ($script:ocultando) {
+        $script:ocultando = $false
+        $window.Hide()
+    }
+})
+
+function Hide-PlayerWindow {
+    $ui.Escala.Visibility = 'Hidden'
+    $script:ocultando = $true
+    $relojOcultar.Stop()
+    $relojOcultar.Start()
+}
+
+function Show-PlayerWindow {
+    $relojOcultar.Stop()
+    $script:ocultando = $false
+    $ui.Escala.Visibility = 'Visible'
+    $window.Show()
+}
+
 function Stop-Playback {
     param([switch]$KeepWindow)
 
@@ -1100,7 +1130,7 @@ function Stop-Playback {
     $state.HighlightIndex = -1
     $state.Total = 0.0
 
-    if (-not $KeepWindow) { $window.Hide() }
+    if (-not $KeepWindow) { Hide-PlayerWindow }
 }
 
 function Start-Chunk {
@@ -1586,13 +1616,13 @@ function Start-Speaking {
     if ($settings.ShowPlayer) {
         # Ajuste "Panel de texto al aparecer": como lo dejaste, o siempre
         # abierto o cerrado. Solo al aparecer, no si ya estaba a la vista.
-        if (-not $window.IsVisible) {
+        if (-not $window.IsVisible -or $script:ocultando) {
             switch ([string]$settings.PanelOnShow) {
                 'abierto' { if (-not $script:panelVisible) { Set-TextPanel -Visible $true } }
                 'cerrado' { if ($script:panelVisible) { Set-TextPanel -Visible $false } }
             }
         }
-        $window.Show()
+        Show-PlayerWindow
         # Se coloca al mostrar, no solo al arrancar: el alto depende de si el
         # panel esta abierto, y el monitor puede cambiar mientras el proceso
         # residente sigue vivo.
