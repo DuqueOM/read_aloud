@@ -4,6 +4,13 @@
 
 [English](README.md) · Español
 
+<p align="center">
+  <img src="docs/media/demo.gif" width="800" alt="Se selecciona el texto de demostración, aparece la barra flotante y su panel resalta cada frase mientras se lee">
+</p>
+
+[Mira el video de 33 segundos con sonido](docs/media/demo.mp4): los términos
+técnicos en español y el cambio a la voz en inglés y de vuelta.
+
 Lee en voz alta el texto que tengas seleccionado, con un atajo de teclado y
 voces neuronales que corren en tu propia máquina. Sin internet, sin cuentas y
 sin enviar nada a ningún servidor.
@@ -24,6 +31,8 @@ Ctrl+Shift+] y [    subir o bajar la velocidad
 Mientras lee aparece una barra pequeña sobre todas las ventanas, con pausa,
 avance, retroceso, velocidad y posición. Se cierra sola al terminar.
 
+![La barra flotante mientras lee](docs/media/player.png)
+
 El botón `≡` de esa barra despliega el texto que se está leyendo, con la frase
 que suena resaltada y lo ya leído atenuado. Así no te pierdes aunque cambies
 de ventana. Un clic sobre una frase salta a ella, y el texto se puede
@@ -31,9 +40,13 @@ seleccionar y copiar con el clic derecho. Con el texto abierto, la ventana
 cambia de tamaño desde cualquiera de sus lados y esquinas. Se mueve con la
 pestaña de arriba.
 
+![El panel de texto: la frase que suena resaltada y lo ya leído atenuado](docs/media/panel.png)
+
 El botón de la tuerca abre los ajustes: opacidad, tamaño, letra, la voz y el
 rendimiento (la voz siempre lista, o cargada solo al leer para no ocupar
 recursos). Ver [docs/configuracion.md](docs/configuracion.md#panel-de-ajustes).
+
+<img src="docs/media/ajustes.png" width="320" alt="El panel de ajustes">
 
 ## Qué tiene por dentro
 
@@ -122,6 +135,8 @@ funciona desde la consola:
 `-ShowPlan` es la herramienta para entender por qué una frase sonó en un
 idioma y no en otro. Muestra el texto ya partido, con la voz asignada a cada
 parte y sin reproducir nada.
+
+![Salida de -ShowPlan para el texto de demostración](docs/media/showplan.png)
 
 ## Cómo está armado
 

@@ -4,6 +4,13 @@
 
 English · [Español](README.es.md)
 
+<p align="center">
+  <img src="docs/media/demo.gif" width="800" alt="The demo text is selected, the floating bar appears and its text panel highlights each sentence as it is read">
+</p>
+
+[Watch the 33-second video with sound](docs/media/demo.mp4): the technical
+terms in Spanish and the switch to the English voice and back.
+
 Reads the selected text aloud with a keyboard shortcut, using neural voices
 that run on your own machine. No internet connection, no accounts, and nothing
 is sent to any server.
@@ -24,15 +31,22 @@ Ctrl+Shift+] and [  faster or slower
 While it reads, a small bar stays on top of all windows, with pause, skip,
 speed and position. It closes on its own when the reading ends.
 
+![The floating bar while reading](docs/media/player.png)
+
 The `≡` button on that bar opens the text being read, with the current
 sentence highlighted and what was already read dimmed, so you don't lose your
 place when you switch windows. Clicking a sentence jumps to it, and the text
 can be selected and copied with a right click. With the text open, the window
 can be resized from any side or corner, and it moves with the tab on top.
 
+![The text panel: the current sentence highlighted and what was read dimmed](docs/media/panel.png)
+
 The gear button opens the settings: opacity, size, font, the voice and the
 performance mode (the voice always loaded, or loaded only while reading to
 save resources).
+
+<img src="docs/media/ajustes.png" width="320" alt="The settings panel">
+
 
 The detailed documentation in [docs/](docs/) is in Spanish.
 
@@ -124,6 +138,8 @@ console:
 `-ShowPlan` is the tool for understanding why a sentence was read in one
 language and not the other. It shows the text already split, with the voice
 assigned to each part, without playing anything.
+
+![-ShowPlan output for the demo text](docs/media/showplan.png)
 
 ## How it is built
 
