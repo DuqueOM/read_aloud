@@ -21,14 +21,18 @@ Piper 2023.11.14-2, https://github.com/rhasspy/piper
   runs as a separate process.
 
 Piper voices, https://huggingface.co/rhasspy/piper-voices
-  Each voice has a MODEL_CARD with the license of its training data:
+  Each voice has a MODEL_CARD with the license of its training data. The
+  ones setup.ps1 knows:
   - es_MX-claude-high: Apache-2.0.
   - es_MX-ald-medium: Unlicense.
-  - en_US-lessac-medium: trained on the Lessac Blizzard 2013 data, which
-    Voice Factory International and Lessac Technologies release under a
-    research licence. Check its terms before any other use, or choose a
-    different English voice (VoiceEn in config/settings.psd1).
+  - es_ES-davefx-medium: CC0.
+  - en_US-lessac-high and en_US-lessac-medium: trained on the Lessac
+    Blizzard 2013 data, which Voice Factory International and Lessac
+    Technologies release under a research licence. Check its terms before
+    any other use, or choose a different English voice (VoiceEn in
+    config/settings.psd1).
   - en_US-amy-medium: see its MODEL_CARD.
+  - en_GB-alba-medium: CC BY 4.0.
 
 AutoHotkey, https://www.autohotkey.com
   GPL-2.0. Installed separately by the user for the keyboard shortcut.

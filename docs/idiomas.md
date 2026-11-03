@@ -126,7 +126,8 @@ Mira las que tienes instaladas:
 | `es_MX-claude-high` | español de México, calidad alta |
 | `es_MX-ald-medium` | español de México, más ligera |
 | `es_ES-davefx-medium` | español de España |
-| `en_US-lessac-medium` | inglés de Estados Unidos |
+| `en_US-lessac-high` | inglés de Estados Unidos, calidad alta |
+| `en_US-lessac-medium` | inglés de Estados Unidos, más ligera |
 | `en_US-amy-medium` | inglés de Estados Unidos |
 | `en_GB-alba-medium` | inglés británico |
 

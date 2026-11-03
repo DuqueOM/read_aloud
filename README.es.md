@@ -72,7 +72,7 @@ recursos). Ver [docs/configuracion.md](docs/configuracion.md#panel-de-ajustes).
 | Windows | 10 u 11, 64 bits |
 | Windows PowerShell | 5.1, el que ya viene con Windows |
 | AutoHotkey v2 | Solo para los atajos de teclado. [autohotkey.com](https://www.autohotkey.com) |
-| Espacio en disco | Unos 160 MB para el motor y dos voces |
+| Espacio en disco | Unos 210 MB para el motor y dos voces |
 | Tarjeta NVIDIA de 7 GB o más | Solo para la voz propia, que es opcional |
 
 No hace falta ser administrador. Nada se instala fuera de la carpeta del

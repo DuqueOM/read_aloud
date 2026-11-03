@@ -41,7 +41,7 @@ que ya hay uno y se cierra.
 | Valor | Por defecto | Qué hace |
 |---|---|---|
 | `VoiceEs` | `es_MX-claude-high` | Modelo para el español, sin la extensión `.onnx` |
-| `VoiceEn` | `en_US-lessac-medium` | Modelo para el inglés |
+| `VoiceEn` | `en_US-lessac-high` | Modelo para el inglés |
 
 El archivo debe existir en `read_aloud_piper\voices`. Consulta las opciones en
 [idiomas.md](idiomas.md).

@@ -11,7 +11,7 @@
     # Nombre del modelo, sin la extension .onnx. Debe existir en
     # read_aloud_piper\voices. Mira las disponibles con -ListVoices.
     VoiceEs = 'es_MX-claude-high'
-    VoiceEn = 'en_US-lessac-medium'
+    VoiceEn = 'en_US-lessac-high'
 
     # Motor de cada idioma: 'auto', 'piper' o 'qwen'. Con 'auto' se lee con
     # la voz propia entrenada con Qwen3-TTS (docs\voz-personalizada.md) si

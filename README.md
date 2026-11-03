@@ -74,7 +74,7 @@ The detailed documentation in [docs/](docs/) is in Spanish.
 | Windows | 10 or 11, 64-bit |
 | Windows PowerShell | 5.1, the one that comes with Windows |
 | AutoHotkey v2 | Only for the keyboard shortcuts. [autohotkey.com](https://www.autohotkey.com) |
-| Disk space | About 160 MB for the engine and two voices |
+| Disk space | About 210 MB for the engine and two voices |
 | NVIDIA GPU, 7 GB or more | Only for the optional custom voice |
 
 No administrator rights are needed. Nothing is installed outside the

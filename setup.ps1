@@ -33,6 +33,7 @@ $voiceCatalog = @{
     'es_MX-claude-high'     = 'es/es_MX/claude/high/es_MX-claude-high'
     'es_MX-ald-medium'      = 'es/es_MX/ald/medium/es_MX-ald-medium'
     'es_ES-davefx-medium'   = 'es/es_ES/davefx/medium/es_ES-davefx-medium'
+    'en_US-lessac-high'     = 'en/en_US/lessac/high/en_US-lessac-high'
     'en_US-lessac-medium'   = 'en/en_US/lessac/medium/en_US-lessac-medium'
     'en_US-amy-medium'      = 'en/en_US/amy/medium/en_US-amy-medium'
     'en_GB-alba-medium'     = 'en/en_GB/alba/medium/en_GB-alba-medium'

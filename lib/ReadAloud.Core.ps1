@@ -50,7 +50,7 @@ function Get-ReadAloudSettings {
 
     $defaults = @{
         VoiceEs             = 'es_MX-claude-high'
-        VoiceEn             = 'en_US-lessac-medium'
+        VoiceEn             = 'en_US-lessac-high'
         LengthScale         = 1.06
         SentenceSilence     = 0.36
         NoiseScale          = 0.667
