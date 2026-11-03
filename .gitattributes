@@ -1,0 +1,18 @@
+# En el repositorio, todo el texto va con finales de linea LF; Git elige los
+# de la copia de trabajo segun el equipo (core.autocrlf).
+* text=auto
+
+# Los scripts de Windows quedan siempre con CRLF en la copia de trabajo, aunque
+# se clonen con otra configuracion.
+*.ps1  text eol=crlf
+*.psm1 text eol=crlf
+*.psd1 text eol=crlf
+*.ahk  text eol=crlf
+
+# Capturas y videos de la documentacion.
+*.png  binary
+*.jpg  binary
+*.gif  binary
+*.mp4  binary
+*.webm binary
+*.wav  binary
