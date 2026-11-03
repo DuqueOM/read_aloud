@@ -170,12 +170,13 @@ Describe 'Expand-Units' {
         Expand-Units -Text $Texto -Lang 'en' | Should -BeExactly $Esperado
     }
 
-    # Error conocido: lib\ReadAloud.Text.ps1 no tiene BOM y su regla de plural
-    # lleva "cuántos" con tilde. Windows PowerShell 5.1 lee el archivo como
-    # ANSI, la tilde queda mal y la regla no coincide: sale "gigabyte" en
-    # singular. En PowerShell 7 funciona. Se quita el -Skip cuando se corrija.
-    It 'pone en plural detrás de "cuántos" con tilde' -Skip:($PSVersionTable.PSEdition -eq 'Desktop') {
-        Expand-Units -Text '¿Cuántos GB quedan?' -Lang 'es' | Should -BeExactly '¿Cuántos gigabytes quedan?'
+    # lib\ReadAloud.Text.ps1 no tiene BOM y Windows PowerShell 5.1 lo lee como
+    # ANSI: una tilde escrita tal cual en una regla no coincidiria nunca.
+    It 'pone en plural detrás de "<Palabra>"' -ForEach @(
+        @{ Palabra = 'Cuántos'; Texto = '¿Cuántos GB quedan?'; Esperado = '¿Cuántos gigabytes quedan?' }
+        @{ Palabra = 'CUÁNTOS'; Texto = '¿CUÁNTOS MB son?'; Esperado = '¿CUÁNTOS megabytes son?' }
+    ) {
+        Expand-Units -Text $Texto -Lang 'es' | Should -BeExactly $Esperado
     }
 }
 

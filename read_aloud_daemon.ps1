@@ -688,7 +688,7 @@ $xaml = @'
     <StackPanel Orientation="Vertical">
     <!-- Panel con el texto que se esta leyendo. El ancho se ata al de la
          barra de controles: sin limite, el texto no partiria las lineas y la
-         ventana crecería a lo ancho sin fin. -->
+         ventana creceria a lo ancho sin fin. -->
     <!-- El ancho parte del de la barra y nunca baja de el. Al estirar el
          panel se le pone un ancho propio, que sustituye al enlace. -->
     <Grid x:Name="TextPanel" Visibility="Collapsed" Height="147" Margin="0,2,0,8"

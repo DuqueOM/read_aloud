@@ -338,7 +338,8 @@ function Expand-Units {
             $t = [regex]::Replace($t, "(?<![\p{L}\p{N}])$($unit.Pattern)(?![\p{L}\p{N}])", {
                 param($m)
                 $before = $t.Substring(0, $m.Index)
-                $plural = $before -match '(?i)\b(los|unos|varios|muchos|pocos|cuantos|cuántos|the|many|few|several|some)\s+$'
+                # La tilde va como \u00e1: el archivo es ASCII (ver arriba).
+                $plural = $before -match '(?i)\b(los|unos|varios|muchos|pocos|cu[a\u00e1]ntos|the|many|few|several|some)\s+$'
                 return $word + $(if ($plural) { 's' } else { '' })
             }.GetNewClosure())
         }
