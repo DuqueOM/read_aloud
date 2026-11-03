@@ -1,15 +1,15 @@
-"""Separa la voz de la musica y los efectos en cada capitulo.
+"""Separa la voz de la musica y los efectos en cada video.
 
 Usa un modelo Mel-Band RoFormer, el de mejor calidad medida para voces en la
 lista de audio-separator. La salida es solo la pista de voz, que es la que se
 segmenta y se compara despues.
 
 Uso:
-    python scripts/02_separar_voz.py              todos los capitulos
+    python scripts/02_separar_voz.py              todos los videos
     python scripts/02_separar_voz.py ep01         uno solo
     python scripts/02_separar_voz.py referencias  los clips de referencia
 
-Las referencias pasan por el mismo separador que los capitulos. Si no, sus
+Las referencias pasan por el mismo separador que los videos. Si no, sus
 huellas llevarian restos de musica que las frases ya no tienen, y la
 comparacion seria entre cosas distintas.
 """

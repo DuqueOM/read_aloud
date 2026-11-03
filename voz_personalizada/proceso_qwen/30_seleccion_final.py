@@ -3,12 +3,13 @@
 Parte de revision.json (la revision unica de 28_revision.py) y quita, en este
 orden, anotando el motivo de cada clip:
 
-1. Los capitulos duplicados de voz.toml. Con la voz de prueba, ep25 resulto ser una
+1. Las grabaciones duplicadas de voz.toml. Con la voz de prueba, ep25 resulto ser una
    segunda descarga de ep24 (el 100 % de su texto propio coincide, y sus
    clips son la misma grabacion: parecido 1.00). Repetir un clip identico
    solo le da doble peso.
 2. Los clips de menos de MIN_S: casi no tienen entonacion de la que aprender.
-3. Las tomas de mas de una misma frase: con la voz de prueba, una misma frase aparece 21 veces. No son el mismo audio reciclado
+3. Las tomas de mas de una misma frase: con la voz de prueba, una misma
+   frase aparecia 21 veces. No son el mismo audio reciclado
    (parecido entre 0.49 y 0.93, contra 1.00 de una copia), son tomas
    distintas, y unas pocas ensenan variedad; veinte inclinan al modelo hacia
    esa frase. Se dejan MAX_TOMAS, las de mejor calidad.
@@ -51,7 +52,7 @@ COMPARAR = DATOS / "09_comparar"
 META_MIN = voz.MINUTOS_FINALES
 MIN_S = 1.0
 MAX_TOMAS = 3
-DUPLICADOS = voz.DUPLICADOS  # capitulo copia: capitulo original
+DUPLICADOS = voz.DUPLICADOS  # video copia: video original
 MEDIDAS = {"pesq": +1, "si_sdr": +1, "pausas": -1, "eco": -1, "borde": -1}
 VALIDACION = 10
 VALIDACION_S = (2.0, 6.0)
@@ -66,7 +67,7 @@ def elegir_validacion(candidatos: list) -> list:
 
     De buena calidad, porque son la referencia con que se la compara de oido;
     de VALIDACION_S, ni tan cortas que no tengan entonacion ni tan largas que
-    cansen al comparar; de episodios distintos; con un texto que no se repite
+    cansen al comparar; de videos distintos; con un texto que no se repite
     en ningun otro clip, para que el modelo no la haya oido en otra toma; y con
     al menos una pregunta y una exclamacion, si las hay, porque la entonacion
     de esas es la que mas cuesta."""
@@ -91,7 +92,7 @@ def elegir_validacion(candidatos: list) -> list:
             break
         if c not in elegidos and c["episodio"] not in episodios:
             tomar(c)
-    # Con pocos episodios no alcanza uno por episodio: se completa con los mejores.
+    # Con pocos videos no alcanza uno por video: se completa con los mejores.
     for c in aptos:
         if len(elegidos) >= VALIDACION:
             break

@@ -23,10 +23,10 @@ cd D:\voces\mi_voz
 
 | Paso | Script | Entorno | Qué hace |
 |---|---|---|---|
-| 1 | `lote.py` | `.venv` | Extrae el audio de cada capítulo, separa la voz (`02`), transcribe (`03`, Whisper en la tarjeta a media precisión), alinea las palabras (`03b`) y calcula las huellas de WavLM (`24`). Va sumando las descargas que terminan y muestra el avance en `progreso.html` |
+| 1 | `lote.py` | `.venv` | Extrae el audio de cada grabación, separa la voz (`02`), transcribe (`03`, Whisper en la tarjeta a media precisión), alinea las palabras (`03b`) y calcula las huellas de WavLM (`24`). Va sumando las descargas que terminan y muestra el avance en `progreso.html` |
 | 2 | `04a_calibrar.py`, `04_cortar.py` y `voz_personalizada\scripts\05_revision.py` | `.venv` | La primera revisión: cortes por parecido con la referencia (ECAPA), para que el reconocedor aprenda de tus decisiones |
 | 3 | `21_hablante.py` (opcional) y `24_curva_wavlm.py` | `.venv` | Compara formas de reconocer la voz y, sin argumentos, entrena el clasificador de quién habla con esas decisiones |
-| 4 | `25_cortar_frases.py` | `.venv` | Corta cada capítulo en clips de frases completas de la voz |
+| 4 | `25_cortar_frases.py` | `.venv` | Corta cada grabación en clips de frases completas de la voz |
 | 5 | `29_preparar_revision.py` | `.venv` (lanza los demás) | Puntúa la calidad de cada clip (`26`), lo transcribe con Qwen3-ASR y Whisper (`27`) y arma la página de revisión (`28`) |
 | 6 | La página `datos\28_revision\revision.html` | navegador | Revisión única: conservar o descartar y corregir el texto. Se exporta `revision.json` |
 | 7 | `30_seleccion_final.py` | `.venv` | Quita duplicados, clips cortos y tomas de más, aparta las 10 frases de validación si aún no las hay, y deja los mejores minutos |
@@ -48,7 +48,7 @@ quedaron.
 | `idioma` | `03`, `03b`, `11b`, `11c`, `22`, `27`, `31` | Whisper, el alineador, la marca de idioma de Qwen3-TTS y Qwen3-ASR |
 | `origenes` u `origen`, `filtro_nombre`, `patron_episodio` | `lote.py` | Dónde caen las grabaciones, cuáles tomar y cómo numerarlas |
 | `contexto`, `variantes` | `22`, `27`, `28` | Los nombres propios que guían a los transcriptores |
-| `duplicados` | `30` | Episodios descargados dos veces |
+| `duplicados` | `30` | Grabaciones descargadas dos veces |
 | `minutos_finales` | `28`, `30`, `31`, `32` | Cuántos minutos de voz, los mejores, se entrenan |
 | `lector` | `34`, `14b`, `14c` | La carpeta de Read Aloud, de donde salen `qwen_rapido` y la preparación del texto |
 

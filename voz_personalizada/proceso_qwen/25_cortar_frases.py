@@ -1,4 +1,4 @@
-"""Corta cada episodio en clips de frases completas de la voz.
+"""Corta cada grabacion en clips de frases completas de la voz.
 
 Lo que cambia frente a 04_cortar.py, y por que:
 
@@ -16,7 +16,7 @@ Lo que cambia frente a 04_cortar.py, y por que:
   UMBRAL_FRASE). Una frase con un tramo de otra voz se descarta: es una
   interrupcion o dos voces encimadas.
 - Las canciones de entrada y salida se quitan: son las frases que se repiten
-  en muchos episodios en el mismo momento.
+  en muchos videos en el mismo momento.
 - Los clips pueden ser mas largos (hasta MAX_CLIP_S) y juntar frases con su
   pausa natural: el modelo aprende como enlaza la voz una frase con otra.
 
@@ -63,13 +63,13 @@ UMBRAL_FRASE = 0.5
 VENTANA_AJENA = 0.2
 MAX_VENTANAS_AJENAS = 1 / 3
 # Canciones: una tira de 4 palabras que aparece en al menos CANCION_EPISODIOS
-# episodios, casi en el mismo momento desde el inicio o desde el final.
+# videos, casi en el mismo momento desde el inicio o desde el final.
 CANCION_EPISODIOS = 5
 CANCION_DISPERSION_S = 15.0
 
 
 class Hablante:
-    """Probabilidad de que un tramo del episodio sea de la voz."""
+    """Probabilidad de que un tramo del video sea de la voz."""
 
     def __init__(self, episodio):
         datos = np.load(CURVAS / f"{episodio}.npz")
@@ -93,7 +93,7 @@ def normalizar(texto):
 
 
 def zonas_de_cancion(todas: dict) -> dict:
-    """Intervalos de cada episodio que son de las canciones de entrada y salida."""
+    """Intervalos de cada grabacion que son de las canciones de entrada y salida."""
     tiras = defaultdict(list)
     for episodio, palabras in todas.items():
         duracion = palabras[-1]["fin"]

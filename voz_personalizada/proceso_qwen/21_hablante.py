@@ -12,8 +12,8 @@ otros modelos, ademas de ECAPA:
 - WavLM Large (de torchaudio), sin entrenar para huellas: el promedio de sus
   capas intermedias, que guardan mucho de quien habla.
 
-Para que la prueba sea justa, se evalua con episodios que el clasificador no
-vio: se reparten los 22 episodios en 5 grupos, se entrena con 4 y se mide en
+Para que la prueba sea justa, se evalua con videos que el clasificador no
+vio: se reparten los 22 videos en 5 grupos, se entrena con 4 y se mide en
 el quinto. La medida es el AUC: la probabilidad de que un clip conservado
 reciba mas puntaje que uno descartado. La de hoy es la base.
 
@@ -114,7 +114,7 @@ def huellas(filas):
 
 
 def evaluar(x, y, grupos):
-    """Puntaje de cada clip predicho por un clasificador que no vio su episodio."""
+    """Puntaje de cada clip predicho por un clasificador que no vio su video."""
     puntaje = np.zeros(len(y))
     for entreno, prueba in GroupKFold(n_splits=5).split(x, y, grupos):
         modelo = make_pipeline(StandardScaler(), LogisticRegression(C=0.1, max_iter=5000, class_weight="balanced"))

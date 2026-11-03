@@ -34,7 +34,7 @@ _cerrojo = threading.Lock()
 
 def nuevo(titulo: str, episodios: list, pasos: list, finales: list | None = None,
           revision: str = "datos/05_revision/revision.html") -> dict:
-    """Las filas son los episodios (u otras tareas) y las columnas, los pasos.
+    """Las filas son los videos (u otras tareas) y las columnas, los pasos.
     finales son las etapas de una sola fila al pie; revision, la pagina que
     se enlaza cuando la etapa "pagina" queda lista."""
     finales = ETAPAS_FINALES if finales is None else finales
@@ -155,7 +155,7 @@ def _pagina(estado: dict) -> str:
 <p class="sub">Empezó a las {estado["inicio"][11:16]} · {pct} % completado · se actualiza sola cada 15 s</p>
 <div class="barra"><i></i></div>
 {enlace}{nota}
-<table><thead><tr><th>{html.escape(estado.get("filas", "Capítulo"))}</th>{cabecera}</tr></thead>
+<table><thead><tr><th>{html.escape(estado.get("filas", "Grabación"))}</th>{cabecera}</tr></thead>
 <tbody>{filas}{finales}</tbody></table>
 <h2 style="font-size:15px;color:#8a8a94;font-weight:500">Últimos eventos</h2>
 <ul>{eventos}</ul>

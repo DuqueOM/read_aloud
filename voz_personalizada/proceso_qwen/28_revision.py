@@ -3,7 +3,7 @@
 Junta, para cada clip de 25_cortar_frases.py:
 - el puntaje y los avisos de 26_puntuar.py, para ordenar de mas a menos
   probable de conservar y marcar lo sospechoso;
-- tres lecturas del texto: la del episodio y las de 27_transcribir_clips.py.
+- tres lecturas del texto: la del video y las de 27_transcribir_clips.py.
   Se propone LECTURA_PREFERIDA y se muestran las otras cuando dicen algo
   distinto, con un aviso;
 - lo que el usuario decidio en la primera revision, si el clip nuevo cae

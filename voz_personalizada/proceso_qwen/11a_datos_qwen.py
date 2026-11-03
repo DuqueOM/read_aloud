@@ -1,4 +1,4 @@
-"""Prepara el conjunto de la voz de prueba para afinar Qwen3-TTS.
+"""Prepara el conjunto de la voz para afinar Qwen3-TTS.
 
 Cada clip del conjunto final se convierte en los codigos de audio de Qwen3-TTS
 (12.5 por segundo, 16 capas) con su texto. Las 10 frases de la comparacion con
@@ -23,7 +23,9 @@ import librosa
 import soundfile as sf
 from qwen_tts import Qwen3TTSTokenizer
 
-CONJUNTO = RAIZ / "datos" / "08_final" / "mi_voz_es"
+import voz
+
+CONJUNTO = RAIZ / "datos" / "08_final" / f"{voz.NOMBRE}_{voz.IDIOMA}"
 CORTES = RAIZ / "datos" / "04_cortes"
 SALIDA = RAIZ / "datos" / "11_qwen"
 MUESTRA = CONJUNTO / "ep03_083269.wav"

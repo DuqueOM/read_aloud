@@ -5,7 +5,7 @@ carpeta de trabajo es la padre de la de este archivo, y voz.toml esta ahi
 (instalar.ps1 lo crea a partir de voz_personalizada\\voz.ejemplo.toml). Todo
 lo que cambia de una voz a otra sale de aqui: como se llama, en que idioma
 habla, donde estan las grabaciones, los nombres propios que guian a los
-transcriptores y los capitulos repetidos.
+transcriptores y los videos repetidos.
 """
 
 import tomllib
@@ -54,7 +54,7 @@ ORIGENES = [Path(p) for p in (CONFIG.get("origenes") or [CONFIG["origen"]])]
 # Solo los archivos cuyo nombre contenga esto, sin distinguir mayusculas: para
 # no tomar otros videos de una carpeta como Descargas. Vacio, todos.
 FILTRO_NOMBRE = CONFIG.get("filtro_nombre", "")
-# Expresion regular que saca el numero de episodio del nombre. Sin ella se
+# Expresion regular que saca de cada nombre de archivo su numero. Sin ella se
 # prueba "Episode 22", "Episodio 22", "capitulo 22", un numero al principio y,
 # por ultimo, el primer numero del nombre.
 PATRON_EPISODIO = CONFIG.get("patron_episodio")
@@ -65,7 +65,7 @@ PATRON_EPISODIO = CONFIG.get("patron_episodio")
 CONTEXTO = CONFIG.get("contexto", "")
 VARIANTES = {k.lower(): v.lower() for k, v in CONFIG.get("variantes", {}).items()}
 
-# Episodios que resultaron ser otra copia de uno ya procesado: copia = original.
+# Videos que resultaron ser otra copia de uno ya procesado: copia = original.
 DUPLICADOS = CONFIG.get("duplicados", {})
 
 # Minutos de voz que se quedan para entrenar, los de mejor calidad.

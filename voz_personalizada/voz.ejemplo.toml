@@ -30,11 +30,11 @@ origen = 'C:\ruta\a\las\grabaciones'
 # sirve para no tomar otros videos de una carpeta como Descargas.
 # filtro_nombre = "una palabra de sus nombres"
 
-# Expresion regular que saca de cada nombre de archivo su numero de episodio.
-# Sin ella, el proceso con Qwen3-TTS entiende "Episode 22", "Episodio 22",
-# "capitulo 22", un numero al principio del nombre y, si no, el primer numero.
-# Si los nombres llevan otros numeros antes, como "Curso 2 - Video 05", usa
-# algo como 'Episodio\s*(\d+)'.
+# Expresion regular que saca de cada nombre de archivo su numero de video.
+# Sin ella, el proceso con Qwen3-TTS toma el numero que sigue a "Episodio",
+# "Episode" o "capitulo", si lo hay; si no, uno al principio del nombre y, si
+# no, el primer numero. Si los nombres llevan otros numeros antes, como
+# "Curso 2 - Video 05", usa algo como 'Video\s*(\d+)'.
 # patron_episodio = '(\d+)'
 
 # Modelo wav2vec2 para alinear palabras. Solo hace falta para idiomas que no
@@ -59,7 +59,7 @@ lector = ''
 # [variantes]
 # "betto" = "beto"
 
-# Episodios descargados dos veces: la copia y el original. La copia se quita
+# Videos descargados dos veces: la copia y el original. La copia se quita
 # del conjunto final.
 # [duplicados]
 # ep25 = "ep24"

@@ -4,7 +4,7 @@ Cada clip recibe las mismas medidas que 23_calidad.py (eco, SQUIM, borde,
 pausas, recorte, duracion) y la huella de WavLM Large de 21_hablante.py. Con
 eso, un clasificador entrenado con las 717 decisiones de la primera revision
 da su puntaje: la probabilidad de que el usuario conserve el clip (AUC 0.80
-en episodios que no vio). La pagina de revision se ordena por ese puntaje,
+en videos que no vio). La pagina de revision se ordena por ese puntaje,
 de mas a menos, y lo que el usuario no llegue a revisar es lo de menos valor.
 
 Ademas cada clip lleva avisos legibles cuando una medida cae donde casi solo

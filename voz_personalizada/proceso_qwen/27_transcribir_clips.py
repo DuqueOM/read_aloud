@@ -1,7 +1,7 @@
 """Transcribe cada clip nuevo con dos motores, para la pagina de revision.
 
 Los clips de 25_cortar_frases.py traen el texto de la transcripcion del
-episodio. Aqui cada clip se vuelve a transcribir solo, con Whisper large-v3 y
+video. Aqui cada clip se vuelve a transcribir solo, con Whisper large-v3 y
 con Qwen3-ASR-1.7B, los dos con el contexto de voz.toml: de que es la
 grabacion y sus nombres propios (ver 22_textos.py, que comparo los motores
 con las correcciones del usuario).

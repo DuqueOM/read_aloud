@@ -4,9 +4,9 @@
 de las capas intermedias de WavLM Large con un clasificador entrenado con las
 decisiones del usuario (AUC 0.74) supera a las referencias con ECAPA (0.60).
 Pero los clips nuevos se cortan palabra por palabra, asi que hace falta la
-misma decision en cada momento del episodio, como la curva de 04_cortar.py.
+misma decision en cada momento del video, como la curva de 04_cortar.py.
 
-1. Huellas: WavLM Large recorre la voz separada de cada episodio en tramos de
+1. Huellas: WavLM Large recorre la voz separada de cada video en tramos de
    20 s (con 2 s de solape, para que ningun momento quede en el borde) y deja
    una representacion cada 20 ms. La huella de cada ventana de 1.5 s, cada
    0.25 s, es el promedio de esas representaciones: las mismas ventanas que
@@ -15,7 +15,7 @@ misma decision en cada momento del episodio, como la curva de 04_cortar.py.
    (la voz sola) frente a ventanas de palabras que la curva de hoy da como de
    otra voz con mucha seguridad (probabilidad menor de 0.05) y ventanas de los
    clips descartados.
-3. Prueba: por episodios que no vio, el promedio de la curva nueva dentro de
+3. Prueba: por videos que no vio, el promedio de la curva nueva dentro de
    cada clip marcado debe separar conservados de descartados mejor que la
    curva de hoy.
 
@@ -68,7 +68,7 @@ def huellas_episodio(modelo, episodio: str):
     audio, tasa = sf.read(DATOS / "02_voz" / f"{episodio}_voz.wav", dtype="float32", always_2d=False)
     audio = cortar.a_16k(cortar.mono(audio), tasa)
 
-    # Representacion cada 20 ms de todo el episodio, por tramos solapados.
+    # Representacion cada 20 ms de todo el video, por tramos solapados.
     total = int(len(audio) / TASA / CUADRO_S)
     cuadros = np.zeros((total, 1024), dtype=np.float32)
     paso = TRAMO_S - SOLAPE_S
@@ -137,7 +137,7 @@ def main() -> None:
     x, y, grupo, clip_de = np.array(x), np.array(y), np.array(grupo), np.array(clip_de)
     print(f"{len(x)} ventanas para aprender ({y.sum()} de la voz)", flush=True)
 
-    # Prueba por episodios no vistos: promedio de la curva nueva en cada clip.
+    # Prueba por videos no vistos: promedio de la curva nueva en cada clip.
     puntaje = np.zeros(len(x))
     for entreno, prueba in GroupKFold(n_splits=5).split(x, y, grupo):
         clasificador = make_pipeline(StandardScaler(), LogisticRegression(C=0.05, max_iter=5000, class_weight="balanced"))
@@ -154,7 +154,7 @@ def main() -> None:
                  "clips": len(marcados)}
     print(json.dumps(resultado, indent=1))
 
-    # El clasificador final, con todo, para cortar los episodios.
+    # El clasificador final, con todo, para cortar los videos.
     clasificador = make_pipeline(StandardScaler(), LogisticRegression(C=0.05, max_iter=5000, class_weight="balanced"))
     clasificador.fit(x, y)
     escala, regresion = clasificador.named_steps["standardscaler"], clasificador.named_steps["logisticregression"]

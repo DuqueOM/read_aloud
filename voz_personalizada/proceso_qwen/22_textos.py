@@ -7,12 +7,12 @@ de voz.toml.
 Con la voz de prueba, la referencia fueron los textos de los 516 clips del conjunto
 final, con las 140 correcciones a mano del usuario. Se comparan:
 
-- hoy: el texto que salio de transcribir el episodio entero con Whisper
+- hoy: el texto que salio de transcribir la grabacion entera con Whisper
   large-v3, antes de las correcciones;
 - whisper: Whisper large-v3 sobre cada clip por separado, con busqueda en haz;
 - qwen: Qwen3-ASR-1.7B (Apache-2.0) sobre cada clip;
-- y las dos ultimas con un contexto que les da los nombres propios, como
-  se escriben en las correcciones.
+- y las dos ultimas con un contexto que les da los nombres propios, como se
+  escriben en las correcciones.
 
 La medida es el error por caracter (CER) sin mayusculas ni signos, y aparte
 cuantas veces acierta el signo final (¿pregunta?, ¡exclamacion!, punto), que
@@ -45,8 +45,8 @@ SALIDA = DATOS / "22_textos"
 FINAL = DATOS / "08_final" / f"{voz.NOMBRE}_{voz.IDIOMA}"
 
 # De que es la grabacion y los nombres propios como deben escribirse: guia a
-# los dos transcriptores. Con la voz de prueba: "las grabaciones de prueba, grabaciones.
-# Nombres: la voz de prueba, Ana, Ana, ...".
+# los dos transcriptores. Por ejemplo: "Charlas de cocina. Nombres: Ana,
+# Beto, Carla.".
 CONTEXTO = voz.CONTEXTO
 # Variantes de un mismo nombre que no cuentan como error.
 VARIANTES = voz.VARIANTES

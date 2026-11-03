@@ -1,8 +1,8 @@
 """Arma los dos conjuntos de entrenamiento de Qwen3-TTS a partir de 30_seleccion_final.py.
 
 - mejores60 (o los minutos_finales de voz.toml): los minutos de mas calidad.
-- todos: esos mismos mas los que quedaron fuera solo por calidad (con la voz de prueba,
-  unos 74 minutos). Con las mismas reglas de duplicados, duracion minima y
+- todos: esos mismos mas los que quedaron fuera solo por calidad (con la voz de
+  prueba, unos 74 minutos). Con las mismas reglas de duplicados, duracion minima y
   tomas repetidas, asi la unica diferencia entre los dos es el corte por
   calidad, y la comparacion a ciegas dice si ese corte ayuda.
 

@@ -336,7 +336,9 @@ def pagina() -> None:
                 errores[voz].append({"frase": f["texto"], "toma": t, "dicho": m["dicho"],
                                      "error": round(m["error"], 3)})
     datos = {"mapa": mapa, "voces": {v: e for v, (_, _, e) in VOCES.items()}, "resumen": resumen,
-             "errores": errores, "real": medicion.get("_real", medicion.get("_real"))}
+             # "_real", o "_<nombre>_real" en las mediciones de versiones anteriores.
+             "errores": errores, "real": next((v for k, v in medicion.items()
+                                               if k.startswith("_") and k.endswith("_real")), None)}
 
     (SALIDA / "votar.html").write_text(PLANTILLA.replace("{{TARJETAS}}", "".join(tarjetas))
                                        .replace("{{TITULO}}", html.escape(config_voz.TITULO))

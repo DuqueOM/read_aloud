@@ -1,29 +1,29 @@
-"""Procesa un lote de capitulos nuevos de principio a fin, en paralelo.
+"""Procesa un lote de videos nuevos de principio a fin, en paralelo.
 
-Cada capitulo pasa por cinco pasos: extraer el audio, separar la voz,
+Cada video pasa por cinco pasos: extraer el audio, separar la voz,
 transcribir, alinear las palabras y calcular quien habla (las huellas de
 WavLM de 24_curva_wavlm.py). Todos menos el primero usan la tarjeta, de a uno:
 con dos a la vez no caben en sus 8 GB, Windows pasa memoria a la RAM y todo
 va mucho mas lento. Whisper corre a media precision (03_transcribir.py), unos
-2 minutos por capitulo; en el procesador llego a tardar 174. Un hilo separa
-los capitulos uno tras otro y alinea lo ya transcrito; el otro transcribe lo
+2 minutos por video; en el procesador llego a tardar 174. Un hilo separa
+los videos uno tras otro y alinea lo ya transcrito; el otro transcribe lo
 ya separado, y se turnan la tarjeta. El avance se ve en progreso.html.
 
 Mientras la tarjeta tiene trabajo, el lote deja la marca de gpu.py: Read
 Aloud lee con Piper y no le disputa la memoria. Mientras solo espera
 descargas, la quita, y la voz de Qwen vuelve.
 
-Mientras trabaja, revisa las carpetas de origen e incorpora los capitulos que
+Mientras trabaja, revisa las carpetas de origen e incorpora los videos que
 terminen de descargarse. Chrome guarda una descarga en curso como .crdownload y
 le pone su nombre final solo al completarla, asi que un video con su
 extension ya esta entero. El lote no termina mientras quede alguna descarga en
 curso.
 
-Las carpetas, el filtro por nombre y como sacar el numero de cada capitulo
+Las carpetas, el filtro por nombre y como sacar el numero de cada video
 salen de voz.toml (voz.py).
 
 Uso:
-    python scripts/lote.py                las carpetas de voz.toml, capitulos nuevos
+    python scripts/lote.py                las carpetas de voz.toml, videos nuevos
     python scripts/lote.py RUTA_ORIGEN
 """
 
@@ -48,7 +48,7 @@ TRANSCRIPCION = RAIZ / "datos" / "03_transcripcion"
 EXTENSIONES = {".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4a", ".mp3", ".wav", ".flac", ".ogg", ".aac"}
 PASOS =["extraccion", "separacion", "transcripcion", "alineacion", "curva"]
 
-# Medido en los capitulos 1 a 3, en la tarjeta a media precision.
+# Medido en los videos 1 a 3, en la tarjeta a media precision.
 MINUTOS_TRANSCRIPCION = 2
 
 # Una descarga que no avanza en este tiempo se da por abandonada, para que el
@@ -76,12 +76,12 @@ def descargas_en_curso(origenes: list) -> bool:
 
 
 def numero_de_capitulo(nombre: str):
-    """El numero de capitulo de una grabacion, o None.
+    """El numero de una grabacion, o None.
 
     Con patron_episodio en voz.toml, el que saque ese patron. Si no, los
-    nombres pueden venir de distintos sitios, como paso con la primera voz:
-    "... Episode 22 en Espanol...", "...captulo 1 - ..." o "42 ... en
-    Espanol ... otro sitio"; y si nada de eso, el primer numero.
+    nombres pueden venir de distintos sitios y con distinta forma: el numero
+    que sigue a "Episode", "Episodio" o "capitulo" ("Video - Episodio 22"),
+    el del principio ("42 - titulo") o, si nada de eso, el primer numero.
     Con filtro_nombre, solo cuentan los nombres que lo contienen, para no
     tomar otros videos de Descargas."""
     if voz.FILTRO_NOMBRE and voz.FILTRO_NOMBRE.lower() not in nombre.lower():
@@ -95,7 +95,7 @@ def numero_de_capitulo(nombre: str):
 
 
 def buscar_capitulos(origenes: list) -> dict:
-    """Capitulos de los origenes que aun no estan procesados, por numero."""
+    """Videos de los origenes que aun no estan procesados, por numero."""
     encontrados = {}
     for video in (v for origen in origenes for v in sorted(origen.iterdir())
                   if v.is_file() and v.suffix.lower() in EXTENSIONES):
@@ -112,19 +112,19 @@ def main() -> None:
     origen = [Path(sys.argv[1])] if len(sys.argv) > 1 else [o for o in voz.ORIGENES if o.exists()]
     capitulos = buscar_capitulos(origen)
     if not capitulos:
-        print("No hay capitulos nuevos que procesar.")
+        print("No hay videos nuevos que procesar.")
         return
 
     episodios = list(capitulos)
-    estado = nuevo(f"Preparación de la voz de {voz.TITULO} · capítulos {episodios[0][2:]} a {episodios[-1][2:]}",
+    estado = nuevo(f"Preparación de la voz de {voz.TITULO} · videos {episodios[0][2:]} a {episodios[-1][2:]}",
                    episodios, PASOS)
-    estado["eventos"].insert(0, [time.strftime("%H:%M"), f"Lote iniciado con {len(episodios)} capítulos"])
+    estado["eventos"].insert(0, [time.strftime("%H:%M"), f"Lote iniciado con {len(episodios)} videos"])
     guardar(estado)
 
     cerrojo = threading.Lock()
 
     def incorporar_nuevos() -> list:
-        """Agrega al lote los capitulos que terminaron de descargarse."""
+        """Agrega al lote los videos que terminaron de descargarse."""
         nuevos = {e: v for e, v in buscar_capitulos(origen).items() if e not in capitulos}
         if not nuevos:
             return []
@@ -135,14 +135,14 @@ def main() -> None:
                 estado["orden"].append(episodio)
                 estado["episodios"][episodio] = {p: "pendiente" for p in PASOS}
             estado["orden"].sort()
-            estado["titulo"] = (f"Preparación de la voz de {voz.TITULO} · capítulos "
+            estado["titulo"] = (f"Preparación de la voz de {voz.TITULO} · videos "
                                 f"{estado['orden'][0][2:]} a {estado['orden'][-1][2:]}")
         marcar(estado, "calibracion", "pendiente",
                evento=f"Descarga completa, se suman: {', '.join(nuevos)}")
         return sorted(nuevos)
 
-    separados = []          # cola de capitulos listos para transcribir
-    transcritos = []        # cola de capitulos listos para alinear
+    separados = []          # cola de videos listos para transcribir
+    transcritos = []        # cola de videos listos para alinear
     fin_separacion = threading.Event()
     fin_transcripcion = threading.Event()
     # Separar, transcribir, alinear y calcular la curva usan la tarjeta: uno a
@@ -183,7 +183,7 @@ def main() -> None:
                 episodio = pendientes_separar.pop(0)
                 destino = AUDIO / f"{episodio}.wav"
                 # El video puede haberse movido de carpeta desde que se encontro
-                # (de Descargas a la de los capitulos): se busca donde esta ahora.
+                # (de Descargas a la de los videos): se busca donde esta ahora.
                 capitulos[episodio] = buscar_capitulos(origen).get(episodio, capitulos[episodio])
                 marcar(estado, "extraccion", "en curso", episodio)
                 ok = destino.exists() or ejecutar(
@@ -207,7 +207,7 @@ def main() -> None:
                 gpu.liberar()
 
             # No se da por terminada la separacion mientras se este bajando
-            # algun capitulo: llegara mas trabajo.
+            # algun video: llegara mas trabajo.
             if descargas_en_curso(origen):
                 time.sleep(10)
                 continue
@@ -259,7 +259,7 @@ def main() -> None:
     for h in hilos:
         h.join()
 
-    estado["nota"] = ("Los capítulos nuevos están preparados. Sigue con la primera revisión o, si ya la "
+    estado["nota"] = ("Los videos nuevos están preparados. Sigue con la primera revisión o, si ya la "
                       "hiciste, con 24_curva_wavlm.py y 25_cortar_frases.py (docs\\voz-personalizada.md).")
     marcar(estado, "calibracion", "pendiente", evento="Preparación automática terminada")
     print("listo", time.strftime("%H:%M"), flush=True)

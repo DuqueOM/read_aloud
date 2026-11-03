@@ -124,7 +124,7 @@ def _pagina(estado: dict) -> str:
 <p class="sub">Empezó a las {estado["inicio"][11:16]} · {pct} % completado · se actualiza sola cada 15 s</p>
 <div class="barra"><i></i></div>
 {enlace}{nota}
-<table><thead><tr><th>Capítulo</th>{cabecera}</tr></thead>
+<table><thead><tr><th>Grabación</th>{cabecera}</tr></thead>
 <tbody>{filas}{finales}</tbody></table>
 <h2 style="font-size:15px;color:#8a8a94;font-weight:500">Últimos eventos</h2>
 <ul>{eventos}</ul>

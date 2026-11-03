@@ -20,15 +20,18 @@ import librosa
 import numpy as np
 import soundfile as sf
 
+import voz
+
 RAIZ = Path(__file__).resolve().parent.parent
 APPLIO = RAIZ / "applio"
-MODELO = APPLIO / "logs" / "mi_voz_es"
-CONJUNTO = RAIZ / "datos" / "08_final" / "mi_voz_es"
+NOMBRE = f"{voz.NOMBRE}_{voz.IDIOMA}"
+MODELO = APPLIO / "logs" / NOMBRE
+CONJUNTO = RAIZ / "datos" / "08_final" / NOMBRE
 CORTES = RAIZ / "datos" / "04_cortes"
 SALIDA = RAIZ / "datos" / "09_comparar"
-PIPER = Path(r"C:\ruta\a\read_aloud\read_aloud_piper")
+PIPER = voz.lector() / "read_aloud_piper"
 VOZ_PIPER = "es_MX-claude-high"
-PESOS = MODELO / "mi_voz_es_375e_31500s.pth"
+PESOS = MODELO / f"{NOMBRE}_375e_31500s.pth"
 
 FRASES = 10
 MIN_S, MAX_S = 2.5, 7.0
@@ -122,8 +125,8 @@ def main() -> None:
  .fila span {{ color:#8a8a94; font-size:13px; }} audio {{ width:100%; height:34px; }}
 </style></head><body><main>
 <h1>Voz real y voz entrenada</h1>
-<p>Cada frase la dijo la voz real en las grabaciones. La voz entrenada dice el mismo texto: Piper lo lee y el modelo
-le pone el timbre de la voz de prueba. Abajo está Piper solo, para oír de dónde sale. Todo al mismo volumen.</p>
+<p>Cada frase la dijo la voz real en las grabaciones. La voz entrenada dice el mismo texto: Piper lo lee
+y el modelo le pone el timbre de la voz. Abajo está Piper solo, para oír de dónde sale. Todo al mismo volumen.</p>
 {filas}
 </main></body></html>""", encoding="utf-8")
     (SALIDA / "frases.json").write_text(json.dumps(frases, ensure_ascii=False, indent=1), encoding="utf-8")

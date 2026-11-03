@@ -1,4 +1,4 @@
-"""Transcribe la voz separada de cada capitulo con tiempos por palabra.
+"""Transcribe la voz separada de cada video con tiempos por palabra.
 
 Los tiempos de cada palabra son lo que permite cortar entre palabras en vez
 de cortar donde hay silencio: cuando dos personas hablan seguido no hay
@@ -9,7 +9,7 @@ Se usa large-v3, el modelo mas preciso de Whisper, sobre la voz ya separada:
 sin musica, la transcripcion y los tiempos salen mejores.
 
 Uso:
-    python scripts/03_transcribir.py            todos los capitulos
+    python scripts/03_transcribir.py            todos los videos
     python scripts/03_transcribir.py ep01       uno solo
 """
 
@@ -55,7 +55,7 @@ def main() -> None:
     # large-v3, el modelo mas preciso, en la tarjeta y a media precision, que
     # es como lo corre OpenAI en una tarjeta. A precision completa casi no
     # cabia en sus 8 GB y fue cuatro veces mas lento que el procesador; pero
-    # en el procesador, con la computadora en uso, un capitulo llego a tardar
+    # en el procesador, con la computadora en uso, un video llego a tardar
     # 174 minutos. A media precision los pesos ocupan 3 GB en vez de 6. Las
     # LayerNorm se quedan en float32: Whisper las calcula asi de todos modos.
     sys.path.insert(0, str(Path(__file__).parent))
@@ -63,7 +63,7 @@ def main() -> None:
     gpu.ocupar()
     # Se carga en el procesador y se pasa a la tarjeta ya en media precision:
     # cargarlo directo en la tarjeta deja reservados los 6 GB de float32 y el
-    # resto no cabe (un capitulo tardo 19 minutos en vez de 2).
+    # resto no cabe (un video tardo 19 minutos en vez de 2).
     modelo = whisper.load_model("large-v3", device="cpu", download_root=str(MODELOS)).half()
     for capa in modelo.modules():
         if isinstance(capa, torch.nn.LayerNorm):

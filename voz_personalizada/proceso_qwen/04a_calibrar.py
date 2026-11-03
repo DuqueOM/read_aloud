@@ -2,7 +2,7 @@
 
 El parecido es una medida de distancia entre voces, no una probabilidad: un
 0.6 no significa 60 %. Para poder decir "confianza de mas del 70 %" se ajusta
-un modelo de dos grupos a todas las ventanas de los capitulos. Un grupo
+un modelo de dos grupos a todas las ventanas de los videos. Un grupo
 representa a la voz y el otro al resto de las voces. Con ese modelo, cada
 valor de parecido se traduce en la probabilidad de pertenecer al grupo de
 la voz.

@@ -1,11 +1,11 @@
-"""Corta cada capitulo en clips donde solo habla la voz.
+"""Corta cada video en clips donde solo habla la voz.
 
 Combina dos senales:
 
-1. Quien habla en cada momento. Se recorre la voz del capitulo con una
+1. Quien habla en cada momento. Se recorre la voz del video con una
    ventana de 1.5 s que avanza de a 0.25 s, y en cada posicion se mide el
    parecido con las referencias. El resultado es una curva: alta mientras
-   habla la voz y baja cuando habla otra voz.
+   habla la voz y baja cuando habla otra.
 
 2. Donde empieza y termina cada palabra, segun la transcripcion de Whisper.
 
@@ -17,7 +17,7 @@ se corta dentro de un sonido. Al final, la huella del clip entero confirma que
 es de la voz.
 
 Uso:
-    python scripts/04_cortar.py              todos los capitulos transcritos
+    python scripts/04_cortar.py              todos los videos transcritos
     python scripts/04_cortar.py ep01         uno solo
     python scripts/04_cortar.py --curva      solo muestra el reparto de la curva
     python scripts/04_cortar.py --curvas ep01 solo calcula y guarda la curva
@@ -161,7 +161,7 @@ def referencias(modelo):
 
 
 def curva(modelo, episodio: str, centro, refs):
-    """Parecido con la voz a lo largo del capitulo. Se guarda en disco."""
+    """Parecido con la voz a lo largo del video. Se guarda en disco."""
     CURVAS.mkdir(parents=True, exist_ok=True)
     destino = CURVAS / f"{episodio}.npz"
     if destino.exists():
@@ -434,7 +434,7 @@ def main() -> None:
         for clip in clips:
             # El nombre sale del instante de inicio, en centesimas: asi un clip
             # conserva su nombre, y su decision en la revision, si se vuelve a
-            # cortar el capitulo con otra calibracion.
+            # cortar el video con otra calibracion.
             clip["archivo"] = f"{episodio}_{round(clip['inicio'] * 100):06d}.wav"
             clip["duracion"] = round(clip["fin"] - clip["inicio"], 3)
             sf.write(carpeta / clip["archivo"], clip.pop("audio"), tasa, subtype="PCM_24")

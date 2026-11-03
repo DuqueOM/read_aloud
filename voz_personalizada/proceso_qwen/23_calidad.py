@@ -12,13 +12,13 @@ Para cada uno de los 717 clips marcados en la revision se mide:
   si hay musica o ruido de fondo que la separacion no quito.
 - recorte: parte de las muestras saturadas.
 - empieza, termina: si el clip empieza y termina donde empieza y termina la
-  frase, segun la puntuacion de la transcripcion del episodio.
+  frase, segun la puntuacion de la transcripcion del video.
 - hablante: el puntaje del clasificador de 21_hablante.py (WavLM Large),
-  calculado sin ver el episodio del clip.
+  calculado sin ver el video del clip.
 
 Se informa el AUC de cada medida por separado (si conviene alto o bajo) y el
 de todas juntas en un clasificador evaluado igual que en 21_hablante.py, por
-episodios que no vio. Con eso se eligen los filtros y el orden de la pagina
+videos que no vio. Con eso se eligen los filtros y el orden de la pagina
 de revision.
 
 Corre en el entorno principal:
@@ -157,7 +157,7 @@ def main() -> None:
             medidas[f["nombre"]]["duracion"] = f["fin"] - f["inicio"]
         cache.write_text(json.dumps(medidas, indent=1), encoding="utf-8")
 
-    # El puntaje del hablante, sin ver el episodio del clip.
+    # El puntaje del hablante, sin ver el video del clip.
     huellas = np.load(DATOS / "21_hablante" / "huellas.npz")["wavlm_large"]
     huellas = huellas / (np.linalg.norm(huellas, axis=1, keepdims=True) + 1e-9)
     y = np.array([f["conservado"] for f in filas])

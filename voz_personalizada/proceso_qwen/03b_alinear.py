@@ -2,7 +2,7 @@
 
 Whisper entrega tiempos por palabra con un error de una o dos decimas. En el
 borde de un clip ese error es justo lo que deja entrar un resto de ruido o el
-comienzo de la voz de otra voz.
+comienzo de otra voz.
 
 Un modelo wav2vec2 entrenado en el idioma de la voz (voz.toml) escucha el
 audio letra por letra. Como
@@ -14,7 +14,7 @@ Si una palabra no se puede alinear, porque es un numero o porque la alineacion
 cae lejos de lo que dijo Whisper, conserva el tiempo de Whisper.
 
 Uso:
-    python scripts/03b_alinear.py            todos los capitulos transcritos
+    python scripts/03b_alinear.py            todos los videos transcritos
     python scripts/03b_alinear.py ep01       uno solo
 """
 

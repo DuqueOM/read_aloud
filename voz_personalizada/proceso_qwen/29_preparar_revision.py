@@ -1,4 +1,4 @@
-"""Prepara la pagina de revision unica con los clips de todos los capitulos.
+"""Prepara la pagina de revision unica con los clips de todos los videos.
 
 Corre en orden, uno a la vez en la tarjeta grafica, y muestra el avance en
 progreso.html:
@@ -54,7 +54,7 @@ def main() -> None:
     estado = nuevo(f"Voz de {voz.TITULO} · preparación de la revisión", [p[0] for p in PASOS], ["estado"],
                    finales=["pagina"], revision="datos/28_revision/revision.html")
     estado["filas"] = "Paso"
-    estado["nota"] = ("Los capítulos ya están separados, transcritos y cortados en frases completas. "
+    estado["nota"] = ("Los videos ya están separados, transcritos y cortados en frases completas. "
                       "Mientras corren estos pasos, Read Aloud lee con Piper.")
     guardar(estado)
     for nombre, python, argumentos in PASOS:
