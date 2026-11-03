@@ -1,0 +1,19 @@
+# ruff, para los scripts de Python (lib\ y voz_personalizada\). Lo corren el
+# pre-commit y la CI.
+line-length = 120
+target-version = "py312"
+
+[lint]
+# Las reglas por defecto de ruff: errores de sintaxis, nombres sin definir,
+# importaciones que no se usan y comparaciones dudosas.
+select = ["E4", "E7", "E9", "F"]
+ignore = [
+    # Muchos scripts fijan HF_HOME, TORCH_HOME o HF_HUB_OFFLINE antes de
+    # importar las librerias que las leen al cargarse: importar arriba de
+    # todo cambiaria lo que hacen.
+    "E402",
+    # Estilo: la variable "l" en comprensiones cortas y alguna lambda con
+    # nombre.
+    "E731",
+    "E741",
+]

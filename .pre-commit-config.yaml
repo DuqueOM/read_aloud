@@ -1,0 +1,50 @@
+# Revisiones antes de cada commit. Instalar una vez:
+#   uv tool install pre-commit
+#   pre-commit install
+# Y para revisar todo el repositorio:
+#   pre-commit run --all-files
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      # Que no se cuelen audios ni modelos.
+      - id: check-added-large-files
+        args: [--maxkb=5120]
+      - id: detect-private-key
+
+  # Tokens y claves de cualquier servicio (GitHub, Hugging Face, OpenAI...),
+  # en lo que se va a commitear.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.3
+    hooks:
+      - id: ruff
+        files: ^(lib|voz_personalizada)/.*\.py$
+      - id: ruff-format
+        files: ^(lib|voz_personalizada)/.*\.py$
+
+  - repo: local
+    hooks:
+      # Bloquea solo las reglas de severidad Error; las advertencias se
+      # muestran (configuracion en PSScriptAnalyzerSettings.psd1).
+      - id: psscriptanalyzer
+        name: PSScriptAnalyzer
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File tools/run_psscriptanalyzer.ps1
+        language: system
+        files: \.(ps1|psm1|psd1)$
+      # Terminos de tools/terminos.local.txt, que no se versiona: sin esa
+      # lista, el hook no revisa nada.
+      - id: check-terms
+        name: Terminos prohibidos
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File tools/check_terms.ps1
+        language: system
+        types: [text]
