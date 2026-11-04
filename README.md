@@ -43,7 +43,8 @@ can be resized from any side or corner, and it moves with the tab on top.
 
 The gear button opens the settings: opacity, size, font, the voice and the
 performance mode (the voice always loaded, or loaded only while reading to
-save resources).
+save resources). See
+[docs/configuracion.md](docs/configuracion.md#panel-de-ajustes) (in Spanish).
 
 <img src="docs/media/ajustes.png" width="320" alt="The settings panel">
 
