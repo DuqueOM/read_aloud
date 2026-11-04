@@ -8,8 +8,11 @@
   <img src="docs/media/demo.gif" width="800" alt="Se selecciona el texto de demostración, aparece la barra flotante y su panel resalta cada frase mientras se lee">
 </p>
 
-[Mira el video de 33 segundos con sonido](docs/media/demo.mp4): los términos
-técnicos en español y el cambio a la voz en inglés y de vuelta.
+La misma demostración en un video de 34 segundos con sonido: los términos
+técnicos en español y el cambio a la voz en inglés y de vuelta
+([descárgalo](docs/media/demo.mp4)).
+
+https://github.com/user-attachments/assets/59986ab1-2789-42c1-a016-11651bd9fa13
 
 Lee en voz alta el texto que tengas seleccionado, con un atajo de teclado y
 voces neuronales que corren en tu propia máquina. Sin internet, sin cuentas y

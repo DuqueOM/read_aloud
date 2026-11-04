@@ -8,8 +8,11 @@ English · [Español](README.es.md)
   <img src="docs/media/demo.gif" width="800" alt="The demo text is selected, the floating bar appears and its text panel highlights each sentence as it is read">
 </p>
 
-[Watch the 33-second video with sound](docs/media/demo.mp4): the technical
-terms in Spanish and the switch to the English voice and back.
+The same demo as a 34-second video with sound: the technical terms in
+Spanish and the switch to the English voice and back
+([download it](docs/media/demo.mp4)).
+
+https://github.com/user-attachments/assets/59986ab1-2789-42c1-a016-11651bd9fa13
 
 Reads the selected text aloud with a keyboard shortcut, using neural voices
 that run on your own machine. No internet connection, no accounts, and nothing
