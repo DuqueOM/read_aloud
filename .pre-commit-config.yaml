@@ -1,8 +1,12 @@
-# Revisiones antes de cada commit. Instalar una vez:
+# Revisiones antes de cada commit y, ademas, antes de cada push. Instalar una vez:
 #   uv tool install pre-commit
-#   pre-commit install
+#   pre-commit install --hook-type pre-commit --hook-type pre-push
 # Y para revisar todo el repositorio:
 #   pre-commit run --all-files
+#
+# Lo que no lleva "stages" corre solo al commitear; antes de subir corre,
+# ademas, la revision de todo el historial (ver el final del archivo).
+default_stages: [pre-commit]
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -48,3 +52,14 @@ repos:
         entry: powershell -NoProfile -ExecutionPolicy Bypass -File tools/check_terms.ps1
         language: system
         types: [text]
+      # Antes de subir: la misma lista, sobre todo el historial (lo que cada
+      # commit agrega o quita, mensajes, nombres de archivo y referencias).
+      # La CI no puede hacerlo porque la lista no se versiona; este es el unico
+      # control que impide subir historial viejo por accidente.
+      - id: check-terms-historial
+        name: Terminos prohibidos en el historial
+        entry: powershell -NoProfile -ExecutionPolicy Bypass -File tools/check_terms.ps1 -Historial
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
