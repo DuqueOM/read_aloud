@@ -67,6 +67,7 @@ Source: "..\setup.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\install_startup.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\iniciar_read_aloud.vbs"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\cerrar_read_aloud.vbs"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\VERSION"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\NOTICE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion

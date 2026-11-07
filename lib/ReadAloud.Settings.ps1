@@ -277,6 +277,32 @@ $xamlAjustes = @'
           </Grid>
           <TextBlock Style="{StaticResource Nota}"
                      Text="La pausa entre párrafos se nota desde la próxima lectura; la de entre frases, al reiniciar."/>
+
+          <TextBlock Style="{StaticResource Seccion}" Text="ATAJOS DE TECLADO"/>
+          <TextBlock x:Name="AtajosLista" Style="{StaticResource Etiqueta}" FontFamily="Consolas"
+                     TextWrapping="Wrap" Margin="0,2,0,6"/>
+          <TextBlock Style="{StaticResource Nota}"
+                     Text="Selecciona texto en cualquier programa y pulsa el atajo de leer. Para cambiarlos, escribe por ejemplo HotkeyRead = 'Ctrl+Alt+R' en config\settings.local.psd1 y reinicia el lector (ver docs\configuracion.md). Un valor vacío desactiva el atajo."/>
+          <TextBlock x:Name="AtajosAviso" Style="{StaticResource Nota}" Foreground="#F6C177"
+                     Visibility="Collapsed" Margin="0,4,0,0"/>
+
+          <TextBlock Style="{StaticResource Seccion}" Text="ACERCA DE"/>
+          <TextBlock x:Name="AcercaVersion" Style="{StaticResource Etiqueta}" Margin="0,2,0,4"/>
+          <TextBlock Style="{StaticResource Nota}"
+                     Text="Gratis y de código abierto. ¿Encontraste un error o tienes una idea? Abre una incidencia en GitHub o escribe a duqueortegamutis@gmail.com."/>
+          <WrapPanel Margin="0,8,0,0">
+            <Button x:Name="BtnDiagnostico" Content="Copiar diagnóstico" Padding="12,5" Margin="0,0,6,6"
+                    Background="#14FFFFFF"
+                    ToolTip="Copia un resumen (versión, motores, atajos y registro) para pegarlo en una incidencia"/>
+            <Button x:Name="BtnActualizar" Content="Buscar actualizaciones" Padding="12,5" Margin="0,0,6,6"
+                    Background="#14FFFFFF"
+                    ToolTip="Consulta GitHub solo ahora; Read Aloud no consulta nada por su cuenta"/>
+            <Button x:Name="BtnGitHub" Content="Abrir GitHub" Padding="12,5" Margin="0,0,6,6"
+                    Background="#14FFFFFF"/>
+          </WrapPanel>
+          <TextBlock x:Name="ActualizarNota" Style="{StaticResource Nota}" Visibility="Collapsed"/>
+          <Button x:Name="BtnInstalarUpdate" Content="Descargar e instalar" Padding="12,5" Margin="0,6,0,0"
+                  HorizontalAlignment="Left" Background="#333B82F6" Visibility="Collapsed"/>
         </StackPanel>
       </ScrollViewer>
 
@@ -306,7 +332,9 @@ $aj = @{}
 foreach ($nombre in @('Titulo', 'Cerrar', 'Scroll', 'Opacidad', 'OpacidadValor', 'Fuente', 'FuenteValor',
                       'PanelAlto', 'PanelAltoValor', 'PanelAncho', 'PanelAnchoValor', 'MotorQwen', 'MotorNota',
                       'VocesEs', 'VocesEn', 'RendimientoNota', 'MinutosFila', 'PausaFrase', 'PausaFraseValor',
-                      'PausaParrafo', 'PausaParrafoValor', 'Reinicio', 'ReiniciarAhora', 'Restablecer')) {
+                      'PausaParrafo', 'PausaParrafoValor', 'Reinicio', 'ReiniciarAhora', 'Restablecer',
+                      'AtajosLista', 'AtajosAviso', 'AcercaVersion', 'BtnDiagnostico', 'BtnActualizar', 'BtnGitHub',
+                      'ActualizarNota', 'BtnInstalarUpdate')) {
     $aj[$nombre] = $ajustesVentana.FindName($nombre)
 }
 
@@ -552,6 +580,8 @@ function Show-SettingsWindow {
     }
     Update-MotorNota
     Update-RendimientoNota
+    Update-AtajosLista
+    $aj.AcercaVersion.Text = 'Read Aloud ' + (Get-ReadAloudVersion -Root $paths.Root)
 
     $area = [Windows.SystemParameters]::WorkArea
     $aj.Scroll.MaxHeight = [Math]::Max(240, $area.Height - 200)
@@ -584,6 +614,109 @@ $ajustesVentana.Add_KeyDown({ param($sender, $e); if ($e.Key -eq 'Escape') { $aj
 $aj.Titulo.Add_MouseLeftButtonDown({ try { $ajustesVentana.DragMove() } catch { } })
 
 $aj.ReiniciarAhora.Add_Click({ Restart-Lector })
+
+# --------------------------------------------------------------------------
+# Atajos y "Acerca de". La red solo se toca al pulsar "Buscar actualizaciones"
+# y "Descargar e instalar"; Read Aloud no consulta nada por su cuenta.
+# --------------------------------------------------------------------------
+function Update-AtajosLista {
+    $acciones = Get-HotkeyActions
+    $filas = New-Object System.Collections.Generic.List[string]
+    $fallidos = New-Object System.Collections.Generic.List[string]
+    foreach ($e in $script:hotkeyReport) {
+        $etiqueta = $acciones[$e.Action].Label
+        if ($e.Active) {
+            $filas.Add(('{0,-18} {1}' -f $e.Text, $etiqueta))
+        } elseif ($e.Reason -eq 'disabled') {
+            $filas.Add(('{0,-18} {1}' -f '(desactivado)', $etiqueta))
+        } else {
+            $filas.Add(('{0,-18} {1}' -f $e.Text, ($etiqueta + ' - NO DISPONIBLE')))
+            $fallidos.Add($e.Text)
+        }
+    }
+    $aj.AtajosLista.Text = ($filas -join "`n")
+    if ($fallidos.Count -gt 0) {
+        $aj.AtajosAviso.Text = 'Otro programa usa ya: ' + ($fallidos -join ', ') + '. Cambia esos atajos o cierra ese programa y reinicia el lector.'
+        $aj.AtajosAviso.Visibility = 'Visible'
+    } else {
+        $aj.AtajosAviso.Visibility = 'Collapsed'
+    }
+}
+
+function Set-ActualizarNota {
+    param([string]$Texto)
+    $aj.ActualizarNota.Text = $Texto
+    $aj.ActualizarNota.Visibility = $(if ($Texto) { 'Visible' } else { 'Collapsed' })
+}
+
+$script:actualizacion = $null
+
+$aj.BtnDiagnostico.Add_Click({
+    try {
+        $log = @(Get-Content -LiteralPath $paths.LogFile -Tail 25 -ErrorAction SilentlyContinue)
+        $texto = Get-DiagnosticText -Version (Get-ReadAloudVersion -Root $paths.Root) -Engines $engines `
+            -HotkeyReport $script:hotkeyReport -LogTail $log
+        [Windows.Clipboard]::SetText($texto)
+        Set-ActualizarNota 'Diagnóstico copiado: pégalo en la incidencia o en el correo.'
+    } catch {
+        Set-ActualizarNota ('No se pudo copiar el diagnóstico: ' + $_.Exception.Message)
+    }
+})
+
+$aj.BtnGitHub.Add_Click({ Start-Process 'https://github.com/DuqueOM/read_aloud' })
+
+$aj.BtnActualizar.Add_Click({
+    $aj.BtnInstalarUpdate.Visibility = 'Collapsed'
+    $script:actualizacion = $null
+    $ajustesVentana.Cursor = 'Wait'
+    Set-ActualizarNota 'Consultando GitHub...'
+    $ajustesVentana.Dispatcher.Invoke([Action]{}, [Windows.Threading.DispatcherPriority]::Render)
+    try {
+        $release = Get-LatestRelease
+        $actual = Get-ReadAloudVersion -Root $paths.Root
+        if (Test-NewerVersion -Current $actual -Latest $release.tag_name) {
+            $asset = Select-InstallerAsset $release
+            $notas = Get-ReleaseNotesSummary -Body $release.body -MaxLines 10
+            if ($null -eq $asset) {
+                Set-ActualizarNota ("Hay una versión nueva ($($release.tag_name)), pero todavía no tiene instalador: mira " + $release.html_url)
+            } else {
+                $script:actualizacion = $asset
+                $mb = [Math]::Round($asset.Size / 1MB, 1)
+                Set-ActualizarNota ("Hay una versión nueva: $($release.tag_name) (tú tienes $actual). El instalador pesa $mb MB.`n`n$notas")
+                $aj.BtnInstalarUpdate.Visibility = 'Visible'
+            }
+        } else {
+            Set-ActualizarNota "Ya tienes la última versión ($actual)."
+        }
+    } catch {
+        Set-ActualizarNota 'No se pudo consultar GitHub. Revisa tu conexión a internet e inténtalo de nuevo.'
+        Write-DaemonLog ('Buscar actualizaciones: ' + $_.Exception.Message)
+    } finally {
+        $ajustesVentana.Cursor = $null
+    }
+})
+
+$aj.BtnInstalarUpdate.Add_Click({
+    if ($null -eq $script:actualizacion) { return }
+    $respuesta = [Windows.MessageBox]::Show($ajustesVentana,
+        'Se descargará el instalador, se comprobará su suma SHA-256 y se abrirá. Read Aloud se cerrará para actualizarse. ¿Seguir?',
+        'Read Aloud', 'YesNo', 'Question')
+    if ($respuesta -ne 'Yes') { return }
+
+    $ajustesVentana.Cursor = 'Wait'
+    Set-ActualizarNota 'Descargando y verificando el instalador...'
+    $ajustesVentana.Dispatcher.Invoke([Action]{}, [Windows.Threading.DispatcherPriority]::Render)
+    try {
+        $instalador = Save-ReleaseInstaller -Asset $script:actualizacion
+        Write-DaemonLog ('Actualizacion: se abre ' + $instalador)
+        Start-Process -FilePath $instalador
+        Set-ActualizarNota 'Instalador abierto. Sigue sus pasos; Read Aloud se cerrará.'
+    } catch {
+        Set-ActualizarNota ('No se pudo actualizar: ' + $_.Exception.Message)
+    } finally {
+        $ajustesVentana.Cursor = $null
+    }
+})
 
 $aj.Restablecer.Add_Click({
     $respuesta = [Windows.MessageBox]::Show($ajustesVentana,

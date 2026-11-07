@@ -24,6 +24,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Text.ps1')
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Player.ps1')
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Hotkeys.ps1')
+. (Join-Path $PSScriptRoot 'lib\ReadAloud.Update.ps1')
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
