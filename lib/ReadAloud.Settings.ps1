@@ -306,6 +306,12 @@ $xamlAjustes = @'
             <RadioButton GroupName="Rendimiento" Tag="ahorro" Content="Ahorro de recursos"/>
           </WrapPanel>
           <TextBlock x:Name="RendimientoNota" Style="{StaticResource Nota}"/>
+          <TextBlock Style="{StaticResource Etiqueta}" Text="Si la voz propia aún está cargando"/>
+          <WrapPanel>
+            <RadioButton GroupName="EsperaQwen" Tag="6" Content="Leer con Piper mientras tanto"/>
+            <RadioButton GroupName="EsperaQwen" Tag="120" Content="Esperar a la voz propia"/>
+          </WrapPanel>
+          <TextBlock Style="{StaticResource Nota}" Text="Cargar la voz propia tarda de 15 a 50 s al abrir Read Aloud. Con Piper mientras tanto, la lectura empieza enseguida pero las primeras frases suenan con otra voz."/>
           <StackPanel x:Name="MinutosFila">
             <TextBlock Style="{StaticResource Etiqueta}" Text="Liberar la voz tras este tiempo sin leer"/>
             <WrapPanel>
@@ -546,6 +552,7 @@ $gruposAjustes = @{
     VozEs       = @{ Clave = 'VoiceEs'; Aplicar = { param($v) Request-SynthApply } }
     VozEn       = @{ Clave = 'VoiceEn'; Aplicar = { param($v) Request-SynthApply } }
     Rendimiento = @{ Clave = 'Performance'; Aplicar = { param($v) Update-RendimientoNota; Request-SynthApply } }
+    EsperaQwen  = @{ Clave = 'QwenLoadWaitSeconds'; Tipo = 'double'; Aplicar = { param($v) $synthConfig.Qwen.WaitSeconds = [double]$v } }
     Minutos     = @{ Clave = 'SaverIdleMinutes'; Tipo = 'double'; Aplicar = { param($v) Request-SynthApply } }
     Cerrar      = @{ Clave = 'PlayerAutoClose'; Tipo = 'bool' }
     Salto       = @{ Clave = 'SkipSeconds'; Tipo = 'double'; Aplicar = { param($v) Update-SkipLabels } }
@@ -685,7 +692,12 @@ $aj.PausaParrafo.Add_ValueChanged({
 # Ventana.
 # --------------------------------------------------------------------------
 function Show-SettingsWindow {
+    # Sin -Mostrar, la tuerca la abre y la cierra; con -Mostrar (acceso directo
+    # del escritorio, orden 'settings') solo la muestra y la trae al frente.
+    param([switch]$Mostrar)
+
     if ($ajustesVentana.IsVisible) {
+        if ($Mostrar) { [void]$ajustesVentana.Activate(); return }
         $ajustesVentana.Hide()
         return
     }

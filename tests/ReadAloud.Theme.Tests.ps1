@@ -95,3 +95,20 @@ Describe 'Tema en tiempo real (recursos dinamicos)' {
         $w.FindName('B').Background.Color.ToString() | Should -BeExactly '#F21B1B1F'
     }
 }
+
+Describe 'Save-AppIconFile' {
+    It 'escribe un .ico valido con cuatro imagenes PNG' {
+        $f = Join-Path $TestDrive 'a.ico'
+        Save-AppIconFile -Path $f
+        $b = [IO.File]::ReadAllBytes($f)
+        # ICONDIR: reservado 0, tipo 1, cuatro imagenes
+        [BitConverter]::ToUInt16($b, 0) | Should -Be 0
+        [BitConverter]::ToUInt16($b, 2) | Should -Be 1
+        [BitConverter]::ToUInt16($b, 4) | Should -Be 4
+        # la primera imagen empieza tras el directorio y es un PNG
+        $offset = [BitConverter]::ToUInt32($b, 6 + 12)
+        $offset | Should -Be (6 + 16 * 4)
+        $b[$offset] | Should -Be 0x89
+        [Text.Encoding]::ASCII.GetString($b, $offset + 1, 3) | Should -BeExactly 'PNG'
+    }
+}

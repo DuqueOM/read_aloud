@@ -122,8 +122,11 @@ file with its checksum, so you can check that the download is intact:
 (Get-FileHash .\ReadAloud-Setup-1.2.0.exe).Hash
 ```
 
-To uninstall, use "Apps" in Windows Settings. In the Start menu you will find
-"Close Read Aloud" and "Install or repair the voices".
+The installer can put a shortcut on the desktop that opens the settings (no
+reading needed), and the Start menu gets "Read Aloud settings", "Close Read
+Aloud", "Install or repair the voices" and "Uninstall Read Aloud" (also in
+"Apps" in Windows Settings; it asks whether to keep your settings and
+dictionary).
 
 **From the repository (for developers):**
 

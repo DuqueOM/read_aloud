@@ -15,6 +15,7 @@
 #   .\read_aloud.ps1 -Stop                 Detiene la lectura
 #   .\read_aloud.ps1 -Toggle               Pausa o continua
 #   .\read_aloud.ps1 -Quit                 Cierra Read Aloud del todo
+#   .\read_aloud.ps1 -Settings             Abre los ajustes (arranca el programa si hace falta)
 #   .\read_aloud.ps1 -Language English     Fuerza el idioma
 #   .\read_aloud.ps1 -ShowPlan             Muestra como se va a segmentar, sin leer
 #   .\read_aloud.ps1 -Diagnose             Revisa la instalacion
@@ -31,6 +32,7 @@ param(
     [switch]$Stop,
     [switch]$Toggle,
     [switch]$Quit,
+    [switch]$ShowSettings,
     [switch]$ShowPlan,
     [switch]$Diagnose,
     [switch]$ListVoices,
@@ -77,6 +79,19 @@ if ($Stop) {
         Get-Process -Name 'piper' -ErrorAction SilentlyContinue | Stop-Process -Force
     }
 
+    exit 0
+}
+
+if ($ShowSettings) {
+    # Abre la ventana de ajustes sin leer nada. Si el programa no esta abierto,
+    # se arranca primero (oculto) y se espera a que atienda.
+    if (-not (Test-DaemonRunning -PipeName $paths.PipeName)) {
+        if (-not (Start-ReadAloudDaemon -Paths $paths)) {
+            Write-Host 'No pude arrancar Read Aloud. Revisa read_aloud_piper\runtime\daemon.log' -ForegroundColor Yellow
+            exit 1
+        }
+    }
+    [void](Send-ReadAloudCommand -PipeName $paths.PipeName -Command @{ cmd = 'settings' })
     exit 0
 }
 

@@ -2313,6 +2313,7 @@ $timer.Add_Tick({
             'louder' { Set-PlaybackVolume -Direction 1 }
             'quieter'{ Set-PlaybackVolume -Direction -1 }
             'panel'  { Set-TextPanel -Visible (-not $script:panelVisible) }
+            'settings' { Show-SettingsWindow -Mostrar }
             'slower' { Set-PlaybackSpeed -Direction -1 }
             'quit'   {
                 Stop-Playback

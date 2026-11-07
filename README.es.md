@@ -119,8 +119,11 @@ descarga está íntegra:
 (Get-FileHash .\ReadAloud-Setup-1.2.0.exe).Hash
 ```
 
-Para desinstalar, usa "Aplicaciones" en la Configuración de Windows. En el menú
-Inicio encontrarás "Cerrar Read Aloud" e "Instalar o reparar las voces".
+El instalador puede dejar un acceso directo en el escritorio que abre los
+ajustes (sin leer nada), y el menú Inicio trae "Ajustes de Read Aloud",
+"Cerrar Read Aloud", "Instalar o reparar las voces" y "Desinstalar Read Aloud"
+(también en "Aplicaciones" de la Configuración de Windows; pregunta si quieres
+conservar tus ajustes y tu diccionario).
 
 **Desde el repositorio (para desarrolladores):**
 

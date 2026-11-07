@@ -197,3 +197,50 @@ function Set-ThemeResources {
         $Resources['T_White'] = $convert.ConvertFromString($white)
     }
 }
+
+function Save-AppIconFile {
+    # Escribe el icono de Read Aloud (un circulo con el simbolo de volumen) como
+    # .ico con imagenes PNG de 16, 32, 48 y 256 px. Se dibuja aqui, igual que el
+    # de la bandeja, para no llevar un archivo binario en el repositorio.
+    param([string]$Path, [string]$Color = '#2E8B6A')
+
+    Add-Type -AssemblyName System.Drawing
+
+    $images = New-Object System.Collections.Generic.List[object]
+    foreach ($size in 16, 32, 48, 256) {
+        $bmp = New-Object Drawing.Bitmap $size, $size
+        $g = [Drawing.Graphics]::FromImage($bmp)
+        $g.SmoothingMode = 'AntiAlias'
+        $g.TextRenderingHint = 'AntiAlias'
+        $g.FillEllipse((New-Object Drawing.SolidBrush ([Drawing.ColorTranslator]::FromHtml($Color))), 0.03 * $size, 0.03 * $size, 0.94 * $size, 0.94 * $size)
+        $font = New-Object Drawing.Font('Segoe MDL2 Assets', [single](0.47 * $size), [Drawing.GraphicsUnit]::Pixel)
+        $format = New-Object Drawing.StringFormat
+        $format.Alignment = 'Center'
+        $format.LineAlignment = 'Center'
+        $g.DrawString([string][char]0xE767, $font, [Drawing.Brushes]::White, ([Drawing.RectangleF]::new(0, 0.03 * $size, $size, $size)), $format)
+        $g.Dispose()
+        $ms = New-Object IO.MemoryStream
+        $bmp.Save($ms, [Drawing.Imaging.ImageFormat]::Png)
+        $images.Add(@{ Size = $size; Bytes = $ms.ToArray() })
+        $bmp.Dispose()
+        $ms.Dispose()
+    }
+
+    $out = New-Object IO.MemoryStream
+    $w = New-Object IO.BinaryWriter $out
+    $w.Write([uint16]0); $w.Write([uint16]1); $w.Write([uint16]$images.Count)
+    $offset = 6 + 16 * $images.Count
+    foreach ($img in $images) {
+        $dim = $(if ($img.Size -ge 256) { 0 } else { $img.Size })
+        $w.Write([byte]$dim); $w.Write([byte]$dim); $w.Write([byte]0); $w.Write([byte]0)
+        $w.Write([uint16]1); $w.Write([uint16]32)
+        $w.Write([uint32]$img.Bytes.Length); $w.Write([uint32]$offset)
+        $offset += $img.Bytes.Length
+    }
+    foreach ($img in $images) { $w.Write($img.Bytes) }
+    $w.Flush()
+
+    $dir = Split-Path -Parent $Path
+    if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    [IO.File]::WriteAllBytes($Path, $out.ToArray())
+}

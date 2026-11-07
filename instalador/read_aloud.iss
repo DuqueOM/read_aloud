@@ -47,6 +47,10 @@ Name: "en"; MessagesFile: "compiler:Default.isl"
 [CustomMessages]
 es.TaskAutostart=Iniciar Read Aloud al encender el equipo (recomendado)
 en.TaskAutostart=Start Read Aloud when I sign in (recommended)
+es.TaskDesktop=Crear un acceso directo en el escritorio que abre los ajustes
+en.TaskDesktop=Create a desktop shortcut that opens the settings
+es.IconSettings=Ajustes de Read Aloud
+en.IconSettings=Read Aloud settings
 es.IconClose=Cerrar Read Aloud
 en.IconClose=Close Read Aloud
 es.IconVoices=Instalar o reparar las voces
@@ -62,6 +66,7 @@ en.RunNow=Start Read Aloud now
 
 [Tasks]
 Name: "autostart"; Description: "{cm:TaskAutostart}"
+Name: "desktopicon"; Description: "{cm:TaskDesktop}"
 
 [Files]
 Source: "..\read_aloud.ps1"; DestDir: "{app}"; Flags: ignoreversion
@@ -71,6 +76,8 @@ Source: "..\setup.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\install_startup.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\iniciar_read_aloud.vbs"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\cerrar_read_aloud.vbs"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\abrir_ajustes_read_aloud.vbs"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\crear_icono.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\VERSION"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\NOTICE"; DestDir: "{app}"; Flags: ignoreversion
@@ -82,13 +89,16 @@ Source: "..\config\*"; DestDir: "{app}\config"; Excludes: "*.local.psd1"; Flags:
 Source: "..\docs\*.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\Read Aloud"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\iniciar_read_aloud.vbs"""; WorkingDir: "{app}"
+Name: "{autoprograms}\Read Aloud"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\iniciar_read_aloud.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\read_aloud_piper\read_aloud.ico"
+Name: "{autoprograms}\{cm:IconSettings}"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\abrir_ajustes_read_aloud.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\read_aloud_piper\read_aloud.ico"
+Name: "{autodesktop}\Read Aloud"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\abrir_ajustes_read_aloud.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\read_aloud_piper\read_aloud.ico"; Tasks: desktopicon
 Name: "{autoprograms}\{cm:IconClose}"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\cerrar_read_aloud.vbs"""; WorkingDir: "{app}"
 Name: "{autoprograms}\{cm:IconVoices}"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\setup.ps1"" -NoStartupPrompt"; WorkingDir: "{app}"
 Name: "{autoprograms}\{cm:IconUninstall}"; Filename: "{uninstallexe}"
 Name: "{userstartup}\Read Aloud"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\iniciar_read_aloud.vbs"""; WorkingDir: "{app}"; Tasks: autostart
 
 [Run]
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\crear_icono.ps1"""; WorkingDir: "{app}"; Flags: runhidden waituntilterminated
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\setup.ps1"" -NoStartupPrompt"; WorkingDir: "{app}"; StatusMsg: "{cm:StatusVoices}"; Flags: waituntilterminated
 Filename: "{sys}\wscript.exe"; Parameters: """{app}\iniciar_read_aloud.vbs"""; WorkingDir: "{app}"; Description: "{cm:RunNow}"; Flags: postinstall nowait skipifsilent
 
