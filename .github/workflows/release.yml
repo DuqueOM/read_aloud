@@ -28,15 +28,24 @@ jobs:
         with:
           ref: ${{ env.ETIQUETA }}
 
-      - name: Instalar Inno Setup
+      # Los runners de Windows ya traen Inno Setup; solo se instala si falta.
+      - name: Preparar Inno Setup
         shell: pwsh
-        run: choco install innosetup --version 6.4.3 -y --no-progress
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+            if ($LASTEXITCODE -ne 0) { throw "choco termino con el codigo $LASTEXITCODE" }
+          }
+          if (-not (Test-Path $iscc)) { throw "No encuentro ISCC.exe en $iscc" }
+          "ISCC=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          & $iscc /? 2>&1 | Select-Object -First 2
 
       - name: Compilar el instalador
         shell: pwsh
         run: |
           $version = $env:ETIQUETA.TrimStart('v')
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DVersion=$version" instalador\read_aloud.iss
+          & $env:ISCC "/DVersion=$version" instalador\read_aloud.iss
           if ($LASTEXITCODE -ne 0) { throw "ISCC termino con el codigo $LASTEXITCODE" }
 
       - name: Calcular SHA-256
