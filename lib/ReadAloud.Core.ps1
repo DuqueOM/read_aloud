@@ -65,6 +65,7 @@ function Get-ReadAloudSettings {
         ShowPlayer          = $true
         PlayerAutoClose     = $true
         PlayerOpacity       = 0.8
+        Language            = 'auto'
         Theme               = 'system'
         Accent              = 'green'
         SkipSeconds         = 10

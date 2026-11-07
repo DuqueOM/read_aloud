@@ -94,6 +94,8 @@
     # Tema de color del reproductor y de los ajustes: 'system' (el de Windows),
     # 'dark' o 'light'. Acento: green, blue, purple, pink, orange, red, teal o
     # yellow. Se aplican al reiniciar el lector.
+    # Idioma de la interfaz: 'auto' (el de Windows), 'es' o 'en'.
+    Language = 'auto'
     Theme = 'system'
     Accent = 'green'
     SkipSeconds = 10

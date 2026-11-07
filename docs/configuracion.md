@@ -185,6 +185,7 @@ Si trabajas más en inglés que en español, cámbialo a `'en'`.
 | `ShowPlayer` | `$true` | Muestra la ventana flotante durante la lectura |
 | `PlayerAutoClose` | `$true` | La cierra sola al terminar |
 | `PlayerOpacity` | `0.8` | Opacidad en reposo, de `0.3` a `1.0` |
+| `Language` | `'auto'` | Idioma de la interfaz: `'auto'` (el de Windows), `'es'` o `'en'`. Al cambiarlo desde los ajustes el lector se reinicia solo |
 | `Theme` | `'system'` | Tema de color del reproductor y de los ajustes: `'system'` (el de Windows), `'dark'` o `'light'`. Se aplica al instante |
 | `Accent` | `'green'` | Color de acento: `green`, `blue`, `purple`, `pink`, `orange`, `red`, `teal` o `yellow`. Se aplica al instante |
 | `SkipSeconds` | `10` | Segundos que saltan los botones y los atajos |
@@ -264,7 +265,8 @@ sobre `settings.psd1`, y "Restablecer todo" lo borra y vuelve a los de
 | Lectura | Pausa entre frases | En unos segundos (se recargan las voces) |
 | Apariencia | Tema y color de acento | Al momento |
 | Atajos | Cada atajo, con "Restablecer atajos" | Al momento |
-| Pronunciación | Tu diccionario | En la próxima lectura |
+| Apariencia | Idioma de la aplicación | Reinicia el lector solo (unos segundos) |
+| Pronunciación | Tu diccionario, por idioma y por voz | En la próxima lectura |
 
 Ningún ajuste del panel pide reiniciar el lector. Los de voz van a los procesos
 de síntesis: al cambiarlos, el lector cierra esos procesos y abre otros con lo

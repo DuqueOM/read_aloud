@@ -26,6 +26,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Hotkeys.ps1')
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Update.ps1')
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Theme.ps1')
+. (Join-Path $PSScriptRoot 'lib\ReadAloud.Strings.ps1')
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -742,10 +743,14 @@ $xaml = @'
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="Fondo" Background="{TemplateBinding Background}" CornerRadius="6">
+            <Border x:Name="Fondo" Background="{TemplateBinding Background}" CornerRadius="6"
+                    BorderBrush="Transparent" BorderThickness="1">
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
             <ControlTemplate.Triggers>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="Fondo" Property="BorderBrush" Value="#9AE6B4"/>
+              </Trigger>
               <Trigger Property="IsMouseOver" Value="True">
                 <Setter TargetName="Fondo" Property="Background" Value="#2EFFFFFF"/>
               </Trigger>
@@ -931,7 +936,7 @@ $xaml = @'
         <Border Height="4" CornerRadius="2" Background="#3AFFFFFF" VerticalAlignment="Center"/>
         <Border x:Name="BufferBar" Height="4" CornerRadius="2" Background="#55FFFFFF"
                 HorizontalAlignment="Left" VerticalAlignment="Center" Width="0"/>
-        <Slider x:Name="Seek" Minimum="0" Maximum="100" Value="0" VerticalAlignment="Center"
+        <Slider x:Name="Seek" AutomationProperties.Name="Posicion de la lectura" Minimum="0" Maximum="100" Value="0" VerticalAlignment="Center"
                 Background="Transparent" IsMoveToPointEnabled="True"/>
       </Grid>
       <TextBlock x:Name="TimeLabel" Text="0:00 / 0:00" Foreground="#D8D8DC" FontFamily="Segoe UI"
@@ -988,7 +993,7 @@ $xaml = @'
       <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
         <TextBlock x:Name="VolumeLabel" Text="100 %" Foreground="#D8D8DC" FontFamily="Segoe UI"
                    FontSize="11" FontWeight="SemiBold" TextAlignment="Center" Width="42"/>
-        <Slider x:Name="VolumeFader" Style="{StaticResource Fader}" Orientation="Vertical"
+        <Slider x:Name="VolumeFader" AutomationProperties.Name="Volumen" Style="{StaticResource Fader}" Orientation="Vertical"
                 Minimum="0" Maximum="100" Value="100" SmallChange="5" LargeChange="10"
                 IsMoveToPointEnabled="True" Height="112" Width="28" Margin="0,8,0,0"/>
       </StackPanel>
@@ -1001,7 +1006,8 @@ $xaml = @'
 # Tema de color (ajustes Theme y Accent): el XAML esta escrito en oscuro y se
 # adapta antes de cargarlo.
 $script:paleta = Get-ThemePalette -Mode (Resolve-ThemeMode -Mode ([string]$settings.Theme) -SystemLight (Test-SystemLightTheme)) -Accent ([string]$settings.Accent)
-$xaml = ConvertTo-DynamicXaml -Xaml $xaml
+Set-UiLanguage (Resolve-UiLanguage -Setting ([string]$settings.Language))
+$xaml = ConvertTo-DynamicXaml -Xaml (Add-AutomationNames (Convert-XamlLanguage $xaml))
 
 $reader = New-Object IO.StringReader($xaml)
 $xmlReader = [Xml.XmlReader]::Create($reader)
@@ -1210,7 +1216,7 @@ function Set-PlaybackVolumeValue {
 
     # El icono dice de un vistazo si esta en silencio; el detalle, en el aviso.
     if ($script:volume -le 0.0) { $ui.BtnVolume.Content = [string][char]0xE74F } else { $ui.BtnVolume.Content = [string][char]0xE767 }
-    $ui.BtnVolume.ToolTip = 'Volumen {0}. Clic: ajustar. Rueda: subir o bajar.' -f (Format-VolumePercent $script:volume)
+    $ui.BtnVolume.ToolTip = (T 'Volumen {0}. Clic: ajustar. Rueda: subir o bajar.') -f (Format-VolumePercent $script:volume)
     $ui.VolumeLabel.Text = Format-VolumePercent $script:volume
 
     # El fader sigue al volumen cuando este cambia por la rueda o por una
@@ -2531,12 +2537,12 @@ function New-TrayIcon {
 $readKey = ($script:hotkeyReport | Where-Object { $_.Action -eq 'read' -and $_.Active } | Select-Object -First 1).Text
 $script:tray = New-Object Windows.Forms.NotifyIcon
 $script:tray.Icon = New-TrayIcon
-$script:tray.Text = $(if ($readKey) { 'Read Aloud - {0} para leer' -f $readKey } else { 'Read Aloud' })
+$script:tray.Text = $(if ($readKey) { (T 'Read Aloud - {0} para leer') -f $readKey } else { 'Read Aloud' })
 $trayMenu = New-Object Windows.Forms.ContextMenuStrip
-$itemAjustes = $trayMenu.Items.Add('Ajustes')
+$itemAjustes = $trayMenu.Items.Add((T 'Ajustes'))
 $itemAjustes.Add_Click({ Show-SettingsWindow })
 [void]$trayMenu.Items.Add('-')
-$itemSalir = $trayMenu.Items.Add('Salir de Read Aloud')
+$itemSalir = $trayMenu.Items.Add((T 'Salir de Read Aloud'))
 $itemSalir.Add_Click({
     $sync.Requests.Enqueue('{"cmd":"quit"}')
     $sync.WakeUi.Invoke()
@@ -2547,7 +2553,7 @@ $script:tray.Visible = $true
 
 if ($hotkeyFailed.Count -gt 0) {
     $lista = ($hotkeyFailed | ForEach-Object { $_.Text }) -join ', '
-    $script:tray.ShowBalloonTip(8000, 'Read Aloud', ('Estos atajos no se pudieron activar porque otro programa los usa: {0}. Cambialos en los ajustes.' -f $lista), [Windows.Forms.ToolTipIcon]::Warning)
+    $script:tray.ShowBalloonTip(8000, 'Read Aloud', ((T 'Estos atajos no se pudieron activar porque otro programa los usa: {0}. Cambialos en los ajustes.') -f $lista), [Windows.Forms.ToolTipIcon]::Warning)
 }
 
 $timer.Start()
