@@ -1,0 +1,54 @@
+name: Release
+
+# Al publicar un release se construye el instalador (Inno Setup) y se sube al
+# mismo release junto con su suma SHA-256, para que quien lo descargue (o el
+# boton "Actualizar" de los ajustes) pueda comprobarlo. El instalador no esta
+# firmado: Windows SmartScreen avisa la primera vez (ver el README).
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Etiqueta del release al que subir el instalador (por ejemplo v1.2.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  instalador:
+    name: Instalador
+    runs-on: windows-latest
+    env:
+      ETIQUETA: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.ETIQUETA }}
+
+      - name: Instalar Inno Setup
+        shell: pwsh
+        run: choco install innosetup --version 6.4.3 -y --no-progress
+
+      - name: Compilar el instalador
+        shell: pwsh
+        run: |
+          $version = $env:ETIQUETA.TrimStart('v')
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DVersion=$version" instalador\read_aloud.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC termino con el codigo $LASTEXITCODE" }
+
+      - name: Calcular SHA-256
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem dist\ReadAloud-Setup-*.exe | Select-Object -First 1
+          $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $($exe.Name)" | Set-Content -Path "$($exe.FullName).sha256" -Encoding ascii
+          Get-Content "$($exe.FullName).sha256"
+
+      - name: Subir al release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload $env:ETIQUETA (Get-ChildItem dist\ReadAloud-Setup-*).FullName --clobber --repo $env:GITHUB_REPOSITORY

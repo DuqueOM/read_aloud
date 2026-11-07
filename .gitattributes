@@ -7,6 +7,8 @@
 *.ps1  text eol=crlf
 *.psm1 text eol=crlf
 *.psd1 text eol=crlf
+*.vbs  text eol=crlf
+*.iss  text eol=crlf
 
 # Capturas y videos de la documentacion.
 *.png  binary

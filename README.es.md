@@ -101,6 +101,29 @@ repositorio y de tu carpeta de Inicio.
 
 ## Instalación
 
+**La forma fácil (no hace falta saber programar).** Descarga
+`ReadAloud-Setup-<versión>.exe` del
+[último release](https://github.com/DuqueOM/read_aloud/releases/latest), ábrelo
+y sigue el asistente. Se instala solo para tu usuario (sin permisos de
+administrador), descarga las voces (unos 200 MB, una sola vez) y, si dejas
+marcada la casilla, abre Read Aloud cada vez que inicias sesión. Después,
+selecciona cualquier texto y pulsa `Ctrl+Alt+V`.
+
+El instalador no está firmado (un certificado cuesta dinero cada año), así que
+la primera vez Windows SmartScreen puede decir "Windows protegió su PC": pulsa
+"Más información" y luego "Ejecutar de todas formas". Junto al instalador hay
+un archivo `.sha256` con su suma de comprobación, para verificar que la
+descarga está íntegra:
+
+```powershell
+(Get-FileHash .\ReadAloud-Setup-1.2.0.exe).Hash
+```
+
+Para desinstalar, usa "Aplicaciones" en la Configuración de Windows. En el menú
+Inicio encontrarás "Cerrar Read Aloud" e "Instalar o reparar las voces".
+
+**Desde el repositorio (para desarrolladores):**
+
 ```powershell
 git clone https://github.com/DuqueOM/read_aloud.git
 cd read_aloud
