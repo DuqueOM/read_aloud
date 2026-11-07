@@ -132,6 +132,24 @@ function Get-UserSettings {
     return $valores
 }
 
+function Invoke-LogRotation {
+    # Si el registro pasa de $MaxBytes, se guarda como <nombre>.1 (reemplazando
+    # al anterior) y se empieza uno nuevo: ocupa como mucho el doble y no crece
+    # sin fin. Se llama al arrancar, cuando nadie mas lo esta escribiendo.
+    param([string]$Path, [long]$MaxBytes = 1048576)
+
+    try {
+        if (-not (Test-Path -LiteralPath $Path)) { return $false }
+        if ((Get-Item -LiteralPath $Path).Length -le $MaxBytes) { return $false }
+        $old = $Path + '.1'
+        if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $old -Force }
+        Move-Item -LiteralPath $Path -Destination $old -Force
+        return $true
+    } catch {
+        return $false
+    }
+}
+
 function Save-UserSetting {
     # Guarda un ajuste del panel junto a los que ya habia.
     param([hashtable]$Paths, [string]$Name, $Value)

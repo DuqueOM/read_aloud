@@ -56,6 +56,10 @@ foreach ($dir in @($paths.RuntimeDir, $paths.TmpDir)) {
     }
 }
 
+# Los registros no crecen sin fin: el viejo pasa a .1 al pasar de 1 MB.
+[void](Invoke-LogRotation -Path $paths.LogFile)
+[void](Invoke-LogRotation -Path (Join-Path $paths.RuntimeDir 'qwen.log') -MaxBytes 2097152)
+
 function Write-DaemonLog {
     param([string]$Message)
 
