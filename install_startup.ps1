@@ -4,15 +4,15 @@
 #
 #   .\install_startup.ps1              Instala el arranque automatico
 #   .\install_startup.ps1 -Uninstall   Lo quita
-#   .\install_startup.ps1 -DaemonOnly  Sin atajos de teclado, solo el motor
 #
+# Los atajos de teclado ya no necesitan AutoHotkey: los registra el propio
+# proceso residente, que ademas pone su icono en la bandeja del sistema.
 # No necesita permisos de administrador: todo queda en la carpeta de Inicio
 # de tu usuario.
 
 [CmdletBinding()]
 param(
-    [switch]$Uninstall,
-    [switch]$DaemonOnly
+    [switch]$Uninstall
 )
 
 $ErrorActionPreference = 'Stop'
@@ -35,27 +35,18 @@ function Remove-StartupEntries {
     }
 }
 
-function Find-AutoHotkey {
-    # Se busca AutoHotkey v2 en los sitios habituales. Si no aparece, los
-    # atajos no se instalan pero el motor de voz si.
-    $candidates = @(
-        (Join-Path $env:ProgramFiles 'AutoHotkey\v2\AutoHotkey64.exe')
-        (Join-Path $env:ProgramFiles 'AutoHotkey\v2\AutoHotkey32.exe')
-        (Join-Path $env:ProgramFiles 'AutoHotkey\AutoHotkey.exe')
-        (Join-Path ${env:ProgramFiles(x86)} 'AutoHotkey\v2\AutoHotkey64.exe')
-        (Join-Path $env:LOCALAPPDATA 'Programs\AutoHotkey\v2\AutoHotkey64.exe')
-    )
-
-    foreach ($candidate in $candidates) {
-        if ($candidate -and (Test-Path -LiteralPath $candidate)) { return $candidate }
+function Remove-LegacyHotkeys {
+    # Hasta la 1.1 los atajos los daba un script de AutoHotkey con su propio
+    # acceso directo en Inicio. Se quita para que no pelee con los nuevos por
+    # las mismas teclas.
+    if (Test-Path -LiteralPath $hotkeyLink) {
+        Remove-Item -LiteralPath $hotkeyLink -Force
+        Write-Host '    quitado el acceso directo de AutoHotkey (ya no hace falta)' -ForegroundColor Gray
     }
 
-    $command = Get-Command 'AutoHotkey64.exe', 'AutoHotkey.exe' -ErrorAction SilentlyContinue |
-        Select-Object -First 1
-
-    if ($command) { return $command.Source }
-
-    return $null
+    Get-CimInstance Win32_Process |
+        Where-Object { $_.CommandLine -like '*read_aloud_hotkey.ahk*' } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 }
 
 function New-Shortcut {
@@ -111,21 +102,7 @@ New-Shortcut -Path $daemonLink -Target 'wscript.exe' -Arguments ('"' + $launcher
 
 Write-Host ('    instalado: {0}' -f (Split-Path -Leaf $daemonLink)) -ForegroundColor Gray
 
-if (-not $DaemonOnly) {
-    $ahk = Find-AutoHotkey
-
-    if ($ahk) {
-        $ahkScript = Join-Path $paths.Root 'read_aloud_hotkey.ahk'
-        New-Shortcut -Path $hotkeyLink -Target $ahk -Arguments ('"' + $ahkScript + '"') `
-            -Description 'Atajos de teclado de Read Aloud'
-
-        Write-Host ('    instalado: {0}' -f (Split-Path -Leaf $hotkeyLink)) -ForegroundColor Gray
-        Write-Host ('    AutoHotkey: {0}' -f $ahk) -ForegroundColor DarkGray
-    } else {
-        Write-Host '    AutoHotkey v2 no esta instalado: los atajos no quedaron activos.' -ForegroundColor Yellow
-        Write-Host '    Instalalo desde autohotkey.com y vuelve a ejecutar este script.' -ForegroundColor Yellow
-    }
-}
+Remove-LegacyHotkeys
 
 Write-Host ''
 Write-Host 'Arrancando ahora para no tener que reiniciar...' -ForegroundColor Cyan
@@ -138,7 +115,7 @@ if (Start-ReadAloudDaemon -Paths $paths) {
 
 Write-Host ''
 Write-Host 'Atajos disponibles:' -ForegroundColor White
-Write-Host '  Ctrl+Shift+V        leer lo seleccionado'
+Write-Host '  Ctrl+Alt+V          leer lo seleccionado'
 Write-Host '  Ctrl+Shift+Q        detener'
 Write-Host '  Ctrl+Shift+Espacio  pausar o continuar'
 Write-Host '  Ctrl+Shift+,        retroceder 10 segundos'

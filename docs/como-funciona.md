@@ -52,9 +52,14 @@ la tubería y termina. Si nadie responde, arranca el residente y reintenta. Si
 tampoco así, sintetiza y reproduce por su cuenta con `-Direct`, que es más
 lento pero no depende de nada.
 
-`read_aloud_hotkey.ahk` no usa PowerShell en absoluto: abre la tubería
-directamente desde AutoHotkey y escribe la línea JSON. Ese es el camino
-rápido, y es el que usas todo el día.
+Los atajos de teclado no pasan por la tubería: el propio proceso residente
+los registra en Windows (`RegisterHotKey`, en `lib/ReadAloud.Hotkeys.ps1`) y
+Windows le avisa al pulsarlos. No hay ningún otro programa corriendo para los
+atajos, y la orden se atiende al instante. Para leer lo seleccionado, el
+residente espera a que sueltes las teclas, manda Ctrl+C a la ventana activa y
+devuelve el portapapeles a como estaba. El icono de la bandeja del sistema,
+junto al reloj, muestra que está activo y tiene "Salir de Read Aloud", que
+cierra el residente y libera los atajos.
 
 ### El reproductor
 

@@ -23,13 +23,19 @@ the same text and pronounces technical terms the way you would say them, not
 the way a reader that knows no English would.
 
 ```
-Ctrl+Shift+V        read the selected text
+Ctrl+Alt+V          read the selected text
 Ctrl+Shift+Q        stop
 Ctrl+Shift+Space    pause or resume
 Ctrl+Shift+,        back 10 seconds
 Ctrl+Shift+.        forward 10 seconds
 Ctrl+Shift+] and [  faster or slower
 ```
+
+Read Aloud keeps an icon in the system tray, next to the clock: it shows that
+it is running, opens the settings, and "Salir de Read Aloud" closes it
+completely. The shortcuts can be changed in
+[config/settings.psd1](config/settings.psd1) (`HotkeyRead`, `HotkeyStop`, ...;
+see [docs/configuracion.md](docs/configuracion.md#atajos-de-teclado)).
 
 While it reads, a small bar stays on top of all windows, with pause, skip,
 speed and position. It closes on its own when the reading ends.
@@ -91,7 +97,6 @@ The detailed documentation in [docs/](docs/) is in Spanish.
 |---|---|
 | Windows | 10 or 11, 64-bit |
 | Windows PowerShell | 5.1, the one that comes with Windows |
-| AutoHotkey v2 | Only for the keyboard shortcuts. [autohotkey.com](https://www.autohotkey.com) |
 | Disk space | About 210 MB for the engine and two voices |
 | NVIDIA GPU, 7 GB or more | Only for the optional custom voice |
 
@@ -125,7 +130,7 @@ Check that everything is in place:
 
 ## Usage
 
-Select text in any program and press `Ctrl+Shift+V`. It also works from the
+Select text in any program and press `Ctrl+Alt+V`. It also works from the
 console:
 
 ```powershell
@@ -148,8 +153,8 @@ assigned to each part, without playing anything.
 ## How it is built
 
 ```
-Ctrl+Shift+V                 read_aloud.ps1
-  (AutoHotkey)                 (console)
+Ctrl+Alt+V                   read_aloud.ps1
+  (resident process)           (console)
         |                          |
         +----------+---------------+
                    |
@@ -253,7 +258,7 @@ scans the whole history for secrets.
 ```
 read_aloud.ps1              Entry point
 read_aloud_daemon.ps1       Resident process and player
-read_aloud_hotkey.ahk       Keyboard shortcuts
+lib/ReadAloud.Hotkeys.ps1   Keyboard shortcuts
 stop_read_aloud.ps1         Stop
 setup.ps1                   Installs the engine and the voices
 install_startup.ps1         Starts with Windows
