@@ -210,7 +210,10 @@ function Split-IntoLanguageSegments {
 function Import-SpeechTerms {
     # Carga config\terms_es.tsv: termino en ingles <TAB> como se debe pronunciar
     # con voz en espanol. Las lineas que empiezan con # son comentarios.
-    param([string]$Path)
+    # Una tercera columna, opcional, es la grafia para la voz propia (Qwen);
+    # si falta, las dos voces usan la segunda. Con -Engine 'qwen' se devuelve
+    # el diccionario de esa voz.
+    param([string]$Path, [string]$Engine = 'piper')
 
     $map = New-Object System.Collections.Specialized.OrderedDictionary
 
@@ -222,11 +225,12 @@ function Import-SpeechTerms {
         $trimmed = $line.Trim()
         if ($trimmed -eq '' -or $trimmed.StartsWith('#')) { continue }
 
-        $parts = $trimmed -split "`t+", 2
+        $parts = $trimmed -split "`t+", 3
         if ($parts.Count -lt 2) { continue }
 
         $term = $parts[0].Trim()
         $spoken = $parts[1].Trim()
+        if ($Engine -eq 'qwen' -and $parts.Count -ge 3 -and $parts[2].Trim() -ne '') { $spoken = $parts[2].Trim() }
         if ($term -eq '' -or $spoken -eq '') { continue }
 
         # Los terminos mas largos se aplican primero para que "pull request"
@@ -247,10 +251,11 @@ function Set-SpeechTerms {
     # aplicar una sustitucion por termino. Ademas de ser mucho mas rapido,
     # evita que el resultado de una sustitucion vuelva a coincidir con otra
     # regla y se deforme dos veces.
-    param($Terms)
+    param($Terms, $QwenTerms = $null)
 
     $script:RA_TermMap = $Terms
     $script:RA_TermLookup = @{}
+    $script:RA_TermLookupQwen = @{}
     $script:RA_TermRegex = $null
 
     if ($null -eq $Terms -or $Terms.Count -eq 0) { return }
@@ -259,6 +264,11 @@ function Set-SpeechTerms {
 
     foreach ($term in $Terms.Keys) {
         $script:RA_TermLookup[$term.ToLowerInvariant()] = $Terms[$term]
+        if ($null -ne $QwenTerms -and $QwenTerms.Contains($term)) {
+            $script:RA_TermLookupQwen[$term.ToLowerInvariant()] = $QwenTerms[$term]
+        } else {
+            $script:RA_TermLookupQwen[$term.ToLowerInvariant()] = $Terms[$term]
+        }
         [void]$alternatives.Add([regex]::Escape($term))
     }
 
@@ -280,11 +290,12 @@ function Expand-EnglishTerms {
     # en espanol los diga bien. Esto resuelve el caso real de trabajo: una frase
     # en espanol con palabras sueltas en ingles, donde cambiar de voz sonaria
     # peor que ajustar la grafia.
-    param([string]$Text)
+    param([string]$Text, [string]$Engine = 'piper')
 
     if ($null -eq $script:RA_TermRegex) { return $Text }
 
     $lookup = $script:RA_TermLookup
+    if ($Engine -eq 'qwen') { $lookup = $script:RA_TermLookupQwen }
 
     $evaluator = [Text.RegularExpressions.MatchEvaluator] {
         param($match)
@@ -353,7 +364,8 @@ function Normalize-ForSpeech {
         [string]$Text,
         [string]$Lang,
         [string]$MlMode = 'MachineLearning',
-        [switch]$SkipTerms
+        [switch]$SkipTerms,
+        [string]$Engine = 'piper'
     )
 
     $t = $Text
@@ -366,6 +378,19 @@ function Normalize-ForSpeech {
     $t = $t -replace ([string][char]0x2014), ' - '
     $t = $t -replace ([string][char]0x2026), '...'
 
+    # Lo que la voz leeria como ruido o con rarezas: los trazos de un arbol de
+    # carpetas, las comillas de codigo y el enfasis de Markdown. Las barras de
+    # una tabla y los tabuladores son separadores de celda: pasan a ser pausas.
+    $t = [regex]::Replace($t, '[\u2500-\u257F]+', ' ')
+    # Un trozo que termina en raya ("... con raya -") se dice como una coma.
+    $t = [regex]::Replace($t, '\s+-\s*$', ',')
+    $t = $t.Replace('`', '')
+    $t = $t.Replace('**', '').Replace('__', '')
+    if (([regex]::Matches($t, '\|')).Count -ge 2 -or $t.Contains("`t")) {
+        $t = [regex]::Replace($t, '^\s*\|\s*|\s*\|\s*$', '')
+        $t = [regex]::Replace($t, '\s*[\|\t]+\s*', ', ')
+    }
+
     if ($MlMode -eq 'MachineLearning') {
         $t = [regex]::Replace($t, '(?<![\p{L}\p{N}])ml(?![\p{L}\p{N}])', 'machine learning', 'IgnoreCase')
     } elseif ($MlMode -eq 'Letters') {
@@ -377,16 +402,24 @@ function Normalize-ForSpeech {
     $t = Expand-Units -Text $t -Lang $Lang
 
     if ($Lang -eq 'es' -and -not $SkipTerms) {
-        $t = Expand-EnglishTerms -Text $t
+        $t = Expand-EnglishTerms -Text $t -Engine $Engine
     }
 
     if ($Lang -eq 'es') {
         $t = $t -replace '=>', ' produce '
         $t = $t -replace '->', ' hacia '
+        $t = $t.Replace([string][char]0x2192, ' hacia ')
     } else {
         $t = $t -replace '=>', ' produces '
         $t = $t -replace '->', ' to '
+        $t = $t.Replace([string][char]0x2192, ' to ')
     }
+
+    # La flecha que apunta al texto que sigue introduce un comentario
+    # ("carpeta  <- nota"): se dice como una pausa. Sin espacio antes de la coma.
+    $t = $t.Replace([string][char]0x2190, ', ')
+    $t = [regex]::Replace($t, '\s+,', ',')
+    $t = [regex]::Replace($t, ',[ \t]{2,}', ', ')
 
     # Las barras de rutas se leen mejor dichas. Se limita a barras entre letras
     # para no romper fechas ni fracciones numericas.
@@ -420,7 +453,7 @@ function Prepare-TextForPiper {
 
         $trimmed = $trimmed -replace '^\s*[-*]\s+', ''
 
-        if (($trimmed.Length -lt 140) -and ($trimmed -notmatch '[\.\!\?\:\;]$')) {
+        if (($trimmed.Length -lt 140) -and ($trimmed -notmatch '[\.\!\?\:\;\,]$')) {
             $trimmed = "$trimmed."
         }
 
@@ -503,6 +536,14 @@ function Test-ListItem {
     return ($Line -match '^\s*([-*>]|[0-9]+[\.\)])\s+\S')
 }
 
+function Test-TreeLine {
+    # Una linea de un arbol de carpetas o de un diagrama: lleva los trazos de
+    # dibujo de cuadro (U+2500 a U+257F), como en "|-- src/". Cada linea es una
+    # entrada aparte, igual que una fila de tabla.
+    param([string]$Line)
+    return ($Line -match '[\u2500-\u257F]')
+}
+
 function Test-Heading {
     # Un titulo es una linea corta, sin puntuacion final, que abre su propio
     # bloque. Se exige que empiece bloque para no confundir un titulo con la
@@ -523,6 +564,7 @@ function Test-Heading {
     if ($l -match '[\.\!\?,;:]$') { return $false }
     if (Test-ListItem -Line $l) { return $false }
     if (Test-TableRow -Line $l) { return $false }
+    if (Test-TreeLine -Line $l) { return $false }
 
     return $true
 }
@@ -561,7 +603,9 @@ function Split-IntoBlocks {
         if (Test-TableSeparator -Line $l) { continue }
 
         $tipo = 'parrafo'
-        if (Test-Heading -Line $l -AbreBloque $abreBloque) {
+        if (Test-TreeLine -Line $l) {
+            $tipo = 'arbol'
+        } elseif (Test-Heading -Line $l -AbreBloque $abreBloque) {
             $tipo = 'titulo'
         } elseif (Test-TableRow -Line $l) {
             $tipo = 'fila'
@@ -618,6 +662,87 @@ function Get-DefaultPauses {
     }
 }
 
+function Get-ChunkLimit {
+    # Caracteres maximos del fragmento numero $Index de una lectura: corto el
+    # primero, para que la voz empiece enseguida; intermedio el segundo, y
+    # despues el maximo. Un fragmento largo retrasa a los que vienen detras
+    # (la voz propia genera por grupos y cada grupo tarda lo que su frase mas
+    # larga), y el primero es el que se espera con la ventana ya a la vista.
+    param([int]$Index, [int]$First = 70, [int]$Max = 180)
+
+    if ($Max -le 0) { return [int]::MaxValue }
+    if ($First -le 0 -or $First -ge $Max) { return $Max }
+    if ($Index -le 0) { return $First }
+    if ($Index -eq 1) { return [Math]::Min($Max, [int]($First * 1.5)) }
+    return $Max
+}
+
+function Split-LongText {
+    # Parte un texto largo en trozos que no pasen de los limites dados (el
+    # primer trozo usa el primer limite, el segundo el segundo, y asi hasta el
+    # ultimo, que sirve para todos los que quedan). Corta donde una persona
+    # haria una pausa: antes en ; o :, despues en una coma (no la de 2,5) y, si
+    # no hay ninguna a una distancia razonable, en un espacio. El signo queda
+    # con el trozo de la izquierda.
+    param([string]$Text, [int[]]$Limits = @(180))
+
+    $out = New-Object System.Collections.Generic.List[string]
+    $rest = $Text.Trim()
+    $n = 0
+
+    while ($true) {
+        $max = $Limits[[Math]::Min($n, $Limits.Count - 1)]
+        if ($max -lt 20) { $max = 20 }
+        if ($rest.Length -le $max) { break }
+
+        $minimo = [int][Math]::Floor($max * 0.4)
+        $fuerte = -1
+        $coma = -1
+        $espacio = -1
+
+        for ($i = $max - 1; $i -ge $minimo; $i--) {
+            $c = $rest[$i]
+            if ($c -eq ';' -or $c -eq ':') {
+                $fuerte = $i
+                break
+            } elseif ($c -eq ',') {
+                $entreCifras = ($i + 1 -lt $rest.Length) -and [char]::IsDigit($rest[$i - 1]) -and [char]::IsDigit($rest[$i + 1])
+                if ((-not $entreCifras) -and $coma -lt 0) { $coma = $i }
+            } elseif ($c -eq [char]0x2014 -or $c -eq [char]0x2013) {
+                if ($coma -lt 0) { $coma = $i }
+            } elseif ($c -eq ' ') {
+                if ($espacio -lt 0) { $espacio = $i }
+            }
+        }
+
+        # Sin ninguna pausa natural a la vista, partir en un espacio solo vale
+        # la pena si la frase es de verdad larga: cortar una de 90 caracteres
+        # por un tope de 70 deja "...para" colgando.
+        if ($fuerte -lt 0 -and $coma -lt 0 -and $rest.Length -le [int]($max * 1.5)) { break }
+
+        if ($fuerte -ge 0) {
+            $pieza = $rest.Substring(0, $fuerte + 1)
+            $rest = $rest.Substring($fuerte + 1)
+        } elseif ($coma -ge 0) {
+            $pieza = $rest.Substring(0, $coma + 1)
+            $rest = $rest.Substring($coma + 1)
+        } elseif ($espacio -ge 0) {
+            $pieza = $rest.Substring(0, $espacio)
+            $rest = $rest.Substring($espacio + 1)
+        } else {
+            $pieza = $rest.Substring(0, $max)
+            $rest = $rest.Substring($max)
+        }
+
+        $pieza = $pieza.Trim()
+        if ($pieza -ne '') { [void]$out.Add($pieza); $n++ }
+        $rest = $rest.Trim()
+    }
+
+    if ($rest -ne '') { [void]$out.Add($rest) }
+    return $out.ToArray()
+}
+
 function Build-SpeechPlan {
     # Punto de entrada unico: texto crudo -> lista de fragmentos listos para
     # sintetizar. Cada fragmento lleva su idioma, el texto para la voz, el
@@ -634,7 +759,10 @@ function Build-SpeechPlan {
         [string]$MlMode = 'MachineLearning',
         [int]$MinChunkChars = 25,
         [string]$Fallback = 'es',
-        [hashtable]$Pauses = $null
+        [hashtable]$Pauses = $null,
+        [int]$FirstChunkChars = 70,
+        [int]$MaxChunkChars = 180,
+        [string]$Engine = 'piper'
     )
 
     if ($null -eq $Pauses) { $Pauses = Get-DefaultPauses }
@@ -657,18 +785,30 @@ function Build-SpeechPlan {
             if ($frases.Count -eq 0) { $frases = @($segment.Text) }
 
             foreach ($unidad in (Split-SentencesIntoUnits -Sentences $frases -MinChars $MinChunkChars)) {
-                $normalized = Normalize-ForSpeech -Text $unidad -Lang $segment.Lang -MlMode $MlMode
-                $prepared = (Prepare-TextForPiper -Text $normalized).Trim()
-                if ($prepared -eq '') { continue }
+                # Una frase mas larga que el tope del lugar que le toca se parte
+                # donde se haria una pausa; cada trozo es un fragmento aparte,
+                # con su texto para la voz y el original para mostrar.
+                $siguiente = $plan.Count + $delBloque.Count
+                $limites = @(
+                    (Get-ChunkLimit -Index $siguiente -First $FirstChunkChars -Max $MaxChunkChars)
+                    (Get-ChunkLimit -Index ($siguiente + 1) -First $FirstChunkChars -Max $MaxChunkChars)
+                    (Get-ChunkLimit -Index ($siguiente + 2) -First $FirstChunkChars -Max $MaxChunkChars)
+                )
 
-                [void]$delBloque.Add(@{
-                    Lang       = $segment.Lang
-                    Text       = $prepared
-                    Display    = (Format-DisplayText -Text $unidad -Kind $block.Kind)
-                    Block      = $numeroBloque
-                    Kind       = $block.Kind
-                    PauseAfter = 0.0
-                })
+                foreach ($pieza in @(Split-LongText -Text $unidad -Limits $limites)) {
+                    $normalized = Normalize-ForSpeech -Text $pieza -Lang $segment.Lang -MlMode $MlMode -Engine $Engine
+                    $prepared = (Prepare-TextForPiper -Text $normalized).Trim()
+                    if ($prepared -eq '') { continue }
+
+                    [void]$delBloque.Add(@{
+                        Lang       = $segment.Lang
+                        Text       = $prepared
+                        Display    = (Format-DisplayText -Text $pieza -Kind $block.Kind)
+                        Block      = $numeroBloque
+                        Kind       = $block.Kind
+                        PauseAfter = 0.0
+                    })
+                }
             }
         }
 

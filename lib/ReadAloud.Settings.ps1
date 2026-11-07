@@ -434,8 +434,11 @@ function Get-OpcionesAjuste {
 # Las voces de Piper que hay en voices\: "es_MX-claude-high" se muestra como
 # "claude · MX · alta".
 $calidades = @{ x_low = 'muy baja'; low = 'baja'; medium = 'media'; high = 'alta' }
-foreach ($modelo in Get-ChildItem -LiteralPath $paths.VoicesDir -Filter '*.onnx' -ErrorAction SilentlyContinue | Sort-Object Name) {
-    if (-not (Test-Path -LiteralPath ($modelo.FullName + '.json'))) { continue }
+$instaladas = @(Get-ChildItem -LiteralPath $paths.VoicesDir -Filter '*.onnx' -ErrorAction SilentlyContinue | Sort-Object Name |
+    Where-Object { Test-Path -LiteralPath ($_.FullName + '.json') })
+$visibles = @(Select-VisibleVoice -Names @($instaladas | ForEach-Object { $_.BaseName }) -Configured @($settings.VoiceEs, $settings.VoiceEn))
+foreach ($modelo in $instaladas) {
+    if ($visibles -notcontains $modelo.BaseName) { continue }
     $nombreVoz = $modelo.BaseName
     $caja = $null
     $grupo = ''

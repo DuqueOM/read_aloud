@@ -23,6 +23,7 @@ Todo lo que no es el protocolo (avisos de las librerias, errores) va a
 """
 
 import argparse
+import atexit
 import json
 import os
 import queue
@@ -43,6 +44,9 @@ argumentos.add_argument("--silencio", type=float, default=0.36, help="segundos d
 argumentos.add_argument("--inactivo", type=float, default=0.0, help="minutos sin ordenes antes de terminar; 0 es nunca")
 argumentos.add_argument("--lote", type=int, default=4, help="frases que Read Aloud puede mandar juntas")
 argumentos.add_argument("--marca", default="", help="archivo que otro paso deja mientras usa la tarjeta grafica")
+argumentos.add_argument(
+    "--listo", default="", help="archivo que se crea cuando el modelo ya esta cargado y se borra al terminar"
+)
 opciones = argumentos.parse_args()
 
 registro = open(opciones.registro, "a", encoding="utf-8", buffering=1)
@@ -231,6 +235,15 @@ def leer_entrada(cola: queue.Queue) -> None:
     cola.put(None)
 
 
+def marcar_listo() -> None:
+    """Avisa a Read Aloud de que ya puede mandar ordenes sin esperar la carga:
+    mientras este archivo no exista, lee con Piper. Se borra al terminar."""
+    if not opciones.listo:
+        return
+    Path(opciones.listo).write_text(str(os.getpid()), encoding="ascii")
+    atexit.register(lambda: Path(opciones.listo).unlink(missing_ok=True))
+
+
 def main() -> int:
     inicio = time.perf_counter()
     qwen = cargar(Path(opciones.voz))
@@ -246,6 +259,7 @@ def main() -> int:
             max_new_tokens=40,
         )
     log(f"modelo cargado en {time.perf_counter() - inicio:.1f} s")
+    marcar_listo()
     otros_al_cargar = memoria_de_otros_gb()
     log(f"memoria de la tarjeta en uso por otros al cargar: {otros_al_cargar:.1f} GB")
 
@@ -277,7 +291,9 @@ def main() -> int:
         ultima = time.monotonic()
         ordenes = []
         try:
-            datos = json.loads(linea)
+            # Con la consola de Windows en UTF-8, quien escribe en la entrada
+            # puede anteponer una marca BOM a la primera linea.
+            datos = json.loads(linea.lstrip("﻿"))
             ordenes = datos if isinstance(datos, list) else [datos]
             inicio = time.perf_counter()
             generar(qwen, ordenes)

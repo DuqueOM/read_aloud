@@ -1,0 +1,4 @@
+¿Por qué no ves algunas de estas cosas?
+
+* `.git/` en tu editor: como todos los editores basados en VS Code, oculta `.git/` por defecto (ajuste `files.exclude`). Sigue ahí; compruébalo en la terminal con `ls -la` dentro del repositorio.
+* `.cache/` en `git status`: está vacía hasta que corras pruebas, y git no lista carpetas vacías. Tu editor sí la muestra (en gris).

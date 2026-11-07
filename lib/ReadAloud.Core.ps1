@@ -56,6 +56,8 @@ function Get-ReadAloudSettings {
         NoiseScale          = 0.667
         NoiseW              = 0.8
         MinChunkChars       = 25
+        FirstChunkChars     = 70
+        MaxChunkChars       = 180
         FallbackLanguage    = 'es'
         ShowPlayer          = $true
         PlayerAutoClose     = $true
@@ -70,7 +72,9 @@ function Get-ReadAloudSettings {
         EngineEn            = 'auto'
         QwenWorkDir         = ''
         QwenBatch           = 4
+        QwenBatchChars      = 320
         QwenIdleMinutes     = 0
+        QwenLoadWaitSeconds = 6
         QwenMinVramGB       = 7
         QwenReopen          = $true
         QwenReopenFreeGB    = 6
@@ -175,6 +179,18 @@ function Get-VoiceModelPath {
         Model   = $model
         Config  = ($model + '.json')
         Ready   = ((Test-Path -LiteralPath $model) -and (Test-Path -LiteralPath ($model + '.json')))
+    }
+}
+
+function Select-VisibleVoice {
+    # Las voces que ofrece el panel de ajustes: las de calidad alta (el nombre
+    # acaba en -high) y la que esta elegida, aunque no lo sea, para no esconder
+    # lo que ya se usa. Una carpeta de voces con una media que quedo de una
+    # version anterior no muestra dos opciones para el mismo idioma.
+    param([string[]]$Names, [string[]]$Configured = @())
+
+    foreach ($n in $Names) {
+        if ($n -match '-high$' -or $Configured -contains $n) { $n }
     }
 }
 

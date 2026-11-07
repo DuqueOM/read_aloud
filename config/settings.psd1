@@ -31,12 +31,21 @@
     # cada grupo tarda mas en estar listo.
     QwenBatch = 4
 
+    # Tope de caracteres por grupo: un grupo de frases largas tardaria en
+    # estar listo y retrasaria a las que esperan detras. 0 = sin tope.
+    QwenBatchChars = 320
+
     # Qwen tarda unos 20 s en cargar, asi que se queda abierto (ocupa unos
     # 5 GB de la tarjeta grafica y 2.3 GB de RAM) y se cierra solo cuando otro
     # programa necesita la tarjeta. Con un numero mayor que 0, tambien se
     # cierra tras esos minutos sin leer, y entonces espera a la lectura
     # siguiente para volver a cargar.
     QwenIdleMinutes = 0
+
+    # Si la lectura llega cuando Qwen aun esta cargando, espera hasta esos
+    # segundos desde que arranco; pasados, lee con Piper hasta que Qwen
+    # termine de cargar, en vez de dejar la lectura muda.
+    QwenLoadWaitSeconds = 6
 
     # Si Qwen cedio la tarjeta, se vuelve a cargar en cuanto queden libres
     # QwenReopenFreeGB, para que la lectura siguiente no espere la carga.
@@ -64,6 +73,14 @@
     # de texto. Las frases mas cortas que esto se juntan con la siguiente para
     # que no suenen entrecortadas.
     MinChunkChars = 25
+
+    # Una frase mas larga que esto se parte donde se haria una pausa (; : una
+    # coma, una raya). El primer fragmento de cada lectura usa FirstChunkChars,
+    # el segundo uno y medio de eso, y el resto MaxChunkChars: asi la voz
+    # empieza pronto y no hay un fragmento largo que retrase a los demas.
+    # MaxChunkChars = 0 desactiva el partido.
+    FirstChunkChars = 70
+    MaxChunkChars = 180
 
     # Idioma que se usa cuando el texto es demasiado corto o ambiguo.
     FallbackLanguage = 'es'

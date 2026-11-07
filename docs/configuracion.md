@@ -55,7 +55,9 @@ El archivo debe existir en `read_aloud_piper\voices`. Consulta las opciones en
 | `QwenWorkDir` | vacío | Carpeta de trabajo de la voz propia ([voz-personalizada.md](voz-personalizada.md)) |
 | `QwenMinVramGB` | `7` | Memoria mínima de la tarjeta NVIDIA para usar Qwen |
 | `QwenBatch` | `4` | Frases que se generan juntas |
+| `QwenBatchChars` | `320` | Tope de caracteres por grupo, para que unas frases largas no retrasen a las que esperan detrás. `0` = sin tope |
 | `QwenIdleMinutes` | `0` | Minutos sin leer tras los que Qwen se cierra; `0` es nunca |
+| `QwenLoadWaitSeconds` | `6` | Si se lee mientras Qwen aún carga, espera hasta esos segundos desde que arrancó; después lee con Piper hasta que Qwen esté listo, en vez de quedarse mudo |
 | `QwenReopen` | `$true` | Volver a cargar Qwen en cuanto la tarjeta queda libre, tras cederla |
 | `QwenReopenFreeGB` | `6` | Memoria libre de la tarjeta que hace falta para volver a cargarlo |
 | `Performance` | `'rapido'` | `'rapido'` deja la voz cargada; `'ahorro'` la carga al leer y la libera tras `SaverIdleMinutes` (ver [Panel de ajustes](#panel-de-ajustes)) |
@@ -123,6 +125,13 @@ una voz más plana y predecible; subirlos, más variada y a veces inestable.
 | Valor | Por defecto | Qué hace |
 |---|---|---|
 | `MinChunkChars` | `25` | Frases más cortas que esto se juntan con la siguiente |
+| `FirstChunkChars` | `70` | Largo máximo del primer fragmento de una lectura. Corto, para que la voz empiece pronto |
+| `MaxChunkChars` | `180` | Largo máximo del resto. Una frase más larga se parte en una pausa (`;` `:` coma, raya). `0` no parte nada |
+
+El segundo fragmento usa uno y medio de `FirstChunkChars`. El tope crece porque
+un fragmento largo retrasa a los que vienen detrás: la voz propia genera por
+grupos y cada grupo tarda lo que su frase más larga. Es igual para Piper y para
+la voz propia.
 
 Cada frase es un fragmento de audio, y cada fragmento es lo que se resalta en
 el panel de texto. Solo las frases muy cortas, como un `OK.` suelto, se juntan
@@ -297,8 +306,12 @@ Si quieres controlar el lector desde otro programa, escribe una línea JSON en
 | `{"cmd":"speak","text":"...","lang":"Auto"}` | Lee ese texto |
 | `{"cmd":"stop"}` | Detiene y esconde el reproductor |
 | `{"cmd":"toggle"}` | Pausa o continúa |
-| `{"cmd":"back"}` | Retrocede |
-| `{"cmd":"forward"}` | Avanza |
+| `{"cmd":"back"}` | Retrocede (`SkipSeconds`) |
+| `{"cmd":"forward"}` | Avanza (`SkipSeconds`) |
+| `{"cmd":"louder"}` | Sube el volumen un paso (5 %) |
+| `{"cmd":"quieter"}` | Baja el volumen un paso (5 %) |
+| `{"cmd":"prev"}` | Frase anterior; con más de 2 s de la actual, vuelve primero a su comienzo |
+| `{"cmd":"next"}` | Frase siguiente |
 | `{"cmd":"faster"}` | Sube la velocidad un paso |
 | `{"cmd":"panel"}` | Muestra u oculta el panel de texto |
 | `{"cmd":"slower"}` | Baja la velocidad un paso |

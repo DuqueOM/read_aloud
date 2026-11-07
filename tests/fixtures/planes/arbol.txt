@@ -1,0 +1,25 @@
+idioma del texto: es
+[0] es, bloque 0 (titulo), pausa 0.30 s
+    voz:     mi-proyecto/.
+    muestra: mi-proyecto/
+[1] es, bloque 1 (arbol), pausa 0.18 s
+    voz:     .Clod/ E (gris en el i de e).
+    muestra: ├── .claude/                       E   (gris en el IDE)
+[2] es, bloque 2 (arbol), pausa 0.18 s
+    voz:     notas barra guia barra LEEME.md E, guía privada.
+    muestra: │   └── notas/guia/LEEME.md        E   ← guía privada
+[3] es, bloque 3 (arbol), pausa 0.18 s
+    voz:     .githooks/.
+    muestra: ├── .githooks/
+[4] es, bloque 4 (arbol), pausa 0.18 s
+    voz:     pre-cómit S, revisiones antes de cada cómit (versionado).
+    muestra: │   └── pre-commit                 S   ← revisiones antes de cada commit (versionado)
+[5] es, bloque 5 (arbol), pausa 0.18 s
+    voz:     .caché/ I, caché de pruebas (hoy vacía).
+    muestra: ├── .cache/                        I   ← caché de pruebas (hoy vacía)
+[6] es, bloque 6 (arbol), pausa 0.18 s
+    voz:     docs/.
+    muestra: ├── docs/
+[7] es, bloque 7 (arbol), pausa 0.00 s
+    voz:     PLAN.md S, el plan de trabajo.
+    muestra: │   └── PLAN.md                    S   ← el plan de trabajo
