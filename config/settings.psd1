@@ -91,6 +91,11 @@
     # Opacidad en reposo, de 0.3 a 1.0. Al hacer clic sobre el reproductor se
     # vuelve opaco del todo, y al hacer clic fuera regresa a este valor.
     PlayerOpacity = 0.75
+    # Tema de color del reproductor y de los ajustes: 'system' (el de Windows),
+    # 'dark' o 'light'. Acento: green, blue, purple, pink, orange, red, teal o
+    # yellow. Se aplican al reiniciar el lector.
+    Theme = 'system'
+    Accent = 'green'
     SkipSeconds = 10
 
     # Atajos de teclado globales. Formato: modificadores y tecla unidos con +,

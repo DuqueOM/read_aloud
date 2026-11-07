@@ -62,6 +62,8 @@ function Get-ReadAloudSettings {
         ShowPlayer          = $true
         PlayerAutoClose     = $true
         PlayerOpacity       = 0.8
+        Theme               = 'system'
+        Accent              = 'green'
         SkipSeconds         = 10
         HotkeyRead          = 'Ctrl+Alt+V'
         HotkeyStop          = 'Ctrl+Shift+Q'

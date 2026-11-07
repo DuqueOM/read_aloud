@@ -151,6 +151,25 @@ $xamlAjustes = @'
 
           <TextBlock Style="{StaticResource Seccion}" Text="APARIENCIA"/>
 
+          <TextBlock Style="{StaticResource Etiqueta}" Text="Tema"/>
+          <WrapPanel>
+            <RadioButton GroupName="Tema" Tag="system" Content="Como Windows"/>
+            <RadioButton GroupName="Tema" Tag="dark" Content="Oscuro"/>
+            <RadioButton GroupName="Tema" Tag="light" Content="Claro"/>
+          </WrapPanel>
+          <TextBlock Style="{StaticResource Etiqueta}" Text="Color de acento"/>
+          <WrapPanel>
+            <RadioButton GroupName="Acento" Tag="green" Content="Verde"/>
+            <RadioButton GroupName="Acento" Tag="blue" Content="Azul"/>
+            <RadioButton GroupName="Acento" Tag="purple" Content="Violeta"/>
+            <RadioButton GroupName="Acento" Tag="pink" Content="Rosa"/>
+            <RadioButton GroupName="Acento" Tag="orange" Content="Naranja"/>
+            <RadioButton GroupName="Acento" Tag="red" Content="Rojo"/>
+            <RadioButton GroupName="Acento" Tag="teal" Content="Turquesa"/>
+            <RadioButton GroupName="Acento" Tag="yellow" Content="Amarillo"/>
+          </WrapPanel>
+          <TextBlock Style="{StaticResource Nota}" Text="El tema y el acento se aplican al reiniciar el lector."/>
+
           <Grid>
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="150"/><ColumnDefinition Width="*"/><ColumnDefinition Width="56"/>
@@ -327,6 +346,7 @@ $xamlAjustes = @'
 </Window>
 '@
 
+$xamlAjustes = Convert-XamlTheme -Xaml $xamlAjustes -Palette $script:paleta
 $ajustesVentana = [Windows.Markup.XamlReader]::Load([Xml.XmlReader]::Create((New-Object IO.StringReader($xamlAjustes))))
 $aj = @{}
 foreach ($nombre in @('Titulo', 'Cerrar', 'Scroll', 'Opacidad', 'OpacidadValor', 'Fuente', 'FuenteValor',
@@ -421,6 +441,8 @@ function Set-PanelSize {
 # Opciones de pastilla: cada grupo es un ajuste. Tag es el valor de cada una.
 # --------------------------------------------------------------------------
 $gruposAjustes = @{
+    Tema        = @{ Clave = 'Theme'; Reinicio = $true }
+    Acento      = @{ Clave = 'Accent'; Reinicio = $true }
     Escala      = @{ Clave = 'PlayerScale'; Tipo = 'double'; Aplicar = { param($v) Set-PlayerScale $v; Update-PlayerLayout } }
     Panel       = @{ Clave = 'PanelOnShow' }
     Motor       = @{ Clave = 'EngineEs'; Tambien = 'EngineEn'; Reinicio = $true }

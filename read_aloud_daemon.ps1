@@ -25,6 +25,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Player.ps1')
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Hotkeys.ps1')
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Update.ps1')
+. (Join-Path $PSScriptRoot 'lib\ReadAloud.Theme.ps1')
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -946,6 +947,11 @@ $xaml = @'
 </Window>
 '@
 
+# Tema de color (ajustes Theme y Accent): el XAML esta escrito en oscuro y se
+# adapta antes de cargarlo.
+$script:paleta = Get-ThemePalette -Mode (Resolve-ThemeMode -Mode ([string]$settings.Theme) -SystemLight (Test-SystemLightTheme)) -Accent ([string]$settings.Accent)
+$xaml = Convert-XamlTheme -Xaml $xaml -Palette $script:paleta
+
 $reader = New-Object IO.StringReader($xaml)
 $xmlReader = [Xml.XmlReader]::Create($reader)
 $window = [Windows.Markup.XamlReader]::Load($xmlReader)
@@ -1493,16 +1499,17 @@ function New-Brush {
     return $pincel
 }
 
+$colorTema = Get-RuntimeColors $script:paleta
 $colores = @{
-    Pendiente = New-Brush '#D0D0D6'
-    Leido     = New-Brush '#7C7C84'
-    Actual    = New-Brush '#FFFFFF'
-    Fondo     = New-Brush '#663B82F6'
+    Pendiente = New-Brush $colorTema.Pendiente
+    Leido     = New-Brush $colorTema.Leido
+    Actual    = New-Brush $colorTema.Actual
+    Fondo     = New-Brush $colorTema.Fondo
     Ninguno   = [Windows.Media.Brushes]::Transparent
-    Encendido = New-Brush '#9AE6B4'
-    Apagado   = New-Brush '#C8C8CC'
-    Texto     = New-Brush '#D8D8DC'
-    Elegido   = New-Brush '#2EFFFFFF'
+    Encendido = New-Brush $colorTema.Encendido
+    Apagado   = New-Brush $colorTema.Apagado
+    Texto     = New-Brush $colorTema.Texto
+    Elegido   = New-Brush $colorTema.Elegido
 }
 
 $script:runs = New-Object System.Collections.Generic.List[object]
@@ -2438,7 +2445,7 @@ function New-TrayIcon {
     $g = [Drawing.Graphics]::FromImage($bmp)
     $g.SmoothingMode = 'AntiAlias'
     $g.TextRenderingHint = 'AntiAlias'
-    $g.FillEllipse((New-Object Drawing.SolidBrush ([Drawing.ColorTranslator]::FromHtml('#2E8B6A'))), 1, 1, 30, 30)
+    $g.FillEllipse((New-Object Drawing.SolidBrush ([Drawing.ColorTranslator]::FromHtml($script:paleta.AccentBase))), 1, 1, 30, 30)
     $font = New-Object Drawing.Font('Segoe MDL2 Assets', 15)
     $format = New-Object Drawing.StringFormat
     $format.Alignment = 'Center'
