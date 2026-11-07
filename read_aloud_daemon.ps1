@@ -779,6 +779,10 @@ $xaml = @'
               Width="40" Height="26" Foreground="#9AE6B4" Background="Transparent"
               BorderThickness="0" Cursor="Hand" Margin="4,0,0,0"
               ToolTip="Velocidad. Clic: elegir. Rueda: mas rapido o mas lento."/>
+      <Button x:Name="BtnVolume" Content="&#xE767;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+              Width="30" Height="26" Foreground="#C8C8CC" Background="Transparent"
+              BorderThickness="0" Cursor="Hand" Margin="2,0,0,0"
+              ToolTip="Volumen. Clic: elegir. Rueda: subir o bajar."/>
       <Grid Width="170" Height="26" Margin="8,0,8,0" VerticalAlignment="Center">
         <Border Height="4" CornerRadius="2" Background="#3AFFFFFF" VerticalAlignment="Center"/>
         <Border x:Name="BufferBar" Height="4" CornerRadius="2" Background="#55FFFFFF"
@@ -831,6 +835,13 @@ $xaml = @'
       <StackPanel x:Name="SpeedList" Orientation="Horizontal"/>
     </Border>
   </Popup>
+  <!-- El volumen, igual que la velocidad: una fila sobre el boton. -->
+  <Popup x:Name="VolumePopup" PlacementTarget="{Binding ElementName=BtnVolume}" Placement="Top"
+         VerticalOffset="-6" StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade">
+    <Border Background="#F81B1B1F" BorderBrush="#33FFFFFF" BorderThickness="1" CornerRadius="8" Padding="4">
+      <StackPanel x:Name="VolumeList" Orientation="Horizontal"/>
+    </Border>
+  </Popup>
   </Grid>
 </Window>
 '@
@@ -841,7 +852,8 @@ $window = [Windows.Markup.XamlReader]::Load($xmlReader)
 
 $ui = @{}
 foreach ($name in @('Root','LangBadge','BtnBack','BtnPlay','BtnFwd','BtnSpeed','BufferBar','Seek','TimeLabel','BtnText','BtnClose','TextPanel','TextView','Bar','Bordes',
-                    'Asa','Zoom','BtnSettings','SpeedPopup','SpeedList','Escala')) {
+                    'Asa','Zoom','BtnSettings','SpeedPopup','SpeedList','Escala',
+                    'BtnVolume','VolumePopup','VolumeList')) {
     $ui[$name] = $window.FindName($name)
 }
 
@@ -952,11 +964,22 @@ if ($savedState -and $savedState.PSObject.Properties.Name -contains 'Speed') {
     if ($speedSteps -contains $saved) { $script:speed = $saved }
 }
 
+# Volumen del reproductor (0 a 1). Es el de esta aplicacion: no toca el volumen
+# de Windows. La rueda sube y baja de a 10 %; la fila del boton ofrece 6 valores.
+$volumeSteps = @(0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0)
+$volumeListSteps = @(0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
+$script:volume = 1.0
+
+if ($savedState -and $savedState.PSObject.Properties.Name -contains 'Volume') {
+    $saved = [double]$savedState.Volume
+    if ($saved -ge 0.0 -and $saved -le 1.0) { $script:volume = $saved }
+}
+
 function Save-PlayerState {
     # Se guarda en cada cambio y no solo al cerrar: si el proceso se corta a
     # la fuerza, la velocidad elegida no se pierde.
     try {
-        $estado = @{ Speed = $script:speed; TextPanel = $script:panelVisible }
+        $estado = @{ Speed = $script:speed; Volume = $script:volume; TextPanel = $script:panelVisible }
 
         if ($script:panelAlto -gt 0) { $estado.PanelHeight = $script:panelAlto }
         if ($script:panelAncho -gt 0) { $estado.PanelWidth = $script:panelAncho }
@@ -1016,6 +1039,65 @@ foreach ($paso in $speedSteps) {
     })
     [void]$ui.SpeedList.Children.Add($boton)
 }
+
+function Set-PlaybackVolumeValue {
+    param([double]$Value)
+
+    $script:volume = [Math]::Max(0.0, [Math]::Min(1.0, $Value))
+    foreach ($p in $players) { $p.Volume = $script:volume }
+
+    # El icono dice de un vistazo si esta en silencio; el detalle, en el aviso.
+    if ($script:volume -le 0.0) { $ui.BtnVolume.Content = [string][char]0xE74F } else { $ui.BtnVolume.Content = [string][char]0xE767 }
+    $ui.BtnVolume.ToolTip = 'Volumen {0}. Clic: elegir. Rueda: subir o bajar.' -f (Format-VolumePercent $script:volume)
+
+    foreach ($b in $ui.VolumeList.Children) {
+        if ([Math]::Abs([double]$b.Tag - $script:volume) -lt 0.001) {
+            $b.Foreground = $colores.Encendido
+            $b.Background = $colores.Elegido
+        } else {
+            $b.Foreground = $colores.Texto
+            $b.Background = $colores.Ninguno
+        }
+    }
+    Save-PlayerState
+}
+
+function Set-PlaybackVolume {
+    # Un paso mas alto (1) o mas bajo (-1): la rueda sobre el boton y las
+    # ordenes 'louder' y 'quieter'.
+    param([int]$Direction)
+
+    Set-PlaybackVolumeValue (Get-NextStep -Steps $volumeSteps -Current $script:volume -Direction $Direction)
+}
+
+foreach ($paso in $volumeListSteps) {
+    $boton = New-Object Windows.Controls.Button
+    $boton.Content = Format-VolumePercent $paso
+    $boton.Tag = $paso
+    $boton.Width = 46
+    $boton.Height = 26
+    $boton.FontFamily = New-Object Windows.Media.FontFamily('Segoe UI')
+    $boton.FontSize = 11
+    $boton.FontWeight = [Windows.FontWeights]::SemiBold
+    $boton.Add_Click({
+        param($sender, $e)
+        Set-PlaybackVolumeValue ([double]$sender.Tag)
+        $ui.VolumePopup.IsOpen = $false
+    })
+    [void]$ui.VolumeList.Children.Add($boton)
+}
+
+# Misma colocacion que la fila de la velocidad: centrada sobre el boton, sin
+# pasarse del borde izquierdo del reproductor.
+$ui.VolumePopup.Add_Opened({
+    $ui.VolumePopup.Child.UpdateLayout()
+    $centrada = ($ui.BtnVolume.ActualWidth - $ui.VolumePopup.Child.ActualWidth) / 2
+    $hastaElBorde = -$ui.BtnVolume.TranslatePoint((New-Object Windows.Point(0, 0)), $ui.Root).X
+    $ui.VolumePopup.HorizontalOffset = [Math]::Max($centrada, $hastaElBorde)
+})
+
+$script:volumePopupCerrada = [datetime]::MinValue
+$ui.VolumePopup.Add_Closed({ $script:volumePopupCerrada = [datetime]::Now })
 
 # Centrada sobre el boton, que es mas angosto que la fila, pero sin pasarse
 # del borde izquierdo del reproductor: el boton esta cerca de ese borde.
@@ -1221,6 +1303,7 @@ function Switch-ToPreloaded {
     $ui.LangBadge.Text = $state.Chunks[$next].Lang.ToUpperInvariant()
 
     try { $nuevo.Position = [timespan]::FromSeconds($Offset) } catch { }
+    $nuevo.Volume = $script:volume
     $nuevo.Play()
     $nuevo.SpeedRatio = $script:speed
 
@@ -1766,6 +1849,7 @@ foreach ($instancia in $players) {
         # MediaPlayer vuelve a 1x con cada archivo nuevo; se reaplica despues
         # de Play porque antes no siempre surte efecto.
         $sender.SpeedRatio = $script:speed
+        $sender.Volume = $script:volume
 
         Open-NextChunk
     })
@@ -1864,6 +1948,17 @@ $ui.BtnSpeed.Add_MouseWheel({
     $e.Handled = $true
 })
 Set-PlaybackSpeedValue $script:speed
+
+$ui.BtnVolume.Add_Click({
+    if (([datetime]::Now - $script:volumePopupCerrada).TotalMilliseconds -lt 300) { return }
+    $ui.VolumePopup.IsOpen = -not $ui.VolumePopup.IsOpen
+})
+$ui.BtnVolume.Add_MouseWheel({
+    param($sender, $e)
+    if ($e.Delta -gt 0) { Set-PlaybackVolume -Direction 1 } else { Set-PlaybackVolume -Direction -1 }
+    $e.Handled = $true
+})
+Set-PlaybackVolumeValue $script:volume
 
 $ui.BtnText.Add_Click({ Set-TextPanel -Visible (-not $script:panelVisible) })
 
@@ -2042,6 +2137,8 @@ $timer.Add_Tick({
             'prev'   { Invoke-SentenceStep -Direction -1 }
             'next'   { Invoke-SentenceStep -Direction 1 }
             'faster' { Set-PlaybackSpeed -Direction 1 }
+            'louder' { Set-PlaybackVolume -Direction 1 }
+            'quieter'{ Set-PlaybackVolume -Direction -1 }
             'panel'  { Set-TextPanel -Visible (-not $script:panelVisible) }
             'slower' { Set-PlaybackSpeed -Direction -1 }
             'quit'   {
