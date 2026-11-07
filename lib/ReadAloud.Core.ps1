@@ -181,6 +181,18 @@ function Get-VoiceModelPath {
     }
 }
 
+function Select-VisibleVoice {
+    # Las voces que ofrece el panel de ajustes: las de calidad alta (el nombre
+    # acaba en -high) y la que esta elegida, aunque no lo sea, para no esconder
+    # lo que ya se usa. Una carpeta de voces con una media que quedo de una
+    # version anterior no muestra dos opciones para el mismo idioma.
+    param([string[]]$Names, [string[]]$Configured = @())
+
+    foreach ($n in $Names) {
+        if ($n -match '-high$' -or $Configured -contains $n) { $n }
+    }
+}
+
 function Get-QwenVoice {
     # La voz afinada con Qwen3-TTS vive en la carpeta de trabajo de la voz
     # personalizada (docs\voz-personalizada.md), con su propio entorno de

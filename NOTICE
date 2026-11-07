@@ -26,8 +26,8 @@ Piper voices, https://huggingface.co/rhasspy/piper-voices
   - es_MX-claude-high: Apache-2.0.
   - es_MX-ald-medium: Unlicense.
   - es_ES-davefx-medium: CC0.
-  - en_US-lessac-high and en_US-lessac-medium: trained on the Lessac
-    Blizzard 2013 data, which Voice Factory International and Lessac
+  - en_US-lessac-high: trained on the Lessac Blizzard 2013 data, which
+    Voice Factory International and Lessac
     Technologies release under a research licence. Check its terms before
     any other use, or choose a different English voice (VoiceEn in
     config/settings.psd1).
