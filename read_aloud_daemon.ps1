@@ -23,7 +23,10 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Core.ps1')
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Text.ps1')
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Player.ps1')
+. (Join-Path $PSScriptRoot 'lib\ReadAloud.Hotkeys.ps1')
 
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName PresentationFramework
 Add-Type -AssemblyName PresentationCore
 Add-Type -AssemblyName WindowsBase
@@ -2354,6 +2357,114 @@ $timer.Add_Tick({
     if ($timer.Interval -ne $pulse) { $timer.Interval = $pulse }
 })
 
+# --------------------------------------------------------------------------
+# Atajos de teclado globales (sin AutoHotkey) e icono en la bandeja.
+#
+# Los atajos se registran en la ventana del reproductor con RegisterHotKey;
+# Windows los avisa con WM_HOTKEY aunque la ventana este oculta. Cada uno se
+# encola y se atiende en el hilo de la interfaz, igual que una orden que llega
+# por la tuberia. El icono de la bandeja es la forma de ver que Read Aloud
+# esta activo y de cerrarlo del todo ("Salir").
+# --------------------------------------------------------------------------
+# Un error en cualquier manejador de la interfaz cerraba el proceso sin dejar
+# rastro: ahora se registra y el proceso sigue vivo.
+$window.Dispatcher.add_UnhandledException({
+    param($sender, $e)
+    Write-DaemonLog ('Error no controlado: {0}' -f $e.Exception.ToString())
+    $e.Handled = $true
+})
+
+$script:hotkeyQueue = New-Object System.Collections.Concurrent.ConcurrentQueue[string]
+$script:hotkeyReport = @()
+$hotkeyHandle = (New-Object Windows.Interop.WindowInteropHelper($window)).EnsureHandle()
+
+$script:hotkeyDrain = {
+    # Una excepcion aqui cortaria el bucle de la interfaz y cerraria el proceso:
+    # se registra y se sigue.
+    try {
+        $nombre = $null
+        while ($script:hotkeyQueue.TryDequeue([ref]$nombre)) {
+            if ($nombre -eq 'read') {
+                $texto = Get-SelectedText
+                if (-not [string]::IsNullOrWhiteSpace($texto)) {
+                    $sync.Requests.Enqueue((@{ cmd = 'speak'; lang = 'Auto'; text = $texto } | ConvertTo-Json -Compress))
+                } else {
+                    Write-DaemonLog 'Atajo de leer: no habia texto seleccionado.'
+                }
+            } else {
+                $sync.Requests.Enqueue((@{ cmd = $nombre } | ConvertTo-Json -Compress))
+            }
+        }
+        $sync.WakeUi.Invoke()
+    } catch {
+        Write-DaemonLog ('Error en un atajo: {0}' -f $_.Exception.Message)
+    }
+}
+
+$script:hotkeyHook = [Windows.Interop.HwndSourceHook]{
+    # $handled llega por valor desde PowerShell y no se puede marcar; no hace
+    # falta, WM_HOTKEY puede seguir a la ventana sin efecto.
+    param($hwnd, $msg, $wParam, $lParam, $handled)
+    if ($msg -eq 0x0312) {
+        $id = $wParam.ToInt32()
+        foreach ($e in $script:hotkeyReport) {
+            if ($e.Active -and $e.Id -eq $id) {
+                $script:hotkeyQueue.Enqueue($e.Action)
+                [void]$window.Dispatcher.BeginInvoke([Windows.Threading.DispatcherPriority]::Normal, [Action]$script:hotkeyDrain)
+                break
+            }
+        }
+    }
+    return [IntPtr]::Zero
+}
+[Windows.Interop.HwndSource]::FromHwnd($hotkeyHandle).AddHook($script:hotkeyHook)
+
+$script:hotkeyReport = Register-ReadAloudHotkeys -Handle $hotkeyHandle -Hotkeys (Get-ConfiguredHotkeys $settings)
+$hotkeyFailed = @($script:hotkeyReport | Where-Object { -not $_.Active -and $_.Reason -ne 'disabled' })
+foreach ($e in $script:hotkeyReport) {
+    if ($e.Active) { Write-DaemonLog ('Atajo {0}: {1}' -f $e.Action, $e.Text) }
+    elseif ($e.Reason -ne 'disabled') { Write-DaemonLog ('Atajo {0} ({1}) no disponible: {2}' -f $e.Action, $e.Text, $e.Reason) }
+}
+
+# Icono: un circulo con el simbolo de volumen, dibujado aqui para no llevar un
+# archivo binario en el repositorio.
+function New-TrayIcon {
+    $bmp = New-Object Drawing.Bitmap 32, 32
+    $g = [Drawing.Graphics]::FromImage($bmp)
+    $g.SmoothingMode = 'AntiAlias'
+    $g.TextRenderingHint = 'AntiAlias'
+    $g.FillEllipse((New-Object Drawing.SolidBrush ([Drawing.ColorTranslator]::FromHtml('#2E8B6A'))), 1, 1, 30, 30)
+    $font = New-Object Drawing.Font('Segoe MDL2 Assets', 15)
+    $format = New-Object Drawing.StringFormat
+    $format.Alignment = 'Center'
+    $format.LineAlignment = 'Center'
+    $g.DrawString([string][char]0xE767, $font, [Drawing.Brushes]::White, (New-Object Drawing.RectangleF(0, 1, 32, 32)), $format)
+    $g.Dispose()
+    return [Drawing.Icon]::FromHandle($bmp.GetHicon())
+}
+
+$readKey = ($script:hotkeyReport | Where-Object { $_.Action -eq 'read' -and $_.Active } | Select-Object -First 1).Text
+$script:tray = New-Object Windows.Forms.NotifyIcon
+$script:tray.Icon = New-TrayIcon
+$script:tray.Text = $(if ($readKey) { 'Read Aloud - {0} para leer' -f $readKey } else { 'Read Aloud' })
+$trayMenu = New-Object Windows.Forms.ContextMenuStrip
+$itemAjustes = $trayMenu.Items.Add('Ajustes')
+$itemAjustes.Add_Click({ Show-SettingsWindow })
+[void]$trayMenu.Items.Add('-')
+$itemSalir = $trayMenu.Items.Add('Salir de Read Aloud')
+$itemSalir.Add_Click({
+    $sync.Requests.Enqueue('{"cmd":"quit"}')
+    $sync.WakeUi.Invoke()
+})
+$script:tray.ContextMenuStrip = $trayMenu
+$script:tray.Add_DoubleClick({ Show-SettingsWindow })
+$script:tray.Visible = $true
+
+if ($hotkeyFailed.Count -gt 0) {
+    $lista = ($hotkeyFailed | ForEach-Object { $_.Text }) -join ', '
+    $script:tray.ShowBalloonTip(8000, 'Read Aloud', ('Estos atajos no se pudieron activar porque otro programa los usa: {0}. Cambialos en los ajustes.' -f $lista), [Windows.Forms.ToolTipIcon]::Warning)
+}
+
 $timer.Start()
 
 # --------------------------------------------------------------------------
@@ -2387,6 +2498,9 @@ try {
     [void]$sync.SynthSignal.Set()
 
     Save-PlayerState
+
+    try { Unregister-ReadAloudHotkeys -Handle $hotkeyHandle -Report $script:hotkeyReport } catch { }
+    try { $script:tray.Visible = $false; $script:tray.Dispose() } catch { }
 
     foreach ($entry in $runspaces) {
         try { $entry.PowerShell.Dispose() } catch { }

@@ -63,6 +63,13 @@ function Get-ReadAloudSettings {
         PlayerAutoClose     = $true
         PlayerOpacity       = 0.8
         SkipSeconds         = 10
+        HotkeyRead          = 'Ctrl+Alt+V'
+        HotkeyStop          = 'Ctrl+Shift+Q'
+        HotkeyToggle        = 'Ctrl+Shift+Space'
+        HotkeyBack          = 'Ctrl+Shift+,'
+        HotkeyForward       = 'Ctrl+Shift+.'
+        HotkeyFaster        = 'Ctrl+Shift+]'
+        HotkeySlower        = 'Ctrl+Shift+['
         PauseParagraph      = 0.35
         PauseBeforeHeading  = 0.55
         PauseAfterHeading   = 0.30

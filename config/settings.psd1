@@ -92,6 +92,20 @@
     # vuelve opaco del todo, y al hacer clic fuera regresa a este valor.
     PlayerOpacity = 0.75
     SkipSeconds = 10
+
+    # Atajos de teclado globales. Formato: modificadores y tecla unidos con +,
+    # por ejemplo 'Ctrl+Alt+V'. Modificadores: Ctrl, Alt, Shift, Win. Teclas:
+    # letras, cifras, F1 a F24, Space, Enter, Left, Right, Up, Down, Home, End,
+    # PageUp, PageDown, coma, punto, [ ], y las multimedia (MediaPlayPause,
+    # MediaNext, MediaPrevious, MediaStop). Vacio ('') desactiva el atajo.
+    # Ctrl+Shift+V se evita: muchos programas lo usan para pegar sin formato.
+    HotkeyRead = 'Ctrl+Alt+V'
+    HotkeyStop = 'Ctrl+Shift+Q'
+    HotkeyToggle = 'Ctrl+Shift+Space'
+    HotkeyBack = 'Ctrl+Shift+,'
+    HotkeyForward = 'Ctrl+Shift+.'
+    HotkeyFaster = 'Ctrl+Shift+]'
+    HotkeySlower = 'Ctrl+Shift+['
     # Tamano de todo el reproductor (0.8 a 1.6) y de la letra del panel de
     # texto (10 a 22). Panel de texto al aparecer: 'recordar' (como lo
     # dejaste), 'abierto' o 'cerrado'.
