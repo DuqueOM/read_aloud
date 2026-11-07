@@ -7,13 +7,14 @@
 # en memoria. Por eso la lectura empieza casi al instante.
 #
 # Uso normal:
-#   Copia texto y pulsa Ctrl+Shift+V.
+#   Selecciona texto y pulsa Ctrl+Alt+V.
 #
 # Uso desde la consola:
 #   .\read_aloud.ps1                       Lee el portapapeles
 #   .\read_aloud.ps1 -InputText "Hola"     Lee un texto concreto
 #   .\read_aloud.ps1 -Stop                 Detiene la lectura
 #   .\read_aloud.ps1 -Toggle               Pausa o continua
+#   .\read_aloud.ps1 -Quit                 Cierra Read Aloud del todo
 #   .\read_aloud.ps1 -Language English     Fuerza el idioma
 #   .\read_aloud.ps1 -ShowPlan             Muestra como se va a segmentar, sin leer
 #   .\read_aloud.ps1 -Diagnose             Revisa la instalacion
@@ -29,6 +30,7 @@ param(
 
     [switch]$Stop,
     [switch]$Toggle,
+    [switch]$Quit,
     [switch]$ShowPlan,
     [switch]$Diagnose,
     [switch]$ListVoices,
@@ -75,6 +77,13 @@ if ($Stop) {
         Get-Process -Name 'piper' -ErrorAction SilentlyContinue | Stop-Process -Force
     }
 
+    exit 0
+}
+
+if ($Quit) {
+    # Cierra el proceso residente (atajos e icono de la bandeja incluidos). Si
+    # no esta abierto, no hay nada que cerrar: no se arranca para cerrarlo.
+    [void](Send-ReadAloudCommand -PipeName $paths.PipeName -Command @{ cmd = 'quit' })
     exit 0
 }
 
@@ -178,7 +187,7 @@ if ($ShowPlan) {
     # heredada, y aqui se imprimen pronunciaciones acentuadas.
     try { [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false) } catch { }
 
-    Set-SpeechTerms (Import-SpeechTerms -Path $paths.TermsFile)
+    Set-SpeechTerms (Import-AllSpeechTerms -BasePath $paths.TermsFile -UserPath $paths.UserTermsFile)
 
     $plan = Build-SpeechPlan -Text $text -Requested $Language -MlMode $MlMode `
         -MinChunkChars $settings.MinChunkChars `
@@ -214,7 +223,7 @@ if ($ShowPlan) {
 function Invoke-DirectRead {
     param([string]$Text)
 
-    Set-SpeechTerms (Import-SpeechTerms -Path $paths.TermsFile)
+    Set-SpeechTerms (Import-AllSpeechTerms -BasePath $paths.TermsFile -UserPath $paths.UserTermsFile)
 
     $plan = Build-SpeechPlan -Text $Text -Requested $Language -MlMode $MlMode `
         -MinChunkChars $settings.MinChunkChars `

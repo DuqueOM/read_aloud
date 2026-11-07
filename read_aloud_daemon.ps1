@@ -23,7 +23,12 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Core.ps1')
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Text.ps1')
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Player.ps1')
+. (Join-Path $PSScriptRoot 'lib\ReadAloud.Hotkeys.ps1')
+. (Join-Path $PSScriptRoot 'lib\ReadAloud.Update.ps1')
+. (Join-Path $PSScriptRoot 'lib\ReadAloud.Theme.ps1')
 
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName PresentationFramework
 Add-Type -AssemblyName PresentationCore
 Add-Type -AssemblyName WindowsBase
@@ -51,6 +56,10 @@ foreach ($dir in @($paths.RuntimeDir, $paths.TmpDir)) {
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
     }
 }
+
+# Los registros no crecen sin fin: el viejo pasa a .1 al pasar de 1 MB.
+[void](Invoke-LogRotation -Path $paths.LogFile)
+[void](Invoke-LogRotation -Path (Join-Path $paths.RuntimeDir 'qwen.log') -MaxBytes 2097152)
 
 function Write-DaemonLog {
     param([string]$Message)
@@ -87,7 +96,11 @@ function Get-ConfiguredPauses {
 $purged = Clear-OldTempAudio -TmpDir $paths.TmpDir -MaxAgeHours $settings.MaxTmpAgeHours
 Write-DaemonLog "Inicio. Temporales eliminados: $purged"
 
-Set-SpeechTerms (Import-SpeechTerms -Path $paths.TermsFile) (Import-SpeechTerms -Path $paths.TermsFile -Engine 'qwen')
+function Update-SpeechDictionary {
+    Set-SpeechTerms (Import-AllSpeechTerms -BasePath $paths.TermsFile -UserPath $paths.UserTermsFile) `
+        (Import-AllSpeechTerms -BasePath $paths.TermsFile -UserPath $paths.UserTermsFile -Engine 'qwen')
+}
+Update-SpeechDictionary
 
 # La expresion regular del diccionario se compila la primera vez que se usa, y
 # esa compilacion tardaba cerca de medio segundo justo en la primera lectura
@@ -154,6 +167,7 @@ $sync.Generation = 0
 $sync.Priority = -1
 $sync.PriorityGen = 0
 $sync.Stopping = $false
+$sync.ReloadSynth = $false
 
 $runspaces = New-Object System.Collections.Generic.List[object]
 
@@ -485,6 +499,21 @@ $synthScript = {
     $qwenCleanExits = @(0, 3, 4, 5)
     $qwenWatch = @{ Next = [DateTime]::UtcNow; LastExit = $null; Failures = 0 }
 
+    function Reset-SynthProcesses {
+        # Los ajustes de voz, motor, pausas y rendimiento cambiaron: se cierran
+        # todos los procesos de voz y se abren de nuevo con los valores nuevos,
+        # sin reiniciar el lector (ni los atajos, ni el reproductor).
+        foreach ($key in @($processes.Keys)) {
+            try { $processes[$key].Writer.Close() } catch { }
+            try { $processes[$key].Process.Kill() } catch { }
+            $processes.Remove($key)
+        }
+        $qwenWatch.LastExit = $null
+        $qwenWatch.Failures = 0
+        $qwenWatch.Next = [DateTime]::UtcNow.AddSeconds(3)
+        Write-SynthLog 'Ajustes de voz cambiados: se recargan los motores.'
+    }
+
     function Get-NvidiaFreeGB {
         if (-not $cfg.Qwen.Smi) { return [double]::MaxValue }
         try {
@@ -533,6 +562,11 @@ $synthScript = {
 
     while (-not $sync.Stopping) {
         $job = $null
+
+        if ($sync.ReloadSynth) {
+            $sync.ReloadSynth = $false
+            Reset-SynthProcesses
+        }
 
         if (-not $sync.SynthJobs.TryDequeue([ref]$job)) {
             if ([DateTime]::UtcNow -ge $qwenWatch.Next) {
@@ -624,9 +658,7 @@ if ($voiceEn.Ready) { $models['en'] = $voiceEn.Model } elseif ($voiceEs.Ready) {
 
 $invariant = [Globalization.CultureInfo]::InvariantCulture
 
-Start-BackgroundRunspace -Script $synthScript -Variables @{
-    sync = $sync
-    cfg = @{
+$synthConfig = @{
         PiperExe        = $paths.PiperExe
         PiperDir        = $paths.PiperDir
         EspeakData      = $paths.EspeakData
@@ -654,7 +686,36 @@ Start-BackgroundRunspace -Script $synthScript -Variables @{
             ReopenFreeGB= [double]$settings.QwenReopenFreeGB
             Smi         = $(if ($vramGB -gt 0) { (Get-Command 'nvidia-smi' -ErrorAction SilentlyContinue).Source } else { '' })
         }
+}
+
+Start-BackgroundRunspace -Script $synthScript -Variables @{
+    sync = $sync
+    cfg = $synthConfig
+}
+
+function Update-SynthSettings {
+    # Aplica en caliente la voz, el motor, las pausas y el rendimiento que se
+    # acaban de cambiar en los ajustes ($settings ya tiene los valores nuevos).
+    $vEs = Get-VoiceModelPath -Paths $paths -Settings $settings -Lang 'es'
+    $vEn = Get-VoiceModelPath -Paths $paths -Settings $settings -Lang 'en'
+    if ($vEs.Ready) { $models['es'] = $vEs.Model }
+    if ($vEn.Ready) { $models['en'] = $vEn.Model } elseif ($vEs.Ready) { $models['en'] = $vEs.Model }
+
+    foreach ($par in @(@{ Lang = 'es'; Ajuste = 'EngineEs' }, @{ Lang = 'en'; Ajuste = 'EngineEn' })) {
+        $resolved = Resolve-VoiceEngine -Requested $settings[$par.Ajuste] -QwenVoice $qwenVoice `
+            -VramGB $vramGB -MinVramGB ([double]$settings.QwenMinVramGB)
+        $engines[$par.Lang] = $resolved.Engine
     }
+
+    $script:ahorro = ([string]$settings.Performance).ToLowerInvariant() -eq 'ahorro'
+    $synthConfig.SentenceSilence = ([double]$settings.SentenceSilence).ToString($invariant)
+    $synthConfig.Qwen.IdleMinutes = $(if ($script:ahorro) { [double]$settings.SaverIdleMinutes } else { [double]$settings.QwenIdleMinutes }).ToString($invariant)
+    $synthConfig.Qwen.Reopen = (-not $script:ahorro) -and [bool]$settings.QwenReopen
+
+    Write-DaemonLog ('Ajustes de voz aplicados: es={0}, en={1}, rendimiento {2}' -f $engines['es'], $engines['en'], $settings.Performance)
+    $sync.ReloadSynth = $true
+    [void]$sync.SynthSignal.Set()
+    Start-Warmup
 }
 
 # --------------------------------------------------------------------------
@@ -938,9 +999,15 @@ $xaml = @'
 </Window>
 '@
 
+# Tema de color (ajustes Theme y Accent): el XAML esta escrito en oscuro y se
+# adapta antes de cargarlo.
+$script:paleta = Get-ThemePalette -Mode (Resolve-ThemeMode -Mode ([string]$settings.Theme) -SystemLight (Test-SystemLightTheme)) -Accent ([string]$settings.Accent)
+$xaml = ConvertTo-DynamicXaml -Xaml $xaml
+
 $reader = New-Object IO.StringReader($xaml)
 $xmlReader = [Xml.XmlReader]::Create($reader)
 $window = [Windows.Markup.XamlReader]::Load($xmlReader)
+Set-ThemeResources -Resources $window.Resources -Palette $script:paleta
 
 $ui = @{}
 foreach ($name in @('Root','LangBadge','BtnBack','BtnPlay','BtnFwd','BtnSpeed','BufferBar','Seek','TimeLabel','BtnText','BtnClose','TextPanel','TextView','Bar','Bordes',
@@ -1485,16 +1552,17 @@ function New-Brush {
     return $pincel
 }
 
+$colorTema = Get-RuntimeColors $script:paleta
 $colores = @{
-    Pendiente = New-Brush '#D0D0D6'
-    Leido     = New-Brush '#7C7C84'
-    Actual    = New-Brush '#FFFFFF'
-    Fondo     = New-Brush '#663B82F6'
+    Pendiente = New-Brush $colorTema.Pendiente
+    Leido     = New-Brush $colorTema.Leido
+    Actual    = New-Brush $colorTema.Actual
+    Fondo     = New-Brush $colorTema.Fondo
     Ninguno   = [Windows.Media.Brushes]::Transparent
-    Encendido = New-Brush '#9AE6B4'
-    Apagado   = New-Brush '#C8C8CC'
-    Texto     = New-Brush '#D8D8DC'
-    Elegido   = New-Brush '#2EFFFFFF'
+    Encendido = New-Brush $colorTema.Encendido
+    Apagado   = New-Brush $colorTema.Apagado
+    Texto     = New-Brush $colorTema.Texto
+    Elegido   = New-Brush $colorTema.Elegido
 }
 
 $script:runs = New-Object System.Collections.Generic.List[object]
@@ -2354,20 +2422,149 @@ $timer.Add_Tick({
     if ($timer.Interval -ne $pulse) { $timer.Interval = $pulse }
 })
 
+# --------------------------------------------------------------------------
+# Atajos de teclado globales (sin AutoHotkey) e icono en la bandeja.
+#
+# Los atajos se registran en la ventana del reproductor con RegisterHotKey;
+# Windows los avisa con WM_HOTKEY aunque la ventana este oculta. Cada uno se
+# encola y se atiende en el hilo de la interfaz, igual que una orden que llega
+# por la tuberia. El icono de la bandeja es la forma de ver que Read Aloud
+# esta activo y de cerrarlo del todo ("Salir").
+# --------------------------------------------------------------------------
+# Un error en cualquier manejador de la interfaz cerraba el proceso sin dejar
+# rastro: ahora se registra y el proceso sigue vivo.
+$window.Dispatcher.add_UnhandledException({
+    param($sender, $e)
+    Write-DaemonLog ('Error no controlado: {0}' -f $e.Exception.ToString())
+    $e.Handled = $true
+})
+
+$script:hotkeyQueue = New-Object System.Collections.Concurrent.ConcurrentQueue[string]
+$script:hotkeyReport = @()
+$hotkeyHandle = (New-Object Windows.Interop.WindowInteropHelper($window)).EnsureHandle()
+
+$script:hotkeyDrain = {
+    # Una excepcion aqui cortaria el bucle de la interfaz y cerraria el proceso:
+    # se registra y se sigue.
+    try {
+        $nombre = $null
+        while ($script:hotkeyQueue.TryDequeue([ref]$nombre)) {
+            if ($nombre -eq 'read') {
+                $texto = Get-SelectedText
+                if (-not [string]::IsNullOrWhiteSpace($texto)) {
+                    $sync.Requests.Enqueue((@{ cmd = 'speak'; lang = 'Auto'; text = $texto } | ConvertTo-Json -Compress))
+                } else {
+                    Write-DaemonLog 'Atajo de leer: no habia texto seleccionado.'
+                }
+            } else {
+                $sync.Requests.Enqueue((@{ cmd = $nombre } | ConvertTo-Json -Compress))
+            }
+        }
+        $sync.WakeUi.Invoke()
+    } catch {
+        Write-DaemonLog ('Error en un atajo: {0}' -f $_.Exception.Message)
+    }
+}
+
+$script:hotkeyHook = [Windows.Interop.HwndSourceHook]{
+    # $handled llega por valor desde PowerShell y no se puede marcar; no hace
+    # falta, WM_HOTKEY puede seguir a la ventana sin efecto.
+    param($hwnd, $msg, $wParam, $lParam, $handled)
+    if ($msg -eq 0x0312) {
+        $id = $wParam.ToInt32()
+        foreach ($e in $script:hotkeyReport) {
+            if ($e.Active -and $e.Id -eq $id) {
+                $script:hotkeyQueue.Enqueue($e.Action)
+                [void]$window.Dispatcher.BeginInvoke([Windows.Threading.DispatcherPriority]::Normal, [Action]$script:hotkeyDrain)
+                break
+            }
+        }
+    }
+    return [IntPtr]::Zero
+}
+[Windows.Interop.HwndSource]::FromHwnd($hotkeyHandle).AddHook($script:hotkeyHook)
+
+$script:hotkeyReport = Register-ReadAloudHotkeys -Handle $hotkeyHandle -Hotkeys (Get-ConfiguredHotkeys $settings)
+$hotkeyFailed = @($script:hotkeyReport | Where-Object { -not $_.Active -and $_.Reason -ne 'disabled' })
+foreach ($e in $script:hotkeyReport) {
+    if ($e.Active) { Write-DaemonLog ('Atajo {0}: {1}' -f $e.Action, $e.Text) }
+    elseif ($e.Reason -ne 'disabled') { Write-DaemonLog ('Atajo {0} ({1}) no disponible: {2}' -f $e.Action, $e.Text, $e.Reason) }
+}
+
+# Icono: un circulo con el simbolo de volumen, dibujado aqui para no llevar un
+# archivo binario en el repositorio.
+function Set-AppTheme {
+    # Aplica el tema (ajustes Theme y Accent) al momento: los recursos de las
+    # dos ventanas, los colores que se ponen por codigo y el icono de la bandeja.
+    $script:paleta = Get-ThemePalette -Mode (Resolve-ThemeMode -Mode ([string]$settings.Theme) -SystemLight (Test-SystemLightTheme)) -Accent ([string]$settings.Accent)
+    Set-ThemeResources -Resources $window.Resources -Palette $script:paleta
+    if ($ajustesVentana) { Set-ThemeResources -Resources $ajustesVentana.Resources -Palette $script:paleta }
+
+    $nuevo = Get-RuntimeColors $script:paleta
+    foreach ($nombre in @('Pendiente', 'Leido', 'Actual', 'Fondo', 'Encendido', 'Apagado', 'Texto', 'Elegido')) {
+        $colores[$nombre] = New-Brush $nuevo[$nombre]
+    }
+    if ($script:panelVisible) { $ui.BtnText.Foreground = $colores.Encendido } else { $ui.BtnText.Foreground = $colores.Apagado }
+    Update-Highlight -Force
+
+    if ($script:tray) {
+        $anterior = $script:tray.Icon
+        $script:tray.Icon = New-TrayIcon
+        if ($anterior) { $anterior.Dispose() }
+    }
+}
+
+function New-TrayIcon {
+    $bmp = New-Object Drawing.Bitmap 32, 32
+    $g = [Drawing.Graphics]::FromImage($bmp)
+    $g.SmoothingMode = 'AntiAlias'
+    $g.TextRenderingHint = 'AntiAlias'
+    $g.FillEllipse((New-Object Drawing.SolidBrush ([Drawing.ColorTranslator]::FromHtml($script:paleta.AccentBase))), 1, 1, 30, 30)
+    $font = New-Object Drawing.Font('Segoe MDL2 Assets', 15)
+    $format = New-Object Drawing.StringFormat
+    $format.Alignment = 'Center'
+    $format.LineAlignment = 'Center'
+    $g.DrawString([string][char]0xE767, $font, [Drawing.Brushes]::White, (New-Object Drawing.RectangleF(0, 1, 32, 32)), $format)
+    $g.Dispose()
+    return [Drawing.Icon]::FromHandle($bmp.GetHicon())
+}
+
+$readKey = ($script:hotkeyReport | Where-Object { $_.Action -eq 'read' -and $_.Active } | Select-Object -First 1).Text
+$script:tray = New-Object Windows.Forms.NotifyIcon
+$script:tray.Icon = New-TrayIcon
+$script:tray.Text = $(if ($readKey) { 'Read Aloud - {0} para leer' -f $readKey } else { 'Read Aloud' })
+$trayMenu = New-Object Windows.Forms.ContextMenuStrip
+$itemAjustes = $trayMenu.Items.Add('Ajustes')
+$itemAjustes.Add_Click({ Show-SettingsWindow })
+[void]$trayMenu.Items.Add('-')
+$itemSalir = $trayMenu.Items.Add('Salir de Read Aloud')
+$itemSalir.Add_Click({
+    $sync.Requests.Enqueue('{"cmd":"quit"}')
+    $sync.WakeUi.Invoke()
+})
+$script:tray.ContextMenuStrip = $trayMenu
+$script:tray.Add_DoubleClick({ Show-SettingsWindow })
+$script:tray.Visible = $true
+
+if ($hotkeyFailed.Count -gt 0) {
+    $lista = ($hotkeyFailed | ForEach-Object { $_.Text }) -join ', '
+    $script:tray.ShowBalloonTip(8000, 'Read Aloud', ('Estos atajos no se pudieron activar porque otro programa los usa: {0}. Cambialos en los ajustes.' -f $lista), [Windows.Forms.ToolTipIcon]::Warning)
+}
+
 $timer.Start()
 
 # --------------------------------------------------------------------------
 # Calentamiento: obliga a cargar los modelos ahora, para que la primera lectura
 # real no pague la espera.
 # --------------------------------------------------------------------------
-if (-not $NoWarmup) {
+function Start-Warmup {
     $warmIndex = 0
     foreach ($lang in @($models.Keys)) {
         # En ahorro, Qwen espera a la primera lectura: calentarlo aqui seria
         # cargarlo igual.
-        if ($ahorro -and $engines[$lang] -eq 'qwen') { continue }
+        if ($script:ahorro -and $engines[$lang] -eq 'qwen') { continue }
         $sync.SynthJobs.Enqueue(@{
-            Generation = 0
+            Generation = $sync.Generation
             Index      = -1 - $warmIndex
             Lang       = $lang
             Text       = 'Listo.'
@@ -2378,6 +2575,8 @@ if (-not $NoWarmup) {
     [void]$sync.SynthSignal.Set()
 }
 
+if (-not $NoWarmup) { Start-Warmup }
+
 Write-DaemonLog 'Proceso residente listo.'
 
 try {
@@ -2387,6 +2586,9 @@ try {
     [void]$sync.SynthSignal.Set()
 
     Save-PlayerState
+
+    try { Unregister-ReadAloudHotkeys -Handle $hotkeyHandle -Report $script:hotkeyReport } catch { }
+    try { $script:tray.Visible = $false; $script:tray.Dispose() } catch { }
 
     foreach ($entry in $runspaces) {
         try { $entry.PowerShell.Dispose() } catch { }

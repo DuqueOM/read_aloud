@@ -7,8 +7,8 @@
 # Lo que se cambia aqui se guarda solo en runtime\ajustes.json, que manda
 # sobre config\settings.psd1 (Get-ReadAloudSettings). La apariencia y la
 # lectura se aplican al momento. La voz, el rendimiento y la pausa entre
-# frases van a los procesos de sintesis, que se abren al arrancar: se aplican
-# al reiniciar el lector, y el panel ofrece hacerlo.
+# frases van a los procesos de sintesis: se aplican al momento recargando esos
+# procesos (Update-SynthSettings), sin reiniciar el lector.
 #
 # Este archivo va guardado con BOM: sin el, Windows PowerShell lo lee como
 # ANSI y los acentos de los textos salen rotos.
@@ -124,6 +124,17 @@ $xamlAjustes = @'
       <Setter Property="VerticalAlignment" Value="Center"/>
       <Setter Property="TextAlignment" Value="Right"/>
     </Style>
+    <Style x:Key="Campo" TargetType="TextBox">
+      <Setter Property="Background" Value="#14FFFFFF"/>
+      <Setter Property="Foreground" Value="#E6E6EA"/>
+      <Setter Property="CaretBrush" Value="#E6E6EA"/>
+      <Setter Property="BorderBrush" Value="#26FFFFFF"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="FontFamily" Value="Segoe UI"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Padding" Value="6,4"/>
+      <Setter Property="Margin" Value="0,0,0,2"/>
+    </Style>
     <Style x:Key="Nota" TargetType="TextBlock">
       <Setter Property="Foreground" Value="#8A8A94"/>
       <Setter Property="FontFamily" Value="Segoe UI"/>
@@ -150,6 +161,25 @@ $xamlAjustes = @'
         <StackPanel Margin="0,0,10,0">
 
           <TextBlock Style="{StaticResource Seccion}" Text="APARIENCIA"/>
+
+          <TextBlock Style="{StaticResource Etiqueta}" Text="Tema"/>
+          <WrapPanel>
+            <RadioButton GroupName="Tema" Tag="system" Content="Como Windows"/>
+            <RadioButton GroupName="Tema" Tag="dark" Content="Oscuro"/>
+            <RadioButton GroupName="Tema" Tag="light" Content="Claro"/>
+          </WrapPanel>
+          <TextBlock Style="{StaticResource Etiqueta}" Text="Color de acento"/>
+          <WrapPanel>
+            <RadioButton GroupName="Acento" Tag="green" Content="Verde"/>
+            <RadioButton GroupName="Acento" Tag="blue" Content="Azul"/>
+            <RadioButton GroupName="Acento" Tag="purple" Content="Violeta"/>
+            <RadioButton GroupName="Acento" Tag="pink" Content="Rosa"/>
+            <RadioButton GroupName="Acento" Tag="orange" Content="Naranja"/>
+            <RadioButton GroupName="Acento" Tag="red" Content="Rojo"/>
+            <RadioButton GroupName="Acento" Tag="teal" Content="Turquesa"/>
+            <RadioButton GroupName="Acento" Tag="yellow" Content="Amarillo"/>
+          </WrapPanel>
+          <TextBlock Style="{StaticResource Nota}" Text="Se aplican al instante."/>
 
           <Grid>
             <Grid.ColumnDefinitions>
@@ -276,19 +306,53 @@ $xamlAjustes = @'
             <TextBlock x:Name="PausaParrafoValor" Grid.Row="1" Grid.Column="2" Style="{StaticResource Valor}"/>
           </Grid>
           <TextBlock Style="{StaticResource Nota}"
-                     Text="La pausa entre párrafos se nota desde la próxima lectura; la de entre frases, al reiniciar."/>
+                     Text="Los cambios de pausa se notan desde la próxima lectura."/>
+
+          <TextBlock Style="{StaticResource Seccion}" Text="PRONUNCIACIÓN"/>
+          <TextBlock Style="{StaticResource Nota}"
+                     Text="Si una palabra en inglés (o una sigla) suena mal, escribe cómo debería sonar con ortografía española y pulsa Probar. Guardar la aplica a las próximas lecturas, sin reiniciar."/>
+          <TextBlock Style="{StaticResource Etiqueta}" Text="Palabra"/>
+          <TextBox x:Name="TerminoPalabra" Style="{StaticResource Campo}"/>
+          <TextBlock Style="{StaticResource Etiqueta}" Text="Cómo se dice (Piper y, si no hay otra, la voz propia)"/>
+          <TextBox x:Name="TerminoDice" Style="{StaticResource Campo}"/>
+          <TextBlock Style="{StaticResource Etiqueta}" Text="Cómo se dice con la voz propia (opcional)"/>
+          <TextBox x:Name="TerminoDiceQwen" Style="{StaticResource Campo}"/>
+          <WrapPanel Margin="0,8,0,0">
+            <Button x:Name="BtnTerminoProbar" Content="Probar" Padding="12,5" Margin="0,0,6,6" Background="#14FFFFFF"/>
+            <Button x:Name="BtnTerminoGuardar" Content="Guardar" Padding="12,5" Margin="0,0,6,6" Background="#333B82F6"/>
+            <Button x:Name="BtnTerminoQuitar" Content="Quitar el mío" Padding="12,5" Margin="0,0,6,6" Background="#14FFFFFF"
+                    ToolTip="Quita tu corrección y vuelve a la del diccionario de fábrica"/>
+          </WrapPanel>
+          <TextBlock x:Name="TerminoNota" Style="{StaticResource Nota}" Visibility="Collapsed"/>
+
+          <TextBlock Style="{StaticResource Seccion}" Text="ATAJOS DE TECLADO"/>
+          <StackPanel x:Name="AtajosFilas" Margin="0,2,0,4"/>
+          <TextBlock Style="{StaticResource Nota}"
+                     Text="Haz clic en un atajo y pulsa la combinación nueva (Esc cancela, Supr lo desactiva). Se aplica al momento."/>
+          <TextBlock x:Name="AtajosAviso" Style="{StaticResource Nota}" Foreground="#F6C177"
+                     Visibility="Collapsed" Margin="0,4,0,0"/>
+          <Button x:Name="BtnAtajosRestablecer" Content="Restablecer atajos" Padding="12,5" Margin="0,6,0,0"
+                  HorizontalAlignment="Left" Background="#14FFFFFF" ToolTip="Vuelve a los atajos de fábrica"/>
+
+          <TextBlock Style="{StaticResource Seccion}" Text="ACERCA DE"/>
+          <TextBlock x:Name="AcercaVersion" Style="{StaticResource Etiqueta}" Margin="0,2,0,4"/>
+          <TextBlock Style="{StaticResource Nota}"
+                     Text="Gratis y de código abierto. ¿Encontraste un error o tienes una idea? Abre una incidencia en GitHub o escribe a duqueortegamutis@gmail.com."/>
+          <WrapPanel Margin="0,8,0,0">
+            <Button x:Name="BtnDiagnostico" Content="Copiar diagnóstico" Padding="12,5" Margin="0,0,6,6"
+                    Background="#14FFFFFF"
+                    ToolTip="Copia un resumen (versión, motores, atajos y registro) para pegarlo en una incidencia"/>
+            <Button x:Name="BtnActualizar" Content="Buscar actualizaciones" Padding="12,5" Margin="0,0,6,6"
+                    Background="#14FFFFFF"
+                    ToolTip="Consulta GitHub solo ahora; Read Aloud no consulta nada por su cuenta"/>
+            <Button x:Name="BtnGitHub" Content="Abrir GitHub" Padding="12,5" Margin="0,0,6,6"
+                    Background="#14FFFFFF"/>
+          </WrapPanel>
+          <TextBlock x:Name="ActualizarNota" Style="{StaticResource Nota}" Visibility="Collapsed"/>
+          <Button x:Name="BtnInstalarUpdate" Content="Descargar e instalar" Padding="12,5" Margin="0,6,0,0"
+                  HorizontalAlignment="Left" Background="#333B82F6" Visibility="Collapsed"/>
         </StackPanel>
       </ScrollViewer>
-
-      <Border x:Name="Reinicio" Visibility="Collapsed" Background="#263B82F6" BorderBrush="#663B82F6"
-              BorderThickness="1" CornerRadius="6" Padding="10,8" Margin="0,14,8,0">
-        <StackPanel>
-          <TextBlock Style="{StaticResource Nota}" Foreground="#D0D0D6"
-                     Text="Los cambios de voz, rendimiento o pausa entre frases se aplican al reiniciar el lector. Tarda unos segundos; si está leyendo, la lectura se corta."/>
-          <Button x:Name="ReiniciarAhora" Content="Reiniciar ahora" Padding="12,5" Margin="0,6,0,0"
-                  HorizontalAlignment="Left" Background="#333B82F6"/>
-        </StackPanel>
-      </Border>
 
       <Grid Margin="0,14,8,0">
         <Button x:Name="Restablecer" Content="Restablecer todo" Padding="12,5" HorizontalAlignment="Left"
@@ -301,12 +365,18 @@ $xamlAjustes = @'
 </Window>
 '@
 
+$xamlAjustes = ConvertTo-DynamicXaml -Xaml $xamlAjustes
 $ajustesVentana = [Windows.Markup.XamlReader]::Load([Xml.XmlReader]::Create((New-Object IO.StringReader($xamlAjustes))))
+Set-ThemeResources -Resources $ajustesVentana.Resources -Palette $script:paleta
 $aj = @{}
 foreach ($nombre in @('Titulo', 'Cerrar', 'Scroll', 'Opacidad', 'OpacidadValor', 'Fuente', 'FuenteValor',
                       'PanelAlto', 'PanelAltoValor', 'PanelAncho', 'PanelAnchoValor', 'MotorQwen', 'MotorNota',
                       'VocesEs', 'VocesEn', 'RendimientoNota', 'MinutosFila', 'PausaFrase', 'PausaFraseValor',
-                      'PausaParrafo', 'PausaParrafoValor', 'Reinicio', 'ReiniciarAhora', 'Restablecer')) {
+                      'PausaParrafo', 'PausaParrafoValor', 'Restablecer',
+                      'AtajosFilas', 'BtnAtajosRestablecer', 'AtajosAviso', 'AcercaVersion', 'BtnDiagnostico', 'BtnActualizar', 'BtnGitHub',
+                      'ActualizarNota', 'BtnInstalarUpdate',
+                      'TerminoPalabra', 'TerminoDice', 'TerminoDiceQwen', 'BtnTerminoProbar', 'BtnTerminoGuardar',
+                      'BtnTerminoQuitar', 'TerminoNota')) {
     $aj[$nombre] = $ajustesVentana.FindName($nombre)
 }
 
@@ -316,7 +386,7 @@ $invariante = [Globalization.CultureInfo]::InvariantCulture
 $script:cargandoAjustes = $false
 
 function Save-Ajuste {
-    param([string]$Nombre, $Valor, [switch]$Reinicio)
+    param([string]$Nombre, $Valor)
 
     $settings[$Nombre] = $Valor
     try {
@@ -324,7 +394,21 @@ function Save-Ajuste {
     } catch {
         Write-DaemonLog "No pude guardar el ajuste ${Nombre}: $($_.Exception.Message)"
     }
-    if ($Reinicio) { $aj.Reinicio.Visibility = 'Visible' }
+}
+
+# Varios cambios seguidos (o arrastrar el deslizador de la pausa) recargan los
+# motores una sola vez, cuando pasa un momento sin nuevos cambios.
+$script:aplicarVoz = New-Object Windows.Threading.DispatcherTimer
+$script:aplicarVoz.Interval = [timespan]::FromMilliseconds(700)
+$script:aplicarVoz.Add_Tick({
+    $script:aplicarVoz.Stop()
+    Update-SynthSettings
+    Update-MotorNota
+    Update-RendimientoNota
+})
+function Request-SynthApply {
+    $script:aplicarVoz.Stop()
+    $script:aplicarVoz.Start()
 }
 
 function Restart-Lector {
@@ -393,13 +477,15 @@ function Set-PanelSize {
 # Opciones de pastilla: cada grupo es un ajuste. Tag es el valor de cada una.
 # --------------------------------------------------------------------------
 $gruposAjustes = @{
+    Tema        = @{ Clave = 'Theme'; Aplicar = { param($v) Set-AppTheme } }
+    Acento      = @{ Clave = 'Accent'; Aplicar = { param($v) Set-AppTheme } }
     Escala      = @{ Clave = 'PlayerScale'; Tipo = 'double'; Aplicar = { param($v) Set-PlayerScale $v; Update-PlayerLayout } }
     Panel       = @{ Clave = 'PanelOnShow' }
-    Motor       = @{ Clave = 'EngineEs'; Tambien = 'EngineEn'; Reinicio = $true }
-    VozEs       = @{ Clave = 'VoiceEs'; Reinicio = $true }
-    VozEn       = @{ Clave = 'VoiceEn'; Reinicio = $true }
-    Rendimiento = @{ Clave = 'Performance'; Reinicio = $true; Aplicar = { param($v) Update-RendimientoNota } }
-    Minutos     = @{ Clave = 'SaverIdleMinutes'; Tipo = 'double'; Reinicio = $true }
+    Motor       = @{ Clave = 'EngineEs'; Tambien = 'EngineEn'; Aplicar = { param($v) Request-SynthApply } }
+    VozEs       = @{ Clave = 'VoiceEs'; Aplicar = { param($v) Request-SynthApply } }
+    VozEn       = @{ Clave = 'VoiceEn'; Aplicar = { param($v) Request-SynthApply } }
+    Rendimiento = @{ Clave = 'Performance'; Aplicar = { param($v) Update-RendimientoNota; Request-SynthApply } }
+    Minutos     = @{ Clave = 'SaverIdleMinutes'; Tipo = 'double'; Aplicar = { param($v) Request-SynthApply } }
     Cerrar      = @{ Clave = 'PlayerAutoClose'; Tipo = 'bool' }
     Salto       = @{ Clave = 'SkipSeconds'; Tipo = 'double'; Aplicar = { param($v) Update-SkipLabels } }
     Idioma      = @{ Clave = 'FallbackLanguage' }
@@ -469,8 +555,8 @@ foreach ($opcion in @(Get-OpcionesAjuste $ajustesVentana)) {
         if ($script:cargandoAjustes) { return }
         $g = $gruposAjustes[$sender.GroupName]
         $v = ConvertTo-ValorAjuste ([string]$sender.Tag) $g.Tipo
-        Save-Ajuste $g.Clave $v -Reinicio:([bool]$g.Reinicio)
-        if ($g.Tambien) { Save-Ajuste $g.Tambien $v -Reinicio:([bool]$g.Reinicio) }
+        Save-Ajuste $g.Clave $v
+        if ($g.Tambien) { Save-Ajuste $g.Tambien $v }
         if ($g.Aplicar) { & $g.Aplicar $v }
     })
 }
@@ -519,7 +605,8 @@ $aj.PausaFrase.Add_ValueChanged({
     $v = [Math]::Round($aj.PausaFrase.Value, 2)
     $aj.PausaFraseValor.Text = Format-Segundos $v
     if ($script:cargandoAjustes) { return }
-    Save-Ajuste 'SentenceSilence' $v -Reinicio
+    Save-Ajuste 'SentenceSilence' $v
+    Request-SynthApply
 })
 
 $aj.PausaParrafo.Add_ValueChanged({
@@ -552,6 +639,8 @@ function Show-SettingsWindow {
     }
     Update-MotorNota
     Update-RendimientoNota
+    Update-AtajosLista
+    $aj.AcercaVersion.Text = 'Read Aloud ' + (Get-ReadAloudVersion -Root $paths.Root)
 
     $area = [Windows.SystemParameters]::WorkArea
     $aj.Scroll.MaxHeight = [Math]::Max(240, $area.Height - 200)
@@ -583,7 +672,292 @@ $ajustesVentana.Add_Closing({ param($sender, $e); $e.Cancel = $true; $ajustesVen
 $ajustesVentana.Add_KeyDown({ param($sender, $e); if ($e.Key -eq 'Escape') { $ajustesVentana.Hide() } })
 $aj.Titulo.Add_MouseLeftButtonDown({ try { $ajustesVentana.DragMove() } catch { } })
 
-$aj.ReiniciarAhora.Add_Click({ Restart-Lector })
+
+# --------------------------------------------------------------------------
+# Atajos y "Acerca de". La red solo se toca al pulsar "Buscar actualizaciones"
+# y "Descargar e instalar"; Read Aloud no consulta nada por su cuenta.
+# --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# Atajos: cada accion es un boton con su combinacion. Al hacer clic se graba la
+# siguiente combinacion que se pulse. Mientras se graba, los atajos globales se
+# sueltan: si no, pulsar el actual lo activaria en vez de grabarlo.
+# --------------------------------------------------------------------------
+$script:grabandoAtajo = $null
+
+function Get-HotkeyMap {
+    return (Get-ConfiguredHotkeys $settings)
+}
+
+function Register-HotkeyMap {
+    # Registra un mapa accion -> texto y deja el informe donde lo lee el pulso.
+    param($Mapa)
+    $script:hotkeyReport = Register-ReadAloudHotkeys -Handle $hotkeyHandle -Hotkeys $Mapa
+    $leer = $script:hotkeyReport | Where-Object { $_.Action -eq 'read' -and $_.Active } | Select-Object -First 1
+    if ($script:tray) { $script:tray.Text = $(if ($leer) { 'Read Aloud - {0} para leer' -f $leer.Text } else { 'Read Aloud' }) }
+}
+
+function Update-AtajosLista {
+    $acciones = Get-HotkeyActions
+    $aj.AtajosFilas.Children.Clear()
+    $fallidos = New-Object System.Collections.Generic.List[string]
+
+    foreach ($e in $script:hotkeyReport) {
+        $fila = New-Object Windows.Controls.Grid
+        $fila.Margin = '0,2,0,2'
+        $c1 = New-Object Windows.Controls.ColumnDefinition
+        $c2 = New-Object Windows.Controls.ColumnDefinition
+        $c2.Width = [Windows.GridLength]::new(160)
+        [void]$fila.ColumnDefinitions.Add($c1)
+        [void]$fila.ColumnDefinitions.Add($c2)
+
+        $etiqueta = New-Object Windows.Controls.TextBlock
+        $etiqueta.Text = $acciones[$e.Action].Label
+        $etiqueta.VerticalAlignment = 'Center'
+        $etiqueta.FontFamily = 'Segoe UI'
+        $etiqueta.FontSize = 12
+        $etiqueta.SetResourceReference([Windows.Controls.TextBlock]::ForegroundProperty, 'T_E6E6EA')
+        [void]$fila.Children.Add($etiqueta)
+
+        $boton = New-Object Windows.Controls.Button
+        [Windows.Controls.Grid]::SetColumn($boton, 1)
+        $boton.Tag = $e.Action
+        $boton.Padding = '8,4,8,4'
+        $boton.HorizontalContentAlignment = 'Left'
+        $boton.FontFamily = 'Consolas'
+        $boton.SetResourceReference([Windows.Controls.Control]::BackgroundProperty, 'T_14FFFFFF')
+        if ($e.Active) {
+            $boton.Content = $e.Text
+        } elseif ($e.Reason -eq 'disabled') {
+            $boton.Content = '(desactivado)'
+        } else {
+            $boton.Content = $e.Text + '  !'
+            $boton.ToolTip = 'Otro programa usa ya este atajo'
+            $fallidos.Add($e.Text)
+        }
+        [Windows.Automation.AutomationProperties]::SetName($boton, ('{0}: {1}. Haz clic para cambiarlo.' -f $etiqueta.Text, $boton.Content))
+        $boton.Add_Click({ param($sender, $e2) Start-HotkeyRecording $sender })
+        [void]$fila.Children.Add($boton)
+        [void]$aj.AtajosFilas.Children.Add($fila)
+    }
+
+    if ($fallidos.Count -gt 0) {
+        $aj.AtajosAviso.Text = 'Otro programa usa ya: ' + ($fallidos -join ', ') + '. Elige otra combinación para esos atajos.'
+        $aj.AtajosAviso.Visibility = 'Visible'
+    } else {
+        $aj.AtajosAviso.Visibility = 'Collapsed'
+    }
+}
+
+function Stop-HotkeyRecording {
+    # Termina la grabacion (con o sin cambio) y vuelve a registrar los atajos.
+    param([string]$Aviso = '')
+    if ($null -eq $script:grabandoAtajo) { return }
+    $script:grabandoAtajo = $null
+    Register-HotkeyMap (Get-HotkeyMap)
+    Update-AtajosLista
+    if ($Aviso) { $aj.AtajosAviso.Text = $Aviso; $aj.AtajosAviso.Visibility = 'Visible' }
+}
+
+function Start-HotkeyRecording {
+    param($Boton)
+    if ($null -ne $script:grabandoAtajo) { Stop-HotkeyRecording }
+    Unregister-ReadAloudHotkeys -Handle $hotkeyHandle -Report $script:hotkeyReport
+    $script:grabandoAtajo = [string]$Boton.Tag
+    $Boton.Content = 'Pulsa la combinación...'
+    $aj.AtajosAviso.Visibility = 'Collapsed'
+    [void]$Boton.Focus()
+}
+
+function Set-HotkeyFromRecording {
+    param([string]$Texto)
+    $accion = $script:grabandoAtajo
+    $clave = (Get-HotkeyActions)[$accion].Setting
+    $mapa = Get-HotkeyMap
+    $mapa[$accion] = $Texto
+
+    if ($Texto -ne '') {
+        $revision = Test-HotkeySet $mapa | Where-Object { $_.Action -eq $accion }
+        if ($revision.Problem -eq 'reserved') { Stop-HotkeyRecording 'Esa combinación la usa Windows o casi todos los programas: elige otra.'; return }
+        if ($revision.Problem -eq 'duplicate') { Stop-HotkeyRecording 'Esa combinación ya está en otra acción: elige otra.'; return }
+        if ($revision.Problem -ne '') { Stop-HotkeyRecording 'Esa combinación no sirve como atajo.'; return }
+    }
+
+    # Se prueba antes de guardar: si otro programa la tiene, se queda la anterior.
+    $informe = Register-ReadAloudHotkeys -Handle $hotkeyHandle -Hotkeys $mapa
+    $mio = $informe | Where-Object { $_.Action -eq $accion }
+    Unregister-ReadAloudHotkeys -Handle $hotkeyHandle -Report $informe
+    if ($Texto -ne '' -and -not $mio.Active) {
+        Stop-HotkeyRecording ('Otro programa ya usa {0}: elige otra combinación.' -f $Texto)
+        return
+    }
+
+    Save-Ajuste $clave $Texto
+    Stop-HotkeyRecording
+}
+
+$ajustesVentana.Add_PreviewKeyDown({
+    param($sender, $e)
+    if ($null -eq $script:grabandoAtajo) { return }
+
+    $tecla = $e.Key
+    if ($tecla -eq [Windows.Input.Key]::System) { $tecla = $e.SystemKey }
+    if ($tecla -in @('LeftCtrl', 'RightCtrl', 'LeftAlt', 'RightAlt', 'LeftShift', 'RightShift', 'LWin', 'RWin', 'None', 'DeadCharProcessed')) {
+        $e.Handled = $true
+        return
+    }
+    $e.Handled = $true
+
+    $mods = [Windows.Input.Keyboard]::Modifiers
+    if ($tecla -eq 'Escape' -and $mods -eq 'None') { Stop-HotkeyRecording; return }
+    if (($tecla -eq 'Delete' -or $tecla -eq 'Back') -and $mods -eq 'None') { Set-HotkeyFromRecording ''; return }
+
+    $m = 0
+    if ($mods -band [Windows.Input.ModifierKeys]::Alt) { $m = $m -bor 1 }
+    if ($mods -band [Windows.Input.ModifierKeys]::Control) { $m = $m -bor 2 }
+    if ($mods -band [Windows.Input.ModifierKeys]::Shift) { $m = $m -bor 4 }
+    if ($mods -band [Windows.Input.ModifierKeys]::Windows) { $m = $m -bor 8 }
+
+    $vk = [Windows.Input.KeyInterop]::VirtualKeyFromKey($tecla)
+    $texto = ConvertTo-HotkeyText -Vk $vk -Modifiers $m
+    if ($texto -eq '') { Stop-HotkeyRecording 'Esa tecla (o sin Ctrl, Alt o Mayús) no sirve como atajo: prueba otra.'; return }
+    Set-HotkeyFromRecording $texto
+})
+
+# Si se sale de la ventana a medias, se deja todo como estaba.
+$ajustesVentana.Add_Deactivated({ Stop-HotkeyRecording })
+
+$aj.BtnAtajosRestablecer.Add_Click({
+    Stop-HotkeyRecording
+    foreach ($accion in (Get-HotkeyActions).Keys) {
+        $def = (Get-HotkeyActions)[$accion]
+        Save-Ajuste $def.Setting $def.Default
+    }
+    Register-HotkeyMap (Get-HotkeyMap)
+    Update-AtajosLista
+})
+
+function Set-ActualizarNota {
+    param([string]$Texto)
+    $aj.ActualizarNota.Text = $Texto
+    $aj.ActualizarNota.Visibility = $(if ($Texto) { 'Visible' } else { 'Collapsed' })
+}
+
+$script:actualizacion = $null
+
+# --------------------------------------------------------------------------
+# Pronunciacion: el diccionario del usuario (runtime\terminos_usuario.tsv).
+# --------------------------------------------------------------------------
+function Set-TerminoNota {
+    param([string]$Texto)
+    $aj.TerminoNota.Text = $Texto
+    $aj.TerminoNota.Visibility = $(if ($Texto) { 'Visible' } else { 'Collapsed' })
+}
+
+# Al salir del campo de la palabra, se muestra como se dice hoy.
+$aj.TerminoPalabra.Add_LostFocus({
+    $actual = Find-SpeechTerm $aj.TerminoPalabra.Text
+    if ($null -eq $actual) {
+        if ($aj.TerminoPalabra.Text.Trim() -ne '') { Set-TerminoNota 'Esa palabra no está en el diccionario: se lee como viene.' }
+        return
+    }
+    $aj.TerminoDice.Text = $actual.Piper
+    $aj.TerminoDiceQwen.Text = $actual.Qwen
+    Set-TerminoNota 'Así suena hoy. Cámbialo y pulsa Probar.'
+})
+
+$aj.BtnTerminoProbar.Add_Click({
+    # Se lee la pronunciacion tal cual, con el motor que este en uso para el
+    # espanol: si hay voz propia y se dio una grafia para ella, esa.
+    $texto = $aj.TerminoDice.Text.Trim()
+    if ($engines['es'] -eq 'qwen' -and $aj.TerminoDiceQwen.Text.Trim() -ne '') { $texto = $aj.TerminoDiceQwen.Text.Trim() }
+    if ($texto -eq '') { Set-TerminoNota 'Escribe cómo se dice para poder probarlo.'; return }
+    $sync.Requests.Enqueue((@{ cmd = 'speak'; lang = 'Spanish'; text = ('Se dice: ' + $texto + '.') } | ConvertTo-Json -Compress))
+    $sync.WakeUi.Invoke()
+    Set-TerminoNota ''
+})
+
+$aj.BtnTerminoGuardar.Add_Click({
+    $ok = Set-UserSpeechTerm -Path $paths.UserTermsFile -Term $aj.TerminoPalabra.Text -Spoken $aj.TerminoDice.Text -SpokenQwen $aj.TerminoDiceQwen.Text
+    if (-not $ok) { Set-TerminoNota 'Escribe la palabra y cómo se dice (sin tabuladores).'; return }
+    Update-SpeechDictionary
+    Set-TerminoNota 'Guardado: se aplica desde la próxima lectura.'
+})
+
+$aj.BtnTerminoQuitar.Add_Click({
+    if (Remove-UserSpeechTerm -Path $paths.UserTermsFile -Term $aj.TerminoPalabra.Text) {
+        Update-SpeechDictionary
+        Set-TerminoNota 'Quitado: vuelve a sonar como en el diccionario de fábrica.'
+    } else {
+        Set-TerminoNota 'Esa palabra no tiene una corrección tuya.'
+    }
+})
+
+$aj.BtnDiagnostico.Add_Click({
+    try {
+        $log = @(Get-Content -LiteralPath $paths.LogFile -Tail 25 -ErrorAction SilentlyContinue)
+        $texto = Get-DiagnosticText -Version (Get-ReadAloudVersion -Root $paths.Root) -Engines $engines `
+            -HotkeyReport $script:hotkeyReport -LogTail $log
+        [Windows.Clipboard]::SetText($texto)
+        Set-ActualizarNota 'Diagnóstico copiado: pégalo en la incidencia o en el correo.'
+    } catch {
+        Set-ActualizarNota ('No se pudo copiar el diagnóstico: ' + $_.Exception.Message)
+    }
+})
+
+$aj.BtnGitHub.Add_Click({ Start-Process 'https://github.com/DuqueOM/read_aloud' })
+
+$aj.BtnActualizar.Add_Click({
+    $aj.BtnInstalarUpdate.Visibility = 'Collapsed'
+    $script:actualizacion = $null
+    $ajustesVentana.Cursor = 'Wait'
+    Set-ActualizarNota 'Consultando GitHub...'
+    $ajustesVentana.Dispatcher.Invoke([Action]{}, [Windows.Threading.DispatcherPriority]::Render)
+    try {
+        $release = Get-LatestRelease
+        $actual = Get-ReadAloudVersion -Root $paths.Root
+        if (Test-NewerVersion -Current $actual -Latest $release.tag_name) {
+            $asset = Select-InstallerAsset $release
+            $notas = Get-ReleaseNotesSummary -Body $release.body -MaxLines 10
+            if ($null -eq $asset) {
+                Set-ActualizarNota ("Hay una versión nueva ($($release.tag_name)), pero todavía no tiene instalador: mira " + $release.html_url)
+            } else {
+                $script:actualizacion = $asset
+                $mb = [Math]::Round($asset.Size / 1MB, 1)
+                Set-ActualizarNota ("Hay una versión nueva: $($release.tag_name) (tú tienes $actual). El instalador pesa $mb MB.`n`n$notas")
+                $aj.BtnInstalarUpdate.Visibility = 'Visible'
+            }
+        } else {
+            Set-ActualizarNota "Ya tienes la última versión ($actual)."
+        }
+    } catch {
+        Set-ActualizarNota 'No se pudo consultar GitHub. Revisa tu conexión a internet e inténtalo de nuevo.'
+        Write-DaemonLog ('Buscar actualizaciones: ' + $_.Exception.Message)
+    } finally {
+        $ajustesVentana.Cursor = $null
+    }
+})
+
+$aj.BtnInstalarUpdate.Add_Click({
+    if ($null -eq $script:actualizacion) { return }
+    $respuesta = [Windows.MessageBox]::Show($ajustesVentana,
+        'Se descargará el instalador, se comprobará su suma SHA-256 y se abrirá. Read Aloud se cerrará para actualizarse. ¿Seguir?',
+        'Read Aloud', 'YesNo', 'Question')
+    if ($respuesta -ne 'Yes') { return }
+
+    $ajustesVentana.Cursor = 'Wait'
+    Set-ActualizarNota 'Descargando y verificando el instalador...'
+    $ajustesVentana.Dispatcher.Invoke([Action]{}, [Windows.Threading.DispatcherPriority]::Render)
+    try {
+        $instalador = Save-ReleaseInstaller -Asset $script:actualizacion
+        Write-DaemonLog ('Actualizacion: se abre ' + $instalador)
+        Start-Process -FilePath $instalador
+        Set-ActualizarNota 'Instalador abierto. Sigue sus pasos; Read Aloud se cerrará.'
+    } catch {
+        Set-ActualizarNota ('No se pudo actualizar: ' + $_.Exception.Message)
+    } finally {
+        $ajustesVentana.Cursor = $null
+    }
+})
 
 $aj.Restablecer.Add_Click({
     $respuesta = [Windows.MessageBox]::Show($ajustesVentana,

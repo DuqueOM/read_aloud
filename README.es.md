@@ -23,13 +23,19 @@ dentro de un mismo texto y pronuncia los términos técnicos como los dirías t�
 no como los leería un lector que no sabe inglés.
 
 ```
-Ctrl+Shift+V        leer lo que esté seleccionado
+Ctrl+Alt+V          leer lo que esté seleccionado
 Ctrl+Shift+Q        detener
 Ctrl+Shift+Espacio  pausar o continuar
 Ctrl+Shift+,        retroceder 10 segundos
 Ctrl+Shift+.        avanzar 10 segundos
 Ctrl+Shift+] y [    subir o bajar la velocidad
 ```
+
+Read Aloud deja un icono en la bandeja del sistema, junto al reloj: muestra
+que está activo, abre los ajustes y "Salir de Read Aloud" lo cierra del todo.
+Los atajos se cambian en [config/settings.psd1](config/settings.psd1)
+(`HotkeyRead`, `HotkeyStop`, ...; ver
+[docs/configuracion.md](docs/configuracion.md#atajos-de-teclado)).
 
 Mientras lee aparece una barra pequeña sobre todas las ventanas, con pausa,
 avance, retroceso, velocidad y posición. Se cierra sola al terminar.
@@ -87,7 +93,6 @@ recursos). Ver [docs/configuracion.md](docs/configuracion.md#panel-de-ajustes).
 |---|---|
 | Windows | 10 u 11, 64 bits |
 | Windows PowerShell | 5.1, el que ya viene con Windows |
-| AutoHotkey v2 | Solo para los atajos de teclado. [autohotkey.com](https://www.autohotkey.com) |
 | Espacio en disco | Unos 210 MB para el motor y dos voces |
 | Tarjeta NVIDIA de 7 GB o más | Solo para la voz propia, que es opcional |
 
@@ -95,6 +100,29 @@ No hace falta ser administrador. Nada se instala fuera de la carpeta del
 repositorio y de tu carpeta de Inicio.
 
 ## Instalación
+
+**La forma fácil (no hace falta saber programar).** Descarga
+`ReadAloud-Setup-<versión>.exe` del
+[último release](https://github.com/DuqueOM/read_aloud/releases/latest), ábrelo
+y sigue el asistente. Se instala solo para tu usuario (sin permisos de
+administrador), descarga las voces (unos 200 MB, una sola vez) y, si dejas
+marcada la casilla, abre Read Aloud cada vez que inicias sesión. Después,
+selecciona cualquier texto y pulsa `Ctrl+Alt+V`.
+
+El instalador no está firmado (un certificado cuesta dinero cada año), así que
+la primera vez Windows SmartScreen puede decir "Windows protegió su PC": pulsa
+"Más información" y luego "Ejecutar de todas formas". Junto al instalador hay
+un archivo `.sha256` con su suma de comprobación, para verificar que la
+descarga está íntegra:
+
+```powershell
+(Get-FileHash .\ReadAloud-Setup-1.2.0.exe).Hash
+```
+
+Para desinstalar, usa "Aplicaciones" en la Configuración de Windows. En el menú
+Inicio encontrarás "Cerrar Read Aloud" e "Instalar o reparar las voces".
+
+**Desde el repositorio (para desarrolladores):**
 
 ```powershell
 git clone https://github.com/DuqueOM/read_aloud.git
@@ -121,7 +149,7 @@ Comprueba que todo quedó bien:
 
 ## Cómo se usa
 
-Selecciona texto en cualquier programa y pulsa `Ctrl+Shift+V`. También
+Selecciona texto en cualquier programa y pulsa `Ctrl+Alt+V`. También
 funciona desde la consola:
 
 ```powershell
@@ -144,8 +172,8 @@ parte y sin reproducir nada.
 ## Cómo está armado
 
 ```
-Ctrl+Shift+V                 read_aloud.ps1
-  (AutoHotkey)                 (consola)
+Ctrl+Alt+V                   read_aloud.ps1
+  (proceso residente)          (consola)
         |                          |
         +----------+---------------+
                    |
@@ -248,7 +276,7 @@ revisiones y busca secretos en todo el historial.
 ```
 read_aloud.ps1              Punto de entrada
 read_aloud_daemon.ps1       Proceso residente y reproductor
-read_aloud_hotkey.ahk       Atajos de teclado
+lib/ReadAloud.Hotkeys.ps1   Atajos de teclado
 stop_read_aloud.ps1         Detener
 setup.ps1                   Instala el motor y las voces
 install_startup.ps1         Arranque automatico con Windows

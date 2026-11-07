@@ -1,0 +1,35 @@
+name: Algo no funciona
+description: La lectura no suena, se corta, un atajo no responde o la app se comporta raro
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Gracias por avisar. Cuanto más concreto, más rápido se arregla.
+        Puedes escribir en español o en inglés.
+  - type: textarea
+    id: que-pasa
+    attributes:
+      label: ¿Qué pasó y qué esperabas que pasara?
+      placeholder: "Seleccioné un texto, pulsé Ctrl+Alt+V y ..."
+    validations:
+      required: true
+  - type: textarea
+    id: pasos
+    attributes:
+      label: ¿Cómo se repite?
+      description: Los pasos, o el texto que no se leyó bien (sin datos personales).
+  - type: textarea
+    id: diagnostico
+    attributes:
+      label: Diagnóstico
+      description: |
+        En el icono de Read Aloud de la bandeja, "Ajustes", baja hasta "Acerca de" y pulsa
+        "Copiar diagnóstico". Pega aquí lo que se copió: lleva la versión, los motores, los
+        atajos y el final del registro, sin los textos que leíste.
+      render: text
+  - type: input
+    id: version-windows
+    attributes:
+      label: Versión de Windows
+      placeholder: "Windows 11 23H2"

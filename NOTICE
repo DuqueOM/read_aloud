@@ -34,9 +34,6 @@ Piper voices, https://huggingface.co/rhasspy/piper-voices
   - en_US-amy-medium: see its MODEL_CARD.
   - en_GB-alba-medium: CC BY 4.0.
 
-AutoHotkey, https://www.autohotkey.com
-  GPL-2.0. Installed separately by the user for the keyboard shortcut.
-
 
 Custom voice (voz_personalizada/, optional)
 -------------------------------------------

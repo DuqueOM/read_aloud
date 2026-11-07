@@ -1,0 +1,16 @@
+name: Una idea o mejora
+description: Algo que te gustaría que Read Aloud hiciera, o que hiciera distinto
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: ¿Qué te gustaría?
+      description: Cuenta primero el problema que tienes; la solución puede venir después.
+    validations:
+      required: true
+  - type: textarea
+    id: ejemplo
+    attributes:
+      label: Un ejemplo de uso
+      description: Cuándo lo usarías y qué texto estarías leyendo.
