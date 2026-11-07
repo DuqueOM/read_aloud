@@ -32,10 +32,9 @@ Ctrl+Shift+] and [  faster or slower
 ```
 
 Read Aloud keeps an icon in the system tray, next to the clock: it shows that
-it is running, opens the settings, and "Salir de Read Aloud" closes it
-completely. The shortcuts can be changed in
-[config/settings.psd1](config/settings.psd1) (`HotkeyRead`, `HotkeyStop`, ...;
-see [docs/configuracion.md](docs/configuracion.md#atajos-de-teclado)).
+it is running, opens the settings, and "Quit Read Aloud" closes it
+completely. Every shortcut can be changed from the settings (click it and press
+the new combination).
 
 While it reads, a small bar stays on top of all windows, with pause, skip,
 speed and position. It closes on its own when the reading ends.
@@ -50,12 +49,19 @@ can be resized from any side or corner, and it moves with the tab on top.
 
 ![The text panel: the current sentence highlighted and what was read dimmed](docs/media/panel.png)
 
-The gear button opens the settings: opacity, size, font, the voice and the
-performance mode (the voice always loaded, or loaded only while reading to
-save resources). See
-[docs/configuracion.md](docs/configuracion.md#panel-de-ajustes) (in Spanish).
+The gear button (or the desktop shortcut the installer can create) opens the
+settings. Everything applies at once, with no restart: language, theme and
+accent color, opacity, size and font; the voice, engine and performance mode;
+pauses; the keyboard shortcuts; and a pronunciation dictionary where you can
+search every word, change how it is said for each language and each voice, and
+test it. See [docs/configuracion.md](docs/configuracion.md#panel-de-ajustes) (in
+Spanish).
 
-<img src="docs/media/ajustes.png" width="320" alt="The settings panel">
+<p>
+  <img src="docs/media/ajustes.png" width="300" alt="The settings panel: appearance and voice">
+  <img src="docs/media/ajustes_pronunciacion.png" width="300" alt="The settings panel: reading and pronunciation">
+  <img src="docs/media/ajustes_atajos.png" width="300" alt="The settings panel: dictionary, keyboard shortcuts and About">
+</p>
 
 
 The detailed documentation in [docs/](docs/) is in Spanish.
@@ -227,10 +233,10 @@ chunk size, pauses and skip seconds. Settings that belong to your machine, such
 as the custom voice folder, go in `config/settings.local.psd1`, which Git
 ignores.
 
-Some changes apply only after restarting the resident process. When you make
-one in the panel, it offers a "Reiniciar ahora" (restart now) button. After
-editing `settings.psd1`, close the process from the console and the next
-reading starts it again:
+Nothing you change in the panel needs a restart (only the interface language
+restarts the reader by itself). After editing `settings.psd1` by hand, close the
+process from the console, or with "Close Read Aloud" in the Start menu, and the
+next reading starts it again:
 
 ```powershell
 . .\lib\ReadAloud.Core.ps1

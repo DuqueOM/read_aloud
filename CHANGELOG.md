@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-07
+
+Fixes found while testing 1.2 and new screenshots.
+
+### Fixed
+
+- The volume fader follows the mouse when you press on the track and keep
+  dragging (before, only dragging the knob itself worked).
+- Shortcuts with `[` or `]` (or any key that needs Shift or AltGr to type on
+  your keyboard layout) are registered with the modifiers that layout needs, so
+  they match what you press on Latin American and other non-US keyboards.
+- The SHA-256 check of an update no longer depends on `Get-FileHash`, which
+  fails in a process started from a PowerShell 7 terminal ("Download and
+  install" in the settings). Checked end to end against the real release.
+- The release workflow uses the Inno Setup that the Windows runner already has
+  (1.2.0 first failed trying to downgrade it).
+
+### Changed
+
+- New screenshots of the player, the text panel and the settings (appearance,
+  pronunciation, shortcuts and About), and an updated README: the tray icon,
+  the installer and the desktop shortcut, shortcuts recorded from the settings
+  and settings that no longer need a restart.
+
 ## [1.2.0] - 2026-11-07
 
 Read Aloud for anyone: no AutoHotkey, an installer, and everything adjustable
@@ -189,7 +213,8 @@ First public version.
 - GitHub Actions running Pester, PSScriptAnalyzer, ruff and gitleaks over the
   whole history, with every action pinned to a commit.
 
-[Unreleased]: https://github.com/DuqueOM/read_aloud/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/DuqueOM/read_aloud/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.3.0
 [1.2.0]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.2.0
 [1.1.0]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.1.0
 [1.0.0]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.0.0

@@ -33,9 +33,8 @@ Ctrl+Shift+] y [    subir o bajar la velocidad
 
 Read Aloud deja un icono en la bandeja del sistema, junto al reloj: muestra
 que está activo, abre los ajustes y "Salir de Read Aloud" lo cierra del todo.
-Los atajos se cambian en [config/settings.psd1](config/settings.psd1)
-(`HotkeyRead`, `HotkeyStop`, ...; ver
-[docs/configuracion.md](docs/configuracion.md#atajos-de-teclado)).
+Cada atajo se cambia desde los ajustes (haz clic en él y pulsa la combinación
+nueva).
 
 Mientras lee aparece una barra pequeña sobre todas las ventanas, con pausa,
 avance, retroceso, velocidad y posición. Se cierra sola al terminar.
@@ -51,11 +50,19 @@ pestaña de arriba.
 
 ![El panel de texto: la frase que suena resaltada y lo ya leído atenuado](docs/media/panel.png)
 
-El botón de la tuerca abre los ajustes: opacidad, tamaño, letra, la voz y el
-rendimiento (la voz siempre lista, o cargada solo al leer para no ocupar
-recursos). Ver [docs/configuracion.md](docs/configuracion.md#panel-de-ajustes).
+El botón de la tuerca (o el acceso directo del escritorio que puede crear el
+instalador) abre los ajustes. Todo se aplica al instante, sin reiniciar: el
+idioma, el tema y el color de acento, la opacidad, el tamaño y la letra; la
+voz, el motor y el rendimiento; las pausas; los atajos de teclado; y un
+diccionario de pronunciación donde puedes buscar cualquier palabra, cambiar
+cómo se dice en cada idioma y con cada voz, y probarla. Ver
+[docs/configuracion.md](docs/configuracion.md#panel-de-ajustes).
 
-<img src="docs/media/ajustes.png" width="320" alt="El panel de ajustes">
+<p>
+  <img src="docs/media/ajustes.png" width="300" alt="El panel de ajustes: apariencia y voz">
+  <img src="docs/media/ajustes_pronunciacion.png" width="300" alt="El panel de ajustes: lectura y pronunciación">
+  <img src="docs/media/ajustes_atajos.png" width="300" alt="El panel de ajustes: diccionario, atajos de teclado y Acerca de">
+</p>
 
 ## Qué tiene por dentro
 
@@ -223,10 +230,10 @@ está en [config/settings.psd1](config/settings.psd1): velocidad, voces, tamaño
 de los fragmentos, pausas y segundos de salto. Lo que es de tu equipo, como la
 carpeta de la voz propia, va en `config/settings.local.psd1`, que Git ignora.
 
-Algunos cambios se aplican al reiniciar el proceso residente. Si haces uno en
-el panel, aparece el botón "Reiniciar ahora". Después de editar
-`settings.psd1`, cierra el proceso desde la consola y la próxima lectura lo
-vuelve a arrancar:
+Nada de lo que cambias en el panel pide reiniciar (solo el idioma de la
+interfaz reinicia el lector, solo). Después de editar `settings.psd1` a mano,
+cierra el proceso desde la consola, o con "Cerrar Read Aloud" del menú Inicio, y
+la próxima lectura lo vuelve a arrancar:
 
 ```powershell
 . .\lib\ReadAloud.Core.ps1

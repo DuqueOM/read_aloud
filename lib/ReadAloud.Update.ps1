@@ -74,7 +74,17 @@ function Test-FileHash {
     param([string]$Path, [string]$Expected)
 
     if ($Expected -eq '' -or -not (Test-Path -LiteralPath $Path)) { return $false }
-    $actual = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+
+    # Con .NET directamente y no con Get-FileHash: ese cmdlet falla si el proceso
+    # hereda un PSModulePath de PowerShell 7 (por ejemplo, arrancado desde una
+    # terminal de pwsh), y esta comprobacion no puede depender de eso.
+    $stream = [IO.File]::OpenRead($Path)
+    try {
+        $sha = [Security.Cryptography.SHA256]::Create()
+        $actual = ([BitConverter]::ToString($sha.ComputeHash($stream)) -replace '-', '').ToLowerInvariant()
+    } finally {
+        $stream.Dispose()
+    }
     return ($actual -eq $Expected.ToLowerInvariant())
 }
 
