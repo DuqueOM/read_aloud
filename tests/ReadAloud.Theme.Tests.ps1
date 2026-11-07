@@ -71,3 +71,27 @@ Describe 'Acentos y colores en codigo' {
         (Get-RuntimeColors (Get-ThemePalette -Mode 'light')).Elegido | Should -BeExactly '#2E000000'
     }
 }
+
+Describe 'Tema en tiempo real (recursos dinamicos)' {
+    It 'ConvertTo-DynamicXaml cambia los colores del tema por recursos y agrega los pinceles' {
+        $xaml = '<Window><Window.Resources><X/></Window.Resources><Border Background="#F21B1B1F" BorderBrush="#33FFFFFF"/><Button Foreground="White"/><DropShadowEffect Color="#000000"/></Window>'
+        $r = ConvertTo-DynamicXaml -Xaml $xaml
+        $r | Should -Match 'Background="\{DynamicResource T_F21B1B1F\}"'
+        $r | Should -Match 'BorderBrush="\{DynamicResource T_33FFFFFF\}"'
+        $r | Should -Match 'Foreground="\{DynamicResource T_White\}"'
+        $r | Should -Match 'Color="#000000"'
+        $r | Should -Match '<SolidColorBrush x:Key="T_F21B1B1F" Color="#F21B1B1F"/>'
+        $r | Should -Match '<SolidColorBrush x:Key="T_White"'
+    }
+
+    It 'el resultado es XAML valido y Set-ThemeResources lo pinta del tema' {
+        Add-Type -AssemblyName PresentationFramework
+        $xaml = '<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Window.Resources><Style TargetType="Button"><Setter Property="Foreground" Value="#E6E6EA"/></Style></Window.Resources><Border x:Name="B" Background="#F21B1B1F"/></Window>'
+        $dyn = ConvertTo-DynamicXaml -Xaml $xaml
+        $w = [Windows.Markup.XamlReader]::Load([Xml.XmlReader]::Create((New-Object IO.StringReader($dyn))))
+        Set-ThemeResources -Resources $w.Resources -Palette (Get-ThemePalette -Mode 'light' -Accent 'green')
+        $w.FindName('B').Background.Color.ToString() | Should -BeExactly '#F2F6F6F8'
+        Set-ThemeResources -Resources $w.Resources -Palette (Get-ThemePalette -Mode 'dark' -Accent 'green')
+        $w.FindName('B').Background.Color.ToString() | Should -BeExactly '#F21B1B1F'
+    }
+}

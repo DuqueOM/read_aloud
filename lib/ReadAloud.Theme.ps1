@@ -145,3 +145,55 @@ function Get-RuntimeColors {
         Elegido   = $elegido
     }
 }
+
+function ConvertTo-DynamicXaml {
+    # Para cambiar de tema con la ventana abierta: cada color del tema escrito
+    # en el XAML pasa a ser un recurso dinamico ({DynamicResource T_...}) y se
+    # agrega al diccionario de la ventana con su valor de fabrica. Despues
+    # Set-ThemeResources cambia el valor de esos recursos y la ventana se
+    # repinta sola. Los colores que no son del tema se dejan como estan.
+    param([string]$Xaml)
+
+    $map = Get-ThemeColorMap (Get-ThemePalette -Mode 'dark' -Accent 'green')
+    $keys = @{}
+
+    $text = [regex]::Replace($Xaml, '(?<=")#[0-9A-Fa-f]{6,8}(?=")', [Text.RegularExpressions.MatchEvaluator]{
+        param($match)
+        $hex = $match.Value.ToUpperInvariant()
+        if ($map.ContainsKey($hex)) {
+            $keys[$hex] = $true
+            return '{DynamicResource T_' + $hex.TrimStart('#') + '}'
+        }
+        return $match.Value
+    })
+
+    $text = [regex]::Replace($text, '(Foreground|Fill)="White"', [Text.RegularExpressions.MatchEvaluator]{
+        param($match)
+        return $match.Groups[1].Value + '="{DynamicResource T_White}"'
+    })
+
+    $brushes = New-Object System.Collections.Generic.List[string]
+    foreach ($hex in $keys.Keys) {
+        $brushes.Add(('    <SolidColorBrush x:Key="T_{0}" Color="{1}"/>' -f $hex.TrimStart('#'), $hex))
+    }
+    $brushes.Add('    <SolidColorBrush x:Key="T_White" Color="#FFFFFF"/>')
+
+    return $text.Replace('<Window.Resources>', ('<Window.Resources>' + [Environment]::NewLine + ($brushes -join [Environment]::NewLine)))
+}
+
+function Set-ThemeResources {
+    # Cambia el valor de los recursos T_... de una ventana por los del tema.
+    param($Resources, $Palette)
+
+    $map = Get-ThemeColorMap $Palette
+    $convert = New-Object Windows.Media.BrushConverter
+    foreach ($hex in $map.Keys) {
+        $key = 'T_' + $hex.TrimStart('#')
+        if ($Resources.Contains($key)) { $Resources[$key] = $convert.ConvertFromString($map[$hex]) }
+    }
+    if ($Resources.Contains('T_White')) {
+        $white = $Palette.TextOnButton
+        if ($white -eq 'White') { $white = '#FFFFFF' }
+        $Resources['T_White'] = $convert.ConvertFromString($white)
+    }
+}

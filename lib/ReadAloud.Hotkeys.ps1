@@ -137,6 +137,20 @@ function ConvertFrom-HotkeySpec {
     }
 }
 
+function Get-HotkeyKeyNameFromVk {
+    # Codigo virtual de una tecla pulsada (y, para los signos, el caracter que
+    # escribe con el teclado actual) -> nombre de la tecla en un atajo, o ''.
+    param([int]$Vk, [string]$Char = '')
+
+    $table = Get-HotkeyKeyTable
+    if ($Char -ne '' -and $table.ContainsKey($Char) -and $table[$Char].ContainsKey('Char')) { return $Char }
+    foreach ($name in $table.Keys) {
+        if ($table[$name].ContainsKey('Char')) { continue }
+        if ([int]$table[$name].Vk -eq $Vk) { return $name }
+    }
+    return ''
+}
+
 function Format-HotkeySpec {
     # Forma canonica: Ctrl+Alt+Shift+Win+Tecla.
     param([int]$Modifiers, [string]$KeyName)
@@ -209,6 +223,8 @@ public static extern bool UnregisterHotKey(System.IntPtr hWnd, int id);
 public static extern short VkKeyScan(char ch);
 [System.Runtime.InteropServices.DllImport("user32.dll")]
 public static extern short GetAsyncKeyState(int vKey);
+[System.Runtime.InteropServices.DllImport("user32.dll")]
+public static extern uint MapVirtualKey(uint uCode, uint uMapType);
 [System.Runtime.InteropServices.DllImport("user32.dll")]
 public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, System.UIntPtr dwExtraInfo);
 '@
@@ -324,4 +340,22 @@ function Get-SelectedText {
     } catch { }
 
     return $text
+}
+
+function ConvertTo-HotkeyText {
+    # De una tecla pulsada en una ventana (codigo virtual + modificadores de
+    # RegisterHotKey: Alt 1, Ctrl 2, Shift 4, Win 8) al texto del atajo. Devuelve
+    # '' si la tecla no sirve para un atajo (un modificador solo, un signo raro).
+    param([int]$Vk, [int]$Modifiers)
+
+    Initialize-HotkeyNative
+    $char = ''
+    $code = [ReadAloud.NativeKeys]::MapVirtualKey([uint32]$Vk, 2)
+    if ($code -gt 0 -and $code -lt 0xFFFF) { $char = [string][char]($code -band 0x7FFF) }
+
+    $name = Get-HotkeyKeyNameFromVk -Vk $Vk -Char $char
+    if ($name -eq '') { return '' }
+    $parsed = ConvertFrom-HotkeySpec (Format-HotkeySpec -Modifiers $Modifiers -KeyName $name)
+    if ($null -eq $parsed) { return '' }
+    return $parsed.Text
 }

@@ -88,3 +88,19 @@ Describe 'Test-HotkeySet' {
         ($set | Where-Object Action -eq 'stop').Problem | Should -BeExactly ''
     }
 }
+
+Describe 'Get-HotkeyKeyNameFromVk' {
+    It 'VK <Vk> con "<Char>" es "<Esperado>"' -ForEach @(
+        @{ Vk = 0x56; Char = 'v'; Esperado = 'V' }
+        @{ Vk = 0x20; Char = ' '; Esperado = 'Space' }
+        @{ Vk = 0x74; Char = ''; Esperado = 'F5' }
+        @{ Vk = 0xBC; Char = ','; Esperado = ',' }
+        @{ Vk = 0xDD; Char = ']'; Esperado = ']' }
+        @{ Vk = 0x25; Char = ''; Esperado = 'Left' }
+        @{ Vk = 0xB3; Char = ''; Esperado = 'MediaPlayPause' }
+        @{ Vk = 0xC0; Char = 'n'; Esperado = '' }
+        @{ Vk = 0x11; Char = ''; Esperado = '' }
+    ) {
+        Get-HotkeyKeyNameFromVk -Vk $Vk -Char $Char | Should -BeExactly $Esperado
+    }
+}

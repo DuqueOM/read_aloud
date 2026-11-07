@@ -185,8 +185,8 @@ Si trabajas más en inglés que en español, cámbialo a `'en'`.
 | `ShowPlayer` | `$true` | Muestra la ventana flotante durante la lectura |
 | `PlayerAutoClose` | `$true` | La cierra sola al terminar |
 | `PlayerOpacity` | `0.8` | Opacidad en reposo, de `0.3` a `1.0` |
-| `Theme` | `'system'` | Tema de color del reproductor y de los ajustes: `'system'` (el de Windows), `'dark'` o `'light'`. Se aplica al reiniciar |
-| `Accent` | `'green'` | Color de acento: `green`, `blue`, `purple`, `pink`, `orange`, `red`, `teal` o `yellow`. Se aplica al reiniciar |
+| `Theme` | `'system'` | Tema de color del reproductor y de los ajustes: `'system'` (el de Windows), `'dark'` o `'light'`. Se aplica al instante |
+| `Accent` | `'green'` | Color de acento: `green`, `blue`, `purple`, `pink`, `orange`, `red`, `teal` o `yellow`. Se aplica al instante |
 | `SkipSeconds` | `10` | Segundos que saltan los botones y los atajos |
 | `PlayerScale` | `1.0` | Tamaño de todo el reproductor, de `0.8` a `1.6` |
 | `TextFontSize` | `13` | Tamaño de la letra del panel de texto, de `10` a `22` |
@@ -287,7 +287,13 @@ vez al día cuando inicias sesión.
 ## Atajos de teclado
 
 Los atajos los registra el proceso residente; no hace falta instalar nada
-más. Se cambian en `config/settings.psd1` (o en `settings.local.psd1`):
+más. Lo normal es cambiarlos en los ajustes (el icono de la bandeja o la
+tuerca del reproductor), sección **Atajos de teclado**: haz clic en uno y pulsa
+la combinación nueva (`Esc` cancela, `Supr` lo desactiva). Se aplica al
+momento, avisa si la combinación ya la usa otra acción, Windows o otro
+programa, y **Restablecer atajos** vuelve a los de fábrica. Quedan guardados
+en `ajustes.json`; los valores de fábrica son estos y también se pueden poner
+en `config/settings.psd1` o `settings.local.psd1`:
 
 | Ajuste | Por defecto | Acción |
 |---|---|---|

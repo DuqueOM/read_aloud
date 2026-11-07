@@ -1,4 +1,4 @@
-; Instalador de Read Aloud (Inno Setup 6).
+﻿; Instalador de Read Aloud (Inno Setup 6).
 ;
 ; Lo construye el CI al publicar un release (.github/workflows/release.yml), o
 ; a mano:
@@ -10,7 +10,7 @@
 ; Los binarios de Piper y las voces no van dentro: los baja setup.ps1 durante la
 ; instalacion, igual que al instalar desde el repositorio.
 ;
-; Este archivo es ASCII a proposito.
+; Guardado en UTF-8 con BOM, que Inno Setup entiende (los acentos de los textos).
 
 #ifndef Version
   #define Version "0.0.0-dev"
@@ -50,6 +50,10 @@ en.TaskAutostart=Start Read Aloud when I sign in (recommended)
 es.IconClose=Cerrar Read Aloud
 en.IconClose=Close Read Aloud
 es.IconVoices=Instalar o reparar las voces
+es.IconUninstall=Desinstalar Read Aloud
+en.IconUninstall=Uninstall Read Aloud
+es.KeepData=Se quitó Read Aloud.%n%n¿Quieres conservar tus ajustes y tu diccionario de pronunciación por si lo instalas de nuevo?
+en.KeepData=Read Aloud was removed.%n%nDo you want to keep your settings and pronunciation dictionary in case you install it again?
 en.IconVoices=Install or repair the voices
 es.StatusVoices=Descargando el motor de voz y las voces (unos 200 MB). Puede tardar unos minutos...
 en.StatusVoices=Downloading the voice engine and voices (about 200 MB). This can take a few minutes...
@@ -81,6 +85,7 @@ Source: "..\docs\*.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 Name: "{autoprograms}\Read Aloud"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\iniciar_read_aloud.vbs"""; WorkingDir: "{app}"
 Name: "{autoprograms}\{cm:IconClose}"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\cerrar_read_aloud.vbs"""; WorkingDir: "{app}"
 Name: "{autoprograms}\{cm:IconVoices}"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\setup.ps1"" -NoStartupPrompt"; WorkingDir: "{app}"
+Name: "{autoprograms}\{cm:IconUninstall}"; Filename: "{uninstallexe}"
 Name: "{userstartup}\Read Aloud"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\iniciar_read_aloud.vbs"""; WorkingDir: "{app}"; Tasks: autostart
 
 [Run]
@@ -89,10 +94,6 @@ Filename: "{sys}\wscript.exe"; Parameters: """{app}\iniciar_read_aloud.vbs"""; W
 
 [UninstallRun]
 Filename: "{sys}\wscript.exe"; Parameters: """{app}\cerrar_read_aloud.vbs"""; RunOnceId: "CerrarReadAloud"; Flags: runhidden waituntilterminated
-
-[UninstallDelete]
-; Lo que baja setup.ps1 y lo que genera el proceso residente.
-Type: filesandordirs; Name: "{app}\read_aloud_piper"
 
 [Code]
 // Al actualizar, el proceso residente tiene los archivos en uso: se cierra antes.
@@ -106,4 +107,25 @@ begin
     Sleep(2500);
   end;
   Result := '';
+end;
+
+// Al desinstalar se borra lo que bajo setup.ps1 (motor y voces, unos 200 MB). Lo
+// que es del usuario (ajustes y diccionario, en read_aloud_piper\runtime) se
+// conserva si lo pide; en una desinstalacion silenciosa se borra todo.
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  Conservar: Boolean;
+begin
+  if CurUninstallStep = usPostUninstall then
+  begin
+    Conservar := False;
+    if not UninstallSilent then
+      Conservar := MsgBox(CustomMessage('KeepData'), mbConfirmation, MB_YESNO or MB_DEFBUTTON1) = IDYES;
+    DelTree(ExpandConstant('{app}\read_aloud_piper\bin'), True, True, True);
+    DelTree(ExpandConstant('{app}\read_aloud_piper\voices'), True, True, True);
+    DelTree(ExpandConstant('{app}\read_aloud_piper\tmp'), True, True, True);
+    if not Conservar then
+      DelTree(ExpandConstant('{app}\read_aloud_piper'), True, True, True);
+    RemoveDir(ExpandConstant('{app}'));
+  end;
 end;

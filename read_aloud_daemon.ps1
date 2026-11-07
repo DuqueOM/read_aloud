@@ -167,6 +167,7 @@ $sync.Generation = 0
 $sync.Priority = -1
 $sync.PriorityGen = 0
 $sync.Stopping = $false
+$sync.ReloadSynth = $false
 
 $runspaces = New-Object System.Collections.Generic.List[object]
 
@@ -498,6 +499,21 @@ $synthScript = {
     $qwenCleanExits = @(0, 3, 4, 5)
     $qwenWatch = @{ Next = [DateTime]::UtcNow; LastExit = $null; Failures = 0 }
 
+    function Reset-SynthProcesses {
+        # Los ajustes de voz, motor, pausas y rendimiento cambiaron: se cierran
+        # todos los procesos de voz y se abren de nuevo con los valores nuevos,
+        # sin reiniciar el lector (ni los atajos, ni el reproductor).
+        foreach ($key in @($processes.Keys)) {
+            try { $processes[$key].Writer.Close() } catch { }
+            try { $processes[$key].Process.Kill() } catch { }
+            $processes.Remove($key)
+        }
+        $qwenWatch.LastExit = $null
+        $qwenWatch.Failures = 0
+        $qwenWatch.Next = [DateTime]::UtcNow.AddSeconds(3)
+        Write-SynthLog 'Ajustes de voz cambiados: se recargan los motores.'
+    }
+
     function Get-NvidiaFreeGB {
         if (-not $cfg.Qwen.Smi) { return [double]::MaxValue }
         try {
@@ -546,6 +562,11 @@ $synthScript = {
 
     while (-not $sync.Stopping) {
         $job = $null
+
+        if ($sync.ReloadSynth) {
+            $sync.ReloadSynth = $false
+            Reset-SynthProcesses
+        }
 
         if (-not $sync.SynthJobs.TryDequeue([ref]$job)) {
             if ([DateTime]::UtcNow -ge $qwenWatch.Next) {
@@ -637,9 +658,7 @@ if ($voiceEn.Ready) { $models['en'] = $voiceEn.Model } elseif ($voiceEs.Ready) {
 
 $invariant = [Globalization.CultureInfo]::InvariantCulture
 
-Start-BackgroundRunspace -Script $synthScript -Variables @{
-    sync = $sync
-    cfg = @{
+$synthConfig = @{
         PiperExe        = $paths.PiperExe
         PiperDir        = $paths.PiperDir
         EspeakData      = $paths.EspeakData
@@ -667,7 +686,36 @@ Start-BackgroundRunspace -Script $synthScript -Variables @{
             ReopenFreeGB= [double]$settings.QwenReopenFreeGB
             Smi         = $(if ($vramGB -gt 0) { (Get-Command 'nvidia-smi' -ErrorAction SilentlyContinue).Source } else { '' })
         }
+}
+
+Start-BackgroundRunspace -Script $synthScript -Variables @{
+    sync = $sync
+    cfg = $synthConfig
+}
+
+function Update-SynthSettings {
+    # Aplica en caliente la voz, el motor, las pausas y el rendimiento que se
+    # acaban de cambiar en los ajustes ($settings ya tiene los valores nuevos).
+    $vEs = Get-VoiceModelPath -Paths $paths -Settings $settings -Lang 'es'
+    $vEn = Get-VoiceModelPath -Paths $paths -Settings $settings -Lang 'en'
+    if ($vEs.Ready) { $models['es'] = $vEs.Model }
+    if ($vEn.Ready) { $models['en'] = $vEn.Model } elseif ($vEs.Ready) { $models['en'] = $vEs.Model }
+
+    foreach ($par in @(@{ Lang = 'es'; Ajuste = 'EngineEs' }, @{ Lang = 'en'; Ajuste = 'EngineEn' })) {
+        $resolved = Resolve-VoiceEngine -Requested $settings[$par.Ajuste] -QwenVoice $qwenVoice `
+            -VramGB $vramGB -MinVramGB ([double]$settings.QwenMinVramGB)
+        $engines[$par.Lang] = $resolved.Engine
     }
+
+    $script:ahorro = ([string]$settings.Performance).ToLowerInvariant() -eq 'ahorro'
+    $synthConfig.SentenceSilence = ([double]$settings.SentenceSilence).ToString($invariant)
+    $synthConfig.Qwen.IdleMinutes = $(if ($script:ahorro) { [double]$settings.SaverIdleMinutes } else { [double]$settings.QwenIdleMinutes }).ToString($invariant)
+    $synthConfig.Qwen.Reopen = (-not $script:ahorro) -and [bool]$settings.QwenReopen
+
+    Write-DaemonLog ('Ajustes de voz aplicados: es={0}, en={1}, rendimiento {2}' -f $engines['es'], $engines['en'], $settings.Performance)
+    $sync.ReloadSynth = $true
+    [void]$sync.SynthSignal.Set()
+    Start-Warmup
 }
 
 # --------------------------------------------------------------------------
@@ -954,11 +1002,12 @@ $xaml = @'
 # Tema de color (ajustes Theme y Accent): el XAML esta escrito en oscuro y se
 # adapta antes de cargarlo.
 $script:paleta = Get-ThemePalette -Mode (Resolve-ThemeMode -Mode ([string]$settings.Theme) -SystemLight (Test-SystemLightTheme)) -Accent ([string]$settings.Accent)
-$xaml = Convert-XamlTheme -Xaml $xaml -Palette $script:paleta
+$xaml = ConvertTo-DynamicXaml -Xaml $xaml
 
 $reader = New-Object IO.StringReader($xaml)
 $xmlReader = [Xml.XmlReader]::Create($reader)
 $window = [Windows.Markup.XamlReader]::Load($xmlReader)
+Set-ThemeResources -Resources $window.Resources -Palette $script:paleta
 
 $ui = @{}
 foreach ($name in @('Root','LangBadge','BtnBack','BtnPlay','BtnFwd','BtnSpeed','BufferBar','Seek','TimeLabel','BtnText','BtnClose','TextPanel','TextView','Bar','Bordes',
@@ -2444,6 +2493,27 @@ foreach ($e in $script:hotkeyReport) {
 
 # Icono: un circulo con el simbolo de volumen, dibujado aqui para no llevar un
 # archivo binario en el repositorio.
+function Set-AppTheme {
+    # Aplica el tema (ajustes Theme y Accent) al momento: los recursos de las
+    # dos ventanas, los colores que se ponen por codigo y el icono de la bandeja.
+    $script:paleta = Get-ThemePalette -Mode (Resolve-ThemeMode -Mode ([string]$settings.Theme) -SystemLight (Test-SystemLightTheme)) -Accent ([string]$settings.Accent)
+    Set-ThemeResources -Resources $window.Resources -Palette $script:paleta
+    if ($ajustesVentana) { Set-ThemeResources -Resources $ajustesVentana.Resources -Palette $script:paleta }
+
+    $nuevo = Get-RuntimeColors $script:paleta
+    foreach ($nombre in @('Pendiente', 'Leido', 'Actual', 'Fondo', 'Encendido', 'Apagado', 'Texto', 'Elegido')) {
+        $colores[$nombre] = New-Brush $nuevo[$nombre]
+    }
+    if ($script:panelVisible) { $ui.BtnText.Foreground = $colores.Encendido } else { $ui.BtnText.Foreground = $colores.Apagado }
+    Update-Highlight -Force
+
+    if ($script:tray) {
+        $anterior = $script:tray.Icon
+        $script:tray.Icon = New-TrayIcon
+        if ($anterior) { $anterior.Dispose() }
+    }
+}
+
 function New-TrayIcon {
     $bmp = New-Object Drawing.Bitmap 32, 32
     $g = [Drawing.Graphics]::FromImage($bmp)
@@ -2487,14 +2557,14 @@ $timer.Start()
 # Calentamiento: obliga a cargar los modelos ahora, para que la primera lectura
 # real no pague la espera.
 # --------------------------------------------------------------------------
-if (-not $NoWarmup) {
+function Start-Warmup {
     $warmIndex = 0
     foreach ($lang in @($models.Keys)) {
         # En ahorro, Qwen espera a la primera lectura: calentarlo aqui seria
         # cargarlo igual.
-        if ($ahorro -and $engines[$lang] -eq 'qwen') { continue }
+        if ($script:ahorro -and $engines[$lang] -eq 'qwen') { continue }
         $sync.SynthJobs.Enqueue(@{
-            Generation = 0
+            Generation = $sync.Generation
             Index      = -1 - $warmIndex
             Lang       = $lang
             Text       = 'Listo.'
@@ -2504,6 +2574,8 @@ if (-not $NoWarmup) {
     }
     [void]$sync.SynthSignal.Set()
 }
+
+if (-not $NoWarmup) { Start-Warmup }
 
 Write-DaemonLog 'Proceso residente listo.'
 
