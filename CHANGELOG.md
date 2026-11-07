@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-07
+
+Fluidity and control of the player.
+
+### Added
+
+- Seek to any point of the reading, even one that is not generated yet: the
+  target chunk is generated first. Previous and next sentence (`prev`,
+  `next` commands). The remaining time is estimated from the speech rate
+  measured so far.
+- Volume control: a vertical fader above the volume button (drag, click on
+  the track, or mouse wheel in 5 % steps; `louder` and `quieter` commands).
+  The level is remembered and only affects Read Aloud, not Windows.
+- Per-engine pronunciation dictionary: `config/terms_es.tsv` accepts an
+  optional third column with the spelling for the custom voice. GitHub is
+  read as "Guit jab" by Piper and "Guit jap" by the custom voice.
+- Setting `QwenLoadWaitSeconds`: if a reading arrives while the custom voice
+  is still loading (15 to 50 s), it starts with Piper and switches to the
+  custom voice as soon as it is ready, instead of staying silent.
+- `FirstChunkChars`, `MaxChunkChars` and `QwenBatchChars` settings, and
+  tests for the player logic (`lib/ReadAloud.Player.ps1`).
+- README: "Support the project" and "Feedback and contact" sections.
+
+### Changed
+
+- Folder trees, bullet lists, tables and long sentences are split into
+  chunks that grow progressively, equal for Piper and the custom voice. The
+  voice no longer reads tree lines, code quotes or table bars.
+  Measured with the custom voice: no long waits in the middle of a folder
+  tree (25.2 s before), and 4.4 s to the first audio on long bullets (9.5 s
+  before).
+- A single high-quality English voice: the panel and `setup.ps1` no longer
+  offer the medium one.
+
+### Fixed
+
+- The clock showed one extra minute from the second 30 of each minute (0:45
+  as 1:45).
+- The custom voice server ignores a BOM at the start of a line.
+
 ## [1.0.0] - 2026-11-03
 
 First public version.
@@ -97,5 +137,6 @@ First public version.
 - GitHub Actions running Pester, PSScriptAnalyzer, ruff and gitleaks over the
   whole history, with every action pinned to a commit.
 
-[Unreleased]: https://github.com/DuqueOM/read_aloud/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/DuqueOM/read_aloud/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.1.0
 [1.0.0]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.0.0
