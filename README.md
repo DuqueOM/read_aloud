@@ -272,6 +272,21 @@ tools/                      Checks for pre-commit and the CI
 read_aloud_piper/           Engine and voices (created by setup.ps1)
 ```
 
+## Support the project
+
+If Read Aloud is useful to you, support it with a star on GitHub or by sharing
+the repo with someone who could use it. The code is free, but the love and time
+put into every detail is what gives value to what we do, however simple or
+small it is.
+
+## Feedback and contact
+
+Found a bug, have an idea or a suggestion? Open an
+[issue](https://github.com/DuqueOM/read_aloud/issues) so others can see it and
+add to it, or write to me directly at
+[duqueortegamutis@gmail.com](mailto:duqueortegamutis@gmail.com). I read
+everything.
+
 ## Credits and license
 
 The voice engine is [Piper](https://github.com/rhasspy/piper), by Rhasspy,

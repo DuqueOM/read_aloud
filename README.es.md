@@ -267,6 +267,20 @@ tools/                      Revisiones del pre-commit y del CI
 read_aloud_piper/           Motor y voces (lo crea setup.ps1)
 ```
 
+## Apoya el proyecto
+
+Si te sirve la app, apóyame con una estrella en GitHub o compartiendo el
+repositorio con alguien que pueda necesitarlo. El código es gratis, pero el
+cariño y el tiempo que hay en cada detalle es lo que le da valor a lo que
+hacemos, por simple o pequeño que sea.
+
+## Comentarios y contacto
+
+¿Encontraste un error, tienes una idea o una sugerencia? Abre una
+[incidencia](https://github.com/DuqueOM/read_aloud/issues) para que otras
+personas la vean y la completen, o escríbeme directamente a
+[duqueortegamutis@gmail.com](mailto:duqueortegamutis@gmail.com). Leo todo.
+
 ## Créditos y licencia
 
 El motor de voz es [Piper](https://github.com/rhasspy/piper), de Rhasspy, con
