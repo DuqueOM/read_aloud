@@ -31,6 +31,10 @@
     # cada grupo tarda mas en estar listo.
     QwenBatch = 4
 
+    # Tope de caracteres por grupo: un grupo de frases largas tardaria en
+    # estar listo y retrasaria a las que esperan detras. 0 = sin tope.
+    QwenBatchChars = 320
+
     # Qwen tarda unos 20 s en cargar, asi que se queda abierto (ocupa unos
     # 5 GB de la tarjeta grafica y 2.3 GB de RAM) y se cierra solo cuando otro
     # programa necesita la tarjeta. Con un numero mayor que 0, tambien se

@@ -55,6 +55,7 @@ El archivo debe existir en `read_aloud_piper\voices`. Consulta las opciones en
 | `QwenWorkDir` | vacío | Carpeta de trabajo de la voz propia ([voz-personalizada.md](voz-personalizada.md)) |
 | `QwenMinVramGB` | `7` | Memoria mínima de la tarjeta NVIDIA para usar Qwen |
 | `QwenBatch` | `4` | Frases que se generan juntas |
+| `QwenBatchChars` | `320` | Tope de caracteres por grupo, para que unas frases largas no retrasen a las que esperan detrás. `0` = sin tope |
 | `QwenIdleMinutes` | `0` | Minutos sin leer tras los que Qwen se cierra; `0` es nunca |
 | `QwenReopen` | `$true` | Volver a cargar Qwen en cuanto la tarjeta queda libre, tras cederla |
 | `QwenReopenFreeGB` | `6` | Memoria libre de la tarjeta que hace falta para volver a cargarlo |
@@ -304,8 +305,10 @@ Si quieres controlar el lector desde otro programa, escribe una línea JSON en
 | `{"cmd":"speak","text":"...","lang":"Auto"}` | Lee ese texto |
 | `{"cmd":"stop"}` | Detiene y esconde el reproductor |
 | `{"cmd":"toggle"}` | Pausa o continúa |
-| `{"cmd":"back"}` | Retrocede |
-| `{"cmd":"forward"}` | Avanza |
+| `{"cmd":"back"}` | Retrocede (`SkipSeconds`) |
+| `{"cmd":"forward"}` | Avanza (`SkipSeconds`) |
+| `{"cmd":"prev"}` | Frase anterior; con más de 2 s de la actual, vuelve primero a su comienzo |
+| `{"cmd":"next"}` | Frase siguiente |
 | `{"cmd":"faster"}` | Sube la velocidad un paso |
 | `{"cmd":"panel"}` | Muestra u oculta el panel de texto |
 | `{"cmd":"slower"}` | Baja la velocidad un paso |

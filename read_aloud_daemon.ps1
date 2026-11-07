@@ -22,6 +22,7 @@ $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Core.ps1')
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Text.ps1')
+. (Join-Path $PSScriptRoot 'lib\ReadAloud.Player.ps1')
 
 Add-Type -AssemblyName PresentationFramework
 Add-Type -AssemblyName PresentationCore
@@ -148,6 +149,10 @@ $sync.SynthDone = New-Object 'Collections.Concurrent.ConcurrentQueue[object]'
 # la cola cada pocos milisegundos mientras no hay nada que leer.
 $sync.SynthSignal = New-Object Threading.AutoResetEvent($false)
 $sync.Generation = 0
+# Fragmento al que el usuario salto y que aun no tiene audio: se genera primero
+# (PriorityGen dice a que lectura corresponde).
+$sync.Priority = -1
+$sync.PriorityGen = 0
 $sync.Stopping = $false
 
 $runspaces = New-Object System.Collections.Generic.List[object]
@@ -233,6 +238,10 @@ Start-BackgroundRunspace -Script $pipeScript -Variables @{
 # QwenBatch mientras ya hay audio sonando.
 # --------------------------------------------------------------------------
 $synthScript = {
+    # El orden de generacion y el tope de los grupos viven en la biblioteca del
+    # reproductor, que se prueba con Pester.
+    . $cfg.PlayerLib
+
     $processes = @{}
 
     function New-QwenProcess {
@@ -510,16 +519,53 @@ $synthScript = {
         # Fragmento de una lectura que ya fue reemplazada: no vale la pena.
         if ($job.Generation -ne $sync.Generation) { continue }
 
+        # Si el usuario salto a un fragmento que aun no existe, ese se genera
+        # primero y sigue hacia delante; lo que quedo atras, despues. Se
+        # reordena la cola entera, solo con lo de la lectura actual.
+        $esSalto = $false
+        if ($sync.Priority -ge 0 -and $sync.PriorityGen -eq $sync.Generation) {
+            $prioridad = $sync.Priority
+            $sync.Priority = -1
+            $esSalto = $true
+
+            $todos = New-Object System.Collections.Generic.List[object]
+            [void]$todos.Add($job)
+            $otro = $null
+            while ($sync.SynthJobs.TryDequeue([ref]$otro)) { [void]$todos.Add($otro) }
+
+            $actuales = @($todos | Where-Object { $_.Generation -eq $sync.Generation })
+            $porIndice = @{}
+            foreach ($a in $actuales) { $porIndice[[int]$a.Index] = $a }
+            $orden = @(Get-JobOrder -Pending @($actuales | ForEach-Object { [int]$_.Index }) -Priority $prioridad)
+
+            $job = $null
+            foreach ($i in $orden) {
+                if ($null -eq $job) { $job = $porIndice[[int]$i]; continue }
+                $sync.SynthJobs.Enqueue($porIndice[[int]$i])
+            }
+            # Lo de otra lectura (llego mientras se vaciaba) conserva su sitio.
+            foreach ($t in $todos) {
+                if ($t.Generation -ne $sync.Generation) { $sync.SynthJobs.Enqueue($t) }
+            }
+            if ($null -eq $job) { continue }
+        }
+
         $key = Get-SynthKey -Lang $job.Lang
         $batch = New-Object System.Collections.Generic.List[object]
         $batch.Add($job)
         if ($key -eq 'qwen') {
+            # Tras un salto, como al empezar una lectura, lo que importa es que
+            # el primer audio llegue pronto: un grupo corto.
             $limit = Get-BatchLimit -Index $job.Index
+            if ($esSalto) { $limit = [Math]::Min(2, $cfg.Qwen.Batch) }
+            $chars = $job.Text.Length
             $next = $null
-            while ($batch.Count -lt $limit -and $sync.SynthJobs.TryPeek([ref]$next) -and
-                   $next.Generation -eq $job.Generation -and (Get-SynthKey -Lang $next.Lang) -eq 'qwen') {
+            while ($sync.SynthJobs.TryPeek([ref]$next) -and $next.Generation -eq $job.Generation -and
+                   (Get-SynthKey -Lang $next.Lang) -eq 'qwen' -and
+                   (Test-BatchFits -Count $batch.Count -Chars $chars -NextChars $next.Text.Length -MaxCount $limit -Budget $cfg.Qwen.BatchChars)) {
                 [void]$sync.SynthJobs.TryDequeue([ref]$next)
                 $batch.Add($next)
+                $chars += $next.Text.Length
             }
         }
 
@@ -557,6 +603,7 @@ Start-BackgroundRunspace -Script $synthScript -Variables @{
         PiperExe        = $paths.PiperExe
         PiperDir        = $paths.PiperDir
         EspeakData      = $paths.EspeakData
+        PlayerLib       = (Join-Path $paths.LibDir 'ReadAloud.Player.ps1')
         Models          = $models
         SentenceSilence = ([double]$settings.SentenceSilence).ToString($invariant)
         LengthScale     = ([double]$settings.LengthScale).ToString($invariant)
@@ -572,6 +619,7 @@ Start-BackgroundRunspace -Script $synthScript -Variables @{
             Log         = $qwenVoice.Log
             BusyFile    = $qwenVoice.BusyFile
             Batch       = [Math]::Max(1, [int]$settings.QwenBatch)
+            BatchChars  = [int]$settings.QwenBatchChars
             IdleMinutes = $(if ($ahorro) { [double]$settings.SaverIdleMinutes } else { [double]$settings.QwenIdleMinutes }).ToString($invariant)
             Reopen      = (-not $ahorro) -and [bool]$settings.QwenReopen
             ReopenFreeGB= [double]$settings.QwenReopenFreeGB
@@ -926,11 +974,6 @@ function Save-PlayerState {
     } catch { }
 }
 
-function Format-Speed {
-    param([double]$Value)
-    return ($Value.ToString('0.##', [Globalization.CultureInfo]::InvariantCulture) + 'x')
-}
-
 function Set-PlaybackSpeedValue {
     param([double]$Value)
 
@@ -954,11 +997,7 @@ function Set-PlaybackSpeed {
     # ordenes 'faster' y 'slower' de read_aloud.ps1.
     param([int]$Direction)
 
-    $index = [Array]::IndexOf($speedSteps, $script:speed)
-    if ($index -lt 0) { $index = [Array]::IndexOf($speedSteps, 1.0) }
-
-    $index = [Math]::Max(0, [Math]::Min($speedSteps.Count - 1, $index + $Direction))
-    Set-PlaybackSpeedValue $speedSteps[$index]
+    Set-PlaybackSpeedValue (Get-NextStep -Steps $speedSteps -Current $script:speed -Direction $Direction)
 }
 
 foreach ($paso in $speedSteps) {
@@ -1012,34 +1051,19 @@ $state = [pscustomobject]@{
     LastTextAt    = [datetime]::MinValue
     Finished      = $true
     WaitingForNext = $false
-}
-
-function Format-Time {
-    param([double]$Seconds)
-
-    if ($Seconds -lt 0) { $Seconds = 0 }
-    $span = [timespan]::FromSeconds($Seconds)
-    return ('{0}:{1:00}' -f [int]$span.TotalMinutes, $span.Seconds)
-}
-
-function Get-EstimatedDuration {
-    # Estimacion mientras el fragmento aun no se genera. 14 caracteres por
-    # segundo se acerca al ritmo real de estas voces; se corrige apenas llega
-    # el WAV con su duracion exacta.
-    param([string]$Text)
-    return [Math]::Max(0.6, $Text.Length / 14.0)
+    # Fragmento al que se salto y que aun no tiene audio (-1: ninguno). Mientras
+    # se espera, la posicion es el comienzo de ese fragmento.
+    WaitTarget    = -1
 }
 
 function Update-Offsets {
-    $offset = 0.0
-    foreach ($chunk in $state.Chunks) {
-        $chunk.Offset = $offset
-        $offset += $chunk.Duration
-    }
-    $state.Total = $offset
+    $state.Total = Update-ChunkOffsets -Chunks $state.Chunks
 }
 
 function Get-GlobalPosition {
+    if ($state.WaitTarget -ge 0 -and $state.WaitTarget -lt $state.Chunks.Count) {
+        return $state.Chunks[$state.WaitTarget].Offset
+    }
     if ($state.PlayIndex -lt 0 -or $state.PlayIndex -ge $state.Chunks.Count) { return 0.0 }
     return $state.Chunks[$state.PlayIndex].Offset + (Get-ActivePlayer).Position.TotalSeconds
 }
@@ -1114,6 +1138,8 @@ function Stop-Playback {
     $state.IsPlaying = $false
     $state.Finished = $true
     $state.WaitingForNext = $false
+    $state.WaitTarget = -1
+    $sync.Priority = -1
     $state.PlayIndex = -1
     Set-PlayIcon -Playing $false
 
@@ -1147,6 +1173,7 @@ function Start-Chunk {
 
     $state.PlayIndex = $Index
     $state.WaitingForNext = $false
+    $state.WaitTarget = -1
     $state.PendingSeek = $Offset
     $state.IsPlaying = $AutoPlay
 
@@ -1158,34 +1185,105 @@ function Start-Chunk {
     (Get-ActivePlayer).Open([uri]$chunk.Wav)
 }
 
+function Invoke-SentenceStep {
+    # Frase anterior (-1) o siguiente (+1). La anterior, con mas de 2 s de la
+    # actual, vuelve primero a su comienzo, como en un reproductor de musica.
+    param([int]$Direction)
+
+    $actual = $state.PlayIndex
+    if ($state.WaitTarget -ge 0) { $actual = $state.WaitTarget }
+
+    $i = Get-SentenceTarget -Chunks $state.Chunks -PlayIndex $actual -Position (Get-GlobalPosition) -Direction $Direction
+    if ($i -lt 0) { return }
+
+    $state.IsPlaying = $true
+    Set-PlayIcon -Playing $true
+    # El margen minimo asegura que el salto caiga dentro de esa frase.
+    Invoke-Seek -TargetSeconds ($state.Chunks[$i].Offset + 0.01)
+}
+
+function Switch-ToPreloaded {
+    # El fragmento siguiente ya esta abierto en el otro reproductor: pasa a
+    # sonar ese, sin volver a abrir ningun archivo. Lo usan el final de cada
+    # frase y los saltos a la frase de al lado.
+    param([double]$Offset = 0.0)
+
+    $next = $state.PlayIndex + 1
+    (Get-ActivePlayer).Stop()
+
+    $state.Active = 1 - $state.Active
+    $state.PlayIndex = $next
+    $state.PreloadIndex = -1
+    $state.WaitingForNext = $false
+    $state.WaitTarget = -1
+
+    $nuevo = Get-ActivePlayer
+    $ui.LangBadge.Text = $state.Chunks[$next].Lang.ToUpperInvariant()
+
+    try { $nuevo.Position = [timespan]::FromSeconds($Offset) } catch { }
+    $nuevo.Play()
+    $nuevo.SpeedRatio = $script:speed
+
+    Open-NextChunk
+}
+
 function Invoke-Seek {
+    # Salta a cualquier punto de la lectura, tenga o no el audio ya generado.
+    # Con audio: salto inmediato (sin reabrir el archivo si es la misma frase
+    # que suena o la siguiente, que ya esta precargada). Sin audio: el sonido
+    # actual se detiene, ese fragmento pasa a generarse primero y suena en
+    # cuanto llega.
     param([double]$TargetSeconds)
 
     if ($state.Chunks.Count -eq 0) { return }
 
-    # No se puede saltar a audio que todavia no existe: se limita al final de
-    # lo ya generado.
-    $lastReady = -1
-    for ($i = 0; $i -lt $state.Chunks.Count; $i++) {
-        if ($state.Chunks[$i].Ready) { $lastReady = $i } else { break }
-    }
-    if ($lastReady -lt 0) { return }
+    $destino = Get-SeekTarget -Chunks $state.Chunks -Seconds $TargetSeconds
+    if ($null -eq $destino) { return }
 
-    $maxSeekable = $state.Chunks[$lastReady].Offset + $state.Chunks[$lastReady].Duration - 0.15
-    if ($TargetSeconds -gt $maxSeekable) { $TargetSeconds = $maxSeekable }
-    if ($TargetSeconds -lt 0) { $TargetSeconds = 0 }
+    Write-DaemonLog ('Salto a {0:N1} s de {1:N1} s, fragmento {2} de {3} (comienza en {4:N1} s){5}' -f `
+        $destino.Seconds, $state.Total, ($destino.Index + 1), $state.Chunks.Count, $state.Chunks[$destino.Index].Offset,
+        $(if ($destino.Ready) { '' } else { ', sin audio todavia' }))
 
-    Write-DaemonLog ('Salto a {0:N1} s de {1:N1} s' -f $TargetSeconds, $state.Total)
+    $i = $destino.Index
 
-    for ($i = $lastReady; $i -ge 0; $i--) {
-        $chunk = $state.Chunks[$i]
-        if ($TargetSeconds -ge $chunk.Offset) {
-            Start-Chunk -Index $i -Offset ($TargetSeconds - $chunk.Offset) -AutoPlay $state.IsPlaying
+    if ($destino.Ready) {
+        $state.WaitTarget = -1
+        $activo = Get-ActivePlayer
+
+        if ($i -eq $state.PlayIndex -and $null -eq $state.PendingSeek) {
+            # Misma frase: se mueve el punto sin reabrir nada.
+            try {
+                $activo.Position = [timespan]::FromSeconds($destino.Offset)
+                if ($state.IsPlaying) { $activo.Play() }
+                return
+            } catch { }
+        }
+
+        if ($i -eq ($state.PlayIndex + 1) -and $state.PreloadIndex -eq $i -and $state.IsPlaying) {
+            Switch-ToPreloaded -Offset $destino.Offset
             return
         }
+
+        Start-Chunk -Index $i -Offset $destino.Offset -AutoPlay $state.IsPlaying
+        return
     }
 
-    Start-Chunk -Index 0 -Offset 0 -AutoPlay $state.IsPlaying
+    # Sin audio: se espera a ese fragmento y se genera primero. El pulso lo
+    # arranca en cuanto llega (WaitingForNext con PlayIndex justo antes).
+    (Get-ActivePlayer).Pause()
+    (Get-IdlePlayer).Stop()
+    $state.PreloadIndex = -1
+    $state.PendingSeek = $null
+    $state.PlayIndex = $i - 1
+    $state.WaitTarget = $i
+    $state.WaitingForNext = $true
+    $state.Finished = $false
+    # La insignia de idioma marca que se esta esperando; Start-Chunk la repone.
+    $ui.LangBadge.Text = '...'
+
+    $sync.PriorityGen = $sync.Generation
+    $sync.Priority = $i
+    [void]$sync.SynthSignal.Set()
 }
 
 # --------------------------------------------------------------------------
@@ -1336,7 +1434,9 @@ function Update-Highlight {
 
     if ($script:runs.Count -eq 0) { return }
 
+    # Mientras se espera un fragmento al que se salto, el destacado es el destino.
     $actual = $state.PlayIndex
+    if ($state.WaitTarget -ge 0) { $actual = $state.WaitTarget }
     if ((-not $Force) -and ($actual -eq $state.HighlightIndex)) { return }
 
     for ($i = 0; $i -lt $script:runs.Count; $i++) {
@@ -1614,7 +1714,11 @@ function Start-Speaking {
     Update-Offsets
     Build-TextPanel
     $ui.LangBadge.Text = $plan.DocumentLang.ToUpperInvariant()
+    # Poner la barra a 0 no es un salto del usuario: la bandera evita que
+    # ValueChanged lo tome por uno.
+    $state.SyncingSlider = $true
     $ui.Seek.Value = 0
+    $state.SyncingSlider = $false
     $ui.TimeLabel.Text = '0:00 / ' + (Format-Time $state.Total)
     Set-PlayIcon -Playing $true
     $state.IsPlaying = $true
@@ -1686,21 +1790,7 @@ foreach ($instancia in $players) {
 
         if ($state.PreloadIndex -eq $next) {
             # Relevo inmediato: el siguiente ya esta abierto en el otro.
-            $sender.Stop()
-
-            $state.Active = 1 - $state.Active
-            $state.PlayIndex = $next
-            $state.PreloadIndex = -1
-            $state.WaitingForNext = $false
-
-            $nuevo = Get-ActivePlayer
-            $ui.LangBadge.Text = $state.Chunks[$next].Lang.ToUpperInvariant()
-
-            try { $nuevo.Position = [timespan]::Zero } catch { }
-            $nuevo.Play()
-            $nuevo.SpeedRatio = $script:speed
-
-            Open-NextChunk
+            Switch-ToPreloaded -Offset 0
             return
         }
 
@@ -1724,6 +1814,17 @@ function Toggle-Playback {
         (Get-ActivePlayer).Pause()
         $state.IsPlaying = $false
         Set-PlayIcon -Playing $false
+        return
+    }
+
+    # Se salto a un fragmento sin audio y se estaba en pausa: al reanudar se
+    # sigue esperando a ese fragmento (o suena, si ya llego), no el sonido
+    # viejo que quedo abierto.
+    if ($state.WaitTarget -ge 0) {
+        $state.IsPlaying = $true
+        $destino = $state.WaitTarget
+        if ($state.Chunks[$destino].Ready) { Start-Chunk -Index $destino -Offset 0 -AutoPlay $true }
+        Set-PlayIcon -Playing $true
         return
     }
 
@@ -1938,6 +2039,8 @@ $timer.Add_Tick({
             'toggle' { Toggle-Playback }
             'back'   { Invoke-Seek -TargetSeconds ((Get-GlobalPosition) - $settings.SkipSeconds) }
             'forward'{ Invoke-Seek -TargetSeconds ((Get-GlobalPosition) + $settings.SkipSeconds) }
+            'prev'   { Invoke-SentenceStep -Direction -1 }
+            'next'   { Invoke-SentenceStep -Direction 1 }
             'faster' { Set-PlaybackSpeed -Direction 1 }
             'panel'  { Set-TextPanel -Visible (-not $script:panelVisible) }
             'slower' { Set-PlaybackSpeed -Direction -1 }
@@ -1994,7 +2097,12 @@ $timer.Add_Tick({
         $changed = $true
     }
 
-    if ($changed) { Update-Offsets }
+    # Con audio real, el ritmo de esta voz se mide y lo que falta se estima con
+    # el: la barra de posicion no se mueve a saltos cuando llega cada fragmento.
+    if ($changed) {
+        [void](Update-ChunkEstimates -Chunks $state.Chunks)
+        Update-Offsets
+    }
 
     # 3. Arranque del audio y salto al siguiente fragmento cuando ya esta listo.
     if ($state.Chunks.Count -gt 0 -and -not $state.Finished) {
