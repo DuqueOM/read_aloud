@@ -24,8 +24,8 @@ El orden, de menos a más prioridad: los valores por defecto,
 
 Después de cambiar algo en `settings.psd1`, reinicia el proceso residente:
 ciérralo desde la consola y la próxima lectura lo vuelve a arrancar con los
-ajustes nuevos. (Los cambios hechos en el panel ofrecen su propio botón
-"Reiniciar ahora".)
+ajustes nuevos, o usa "Cerrar Read Aloud" del menú Inicio. (Los cambios hechos
+en el panel se aplican solos, sin reiniciar.)
 
 ```powershell
 . .\lib\ReadAloud.Core.ps1
