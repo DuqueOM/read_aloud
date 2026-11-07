@@ -258,14 +258,19 @@ sobre `settings.psd1`, y "Restablecer todo" lo borra y vuelve a los de
 | Sección | Ajuste | Cuándo se nota |
 |---|---|---|
 | Apariencia | Opacidad en reposo, tamaño del reproductor, letra del texto, panel de texto al aparecer y su alto y ancho | Al momento |
-| Voz | Motor (automático, voz propia o Piper), voz de Piper en español y en inglés | Al reiniciar el lector |
-| Voz | Rendimiento: rápido o ahorro de recursos, y en ahorro, a los cuántos minutos sin leer se libera la voz | Al reiniciar el lector |
+| Voz | Motor (automático, voz propia o Piper), voz de Piper en español y en inglés | En unos segundos (se recargan las voces) |
+| Voz | Rendimiento: rápido o ahorro de recursos, y en ahorro, a los cuántos minutos sin leer se libera la voz | En unos segundos (se recargan las voces) |
 | Lectura | Cerrar al terminar, salto de los botones, idioma de los textos ambiguos, pausa entre párrafos | Al momento o en la próxima lectura |
-| Lectura | Pausa entre frases | Al reiniciar el lector |
+| Lectura | Pausa entre frases | En unos segundos (se recargan las voces) |
+| Apariencia | Tema y color de acento | Al momento |
+| Atajos | Cada atajo, con "Restablecer atajos" | Al momento |
+| Pronunciación | Tu diccionario | En la próxima lectura |
 
-Los ajustes de voz van a los procesos de síntesis, que se abren al arrancar.
-Cuando cambias uno, el panel ofrece "Reiniciar ahora": el lector se cierra y
-vuelve a abrir solo en unos segundos, y corta la lectura en curso.
+Ningún ajuste del panel pide reiniciar el lector. Los de voz van a los procesos
+de síntesis: al cambiarlos, el lector cierra esos procesos y abre otros con lo
+nuevo (tras 0,7 s sin más cambios, para agrupar varios). Si estaba leyendo, el
+fragmento en curso termina y los siguientes salen con la voz nueva; lo demás
+(reproductor, atajos, bandeja) no se toca.
 
 **Rendimiento**, solo con la voz propia de Qwen3-TTS:
 
