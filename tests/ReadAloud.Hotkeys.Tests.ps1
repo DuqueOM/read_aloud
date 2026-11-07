@@ -104,3 +104,16 @@ Describe 'Get-HotkeyKeyNameFromVk' {
         Get-HotkeyKeyNameFromVk -Vk $Vk -Char $Char | Should -BeExactly $Esperado
     }
 }
+
+Describe 'ConvertFrom-VkKeyScan' {
+    It 'VkKeyScan 0x<Scan> da VK 0x<Vk> y modificadores <Mods>' -ForEach @(
+        @{ Scan = 0x00BC; Vk = 0xBC; Mods = 0 }
+        @{ Scan = 0x01DE; Vk = 0xDE; Mods = 4 }
+        @{ Scan = 0x06DB; Vk = 0xDB; Mods = 3 }
+        @{ Scan = 0x0141; Vk = 0x41; Mods = 4 }
+    ) {
+        $r = ConvertFrom-VkKeyScan -Scan $Scan
+        $r.Vk | Should -Be $Vk
+        $r.Modifiers | Should -Be $Mods
+    }
+}

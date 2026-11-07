@@ -230,6 +230,22 @@ public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, System
 '@
 }
 
+function ConvertFrom-VkKeyScan {
+    # El resultado de VkKeyScan (tecla en el byte bajo; en el alto, los
+    # modificadores que hacen falta para escribir ese caracter con el teclado
+    # actual: 1 Mayus, 2 Ctrl, 4 Alt) -> @{ Vk; Modifiers } con los modificadores
+    # de RegisterHotKey (Alt 1, Ctrl 2, Shift 4). En un teclado latinoamericano,
+    # "[" se escribe con Mayus: el atajo Ctrl+Alt+[ es entonces Ctrl+Alt+Mayus+tecla.
+    param([int]$Scan)
+
+    $state = ($Scan -shr 8) -band 7
+    $mods = 0
+    if ($state -band 1) { $mods = $mods -bor 4 }
+    if ($state -band 2) { $mods = $mods -bor 2 }
+    if ($state -band 4) { $mods = $mods -bor 1 }
+    return @{ Vk = ($Scan -band 0xFF); Modifiers = $mods }
+}
+
 function Register-ReadAloudHotkeys {
     # Registra cada atajo en la ventana. Devuelve, por accion, si quedo activo y
     # el motivo si no: 1409 es que otro programa ya lo tiene.
@@ -252,12 +268,17 @@ function Register-ReadAloudHotkeys {
         } else {
             $parsed = ConvertFrom-HotkeySpec $check.Text
             $vk = $parsed.Vk
+            $mods = $parsed.Modifiers
             if ($parsed.Char -ne '') {
                 $scan = [ReadAloud.NativeKeys]::VkKeyScan([char]$parsed.Char)
-                if ($scan -ne -1) { $vk = $scan -band 0xFF }
+                if ($scan -ne -1) {
+                    $layout = ConvertFrom-VkKeyScan -Scan $scan
+                    $vk = $layout.Vk
+                    $mods = $mods -bor $layout.Modifiers
+                }
             }
             # 0x4000: MOD_NOREPEAT, para que mantener pulsado no repita la orden.
-            if ([ReadAloud.NativeKeys]::RegisterHotKey($Handle, $id, ([uint32]($parsed.Modifiers -bor 0x4000)), [uint32]$vk)) {
+            if ([ReadAloud.NativeKeys]::RegisterHotKey($Handle, $id, ([uint32]($mods -bor 0x4000)), [uint32]$vk)) {
                 $entry.Active = $true
             } else {
                 $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
