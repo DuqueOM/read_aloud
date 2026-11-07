@@ -96,7 +96,11 @@ function Get-ConfiguredPauses {
 $purged = Clear-OldTempAudio -TmpDir $paths.TmpDir -MaxAgeHours $settings.MaxTmpAgeHours
 Write-DaemonLog "Inicio. Temporales eliminados: $purged"
 
-Set-SpeechTerms (Import-SpeechTerms -Path $paths.TermsFile) (Import-SpeechTerms -Path $paths.TermsFile -Engine 'qwen')
+function Update-SpeechDictionary {
+    Set-SpeechTerms (Import-AllSpeechTerms -BasePath $paths.TermsFile -UserPath $paths.UserTermsFile) `
+        (Import-AllSpeechTerms -BasePath $paths.TermsFile -UserPath $paths.UserTermsFile -Engine 'qwen')
+}
+Update-SpeechDictionary
 
 # La expresion regular del diccionario se compila la primera vez que se usa, y
 # esa compilacion tardaba cerca de medio segundo justo en la primera lectura

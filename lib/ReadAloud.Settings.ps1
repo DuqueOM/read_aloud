@@ -124,6 +124,17 @@ $xamlAjustes = @'
       <Setter Property="VerticalAlignment" Value="Center"/>
       <Setter Property="TextAlignment" Value="Right"/>
     </Style>
+    <Style x:Key="Campo" TargetType="TextBox">
+      <Setter Property="Background" Value="#14FFFFFF"/>
+      <Setter Property="Foreground" Value="#E6E6EA"/>
+      <Setter Property="CaretBrush" Value="#E6E6EA"/>
+      <Setter Property="BorderBrush" Value="#26FFFFFF"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="FontFamily" Value="Segoe UI"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Padding" Value="6,4"/>
+      <Setter Property="Margin" Value="0,0,0,2"/>
+    </Style>
     <Style x:Key="Nota" TargetType="TextBlock">
       <Setter Property="Foreground" Value="#8A8A94"/>
       <Setter Property="FontFamily" Value="Segoe UI"/>
@@ -297,6 +308,23 @@ $xamlAjustes = @'
           <TextBlock Style="{StaticResource Nota}"
                      Text="La pausa entre párrafos se nota desde la próxima lectura; la de entre frases, al reiniciar."/>
 
+          <TextBlock Style="{StaticResource Seccion}" Text="PRONUNCIACIÓN"/>
+          <TextBlock Style="{StaticResource Nota}"
+                     Text="Si una palabra en inglés (o una sigla) suena mal, escribe cómo debería sonar con ortografía española y pulsa Probar. Guardar la aplica a las próximas lecturas, sin reiniciar."/>
+          <TextBlock Style="{StaticResource Etiqueta}" Text="Palabra"/>
+          <TextBox x:Name="TerminoPalabra" Style="{StaticResource Campo}"/>
+          <TextBlock Style="{StaticResource Etiqueta}" Text="Cómo se dice (Piper y, si no hay otra, la voz propia)"/>
+          <TextBox x:Name="TerminoDice" Style="{StaticResource Campo}"/>
+          <TextBlock Style="{StaticResource Etiqueta}" Text="Cómo se dice con la voz propia (opcional)"/>
+          <TextBox x:Name="TerminoDiceQwen" Style="{StaticResource Campo}"/>
+          <WrapPanel Margin="0,8,0,0">
+            <Button x:Name="BtnTerminoProbar" Content="Probar" Padding="12,5" Margin="0,0,6,6" Background="#14FFFFFF"/>
+            <Button x:Name="BtnTerminoGuardar" Content="Guardar" Padding="12,5" Margin="0,0,6,6" Background="#333B82F6"/>
+            <Button x:Name="BtnTerminoQuitar" Content="Quitar el mío" Padding="12,5" Margin="0,0,6,6" Background="#14FFFFFF"
+                    ToolTip="Quita tu corrección y vuelve a la del diccionario de fábrica"/>
+          </WrapPanel>
+          <TextBlock x:Name="TerminoNota" Style="{StaticResource Nota}" Visibility="Collapsed"/>
+
           <TextBlock Style="{StaticResource Seccion}" Text="ATAJOS DE TECLADO"/>
           <TextBlock x:Name="AtajosLista" Style="{StaticResource Etiqueta}" FontFamily="Consolas"
                      TextWrapping="Wrap" Margin="0,2,0,6"/>
@@ -354,7 +382,9 @@ foreach ($nombre in @('Titulo', 'Cerrar', 'Scroll', 'Opacidad', 'OpacidadValor',
                       'VocesEs', 'VocesEn', 'RendimientoNota', 'MinutosFila', 'PausaFrase', 'PausaFraseValor',
                       'PausaParrafo', 'PausaParrafoValor', 'Reinicio', 'ReiniciarAhora', 'Restablecer',
                       'AtajosLista', 'AtajosAviso', 'AcercaVersion', 'BtnDiagnostico', 'BtnActualizar', 'BtnGitHub',
-                      'ActualizarNota', 'BtnInstalarUpdate')) {
+                      'ActualizarNota', 'BtnInstalarUpdate',
+                      'TerminoPalabra', 'TerminoDice', 'TerminoDiceQwen', 'BtnTerminoProbar', 'BtnTerminoGuardar',
+                      'BtnTerminoQuitar', 'TerminoNota')) {
     $aj[$nombre] = $ajustesVentana.FindName($nombre)
 }
 
@@ -672,6 +702,54 @@ function Set-ActualizarNota {
 }
 
 $script:actualizacion = $null
+
+# --------------------------------------------------------------------------
+# Pronunciacion: el diccionario del usuario (runtime\terminos_usuario.tsv).
+# --------------------------------------------------------------------------
+function Set-TerminoNota {
+    param([string]$Texto)
+    $aj.TerminoNota.Text = $Texto
+    $aj.TerminoNota.Visibility = $(if ($Texto) { 'Visible' } else { 'Collapsed' })
+}
+
+# Al salir del campo de la palabra, se muestra como se dice hoy.
+$aj.TerminoPalabra.Add_LostFocus({
+    $actual = Find-SpeechTerm $aj.TerminoPalabra.Text
+    if ($null -eq $actual) {
+        if ($aj.TerminoPalabra.Text.Trim() -ne '') { Set-TerminoNota 'Esa palabra no está en el diccionario: se lee como viene.' }
+        return
+    }
+    $aj.TerminoDice.Text = $actual.Piper
+    $aj.TerminoDiceQwen.Text = $actual.Qwen
+    Set-TerminoNota 'Así suena hoy. Cámbialo y pulsa Probar.'
+})
+
+$aj.BtnTerminoProbar.Add_Click({
+    # Se lee la pronunciacion tal cual, con el motor que este en uso para el
+    # espanol: si hay voz propia y se dio una grafia para ella, esa.
+    $texto = $aj.TerminoDice.Text.Trim()
+    if ($engines['es'] -eq 'qwen' -and $aj.TerminoDiceQwen.Text.Trim() -ne '') { $texto = $aj.TerminoDiceQwen.Text.Trim() }
+    if ($texto -eq '') { Set-TerminoNota 'Escribe cómo se dice para poder probarlo.'; return }
+    $sync.Requests.Enqueue((@{ cmd = 'speak'; lang = 'Spanish'; text = ('Se dice: ' + $texto + '.') } | ConvertTo-Json -Compress))
+    $sync.WakeUi.Invoke()
+    Set-TerminoNota ''
+})
+
+$aj.BtnTerminoGuardar.Add_Click({
+    $ok = Set-UserSpeechTerm -Path $paths.UserTermsFile -Term $aj.TerminoPalabra.Text -Spoken $aj.TerminoDice.Text -SpokenQwen $aj.TerminoDiceQwen.Text
+    if (-not $ok) { Set-TerminoNota 'Escribe la palabra y cómo se dice (sin tabuladores).'; return }
+    Update-SpeechDictionary
+    Set-TerminoNota 'Guardado: se aplica desde la próxima lectura.'
+})
+
+$aj.BtnTerminoQuitar.Add_Click({
+    if (Remove-UserSpeechTerm -Path $paths.UserTermsFile -Term $aj.TerminoPalabra.Text) {
+        Update-SpeechDictionary
+        Set-TerminoNota 'Quitado: vuelve a sonar como en el diccionario de fábrica.'
+    } else {
+        Set-TerminoNota 'Esa palabra no tiene una corrección tuya.'
+    }
+})
 
 $aj.BtnDiagnostico.Add_Click({
     try {

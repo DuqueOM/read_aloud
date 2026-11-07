@@ -35,6 +35,7 @@ function Get-ReadAloudPaths {
         StateFile   = Join-Path $runtimeDir 'player.json'
         UserSettingsFile = Join-Path $runtimeDir 'ajustes.json'
         TermsFile   = Join-Path $root 'config\terms_es.tsv'
+        UserTermsFile = Join-Path $runtimeDir 'terminos_usuario.tsv'
         SettingsFile= Join-Path $root 'config\settings.psd1'
         LocalSettingsFile = Join-Path $root 'config\settings.local.psd1'
         DaemonScript= Join-Path $root 'read_aloud_daemon.ps1'

@@ -54,6 +54,25 @@ cache	caché
 API	a pe i
 ```
 
+### Tu propio diccionario, desde los ajustes
+
+No hace falta editar ese archivo: en los ajustes (el icono de la bandeja o la
+tuerca del reproductor), la sección **Pronunciación** deja escribir una palabra,
+cómo debe sonar y probarla. **Guardar** la aplica a la lectura siguiente, sin
+reiniciar. Lo tuyo se guarda en `read_aloud_piper/runtime/terminos_usuario.tsv`,
+que las actualizaciones no tocan, y manda sobre el diccionario de fábrica;
+**Quitar el mío** vuelve a este.
+
+### Una grafía distinta para la voz propia
+
+La voz propia (Qwen) no pronuncia igual que Piper. Una tercera columna,
+opcional, es la grafía para ella; sin tercera columna, las dos voces usan la
+segunda:
+
+```
+GitHub	Guit jab	Guit jap
+```
+
 Reglas del archivo:
 
 - Separa con **un tabulador**, no con espacios.

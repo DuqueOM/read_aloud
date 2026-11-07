@@ -187,7 +187,7 @@ if ($ShowPlan) {
     # heredada, y aqui se imprimen pronunciaciones acentuadas.
     try { [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false) } catch { }
 
-    Set-SpeechTerms (Import-SpeechTerms -Path $paths.TermsFile)
+    Set-SpeechTerms (Import-AllSpeechTerms -BasePath $paths.TermsFile -UserPath $paths.UserTermsFile)
 
     $plan = Build-SpeechPlan -Text $text -Requested $Language -MlMode $MlMode `
         -MinChunkChars $settings.MinChunkChars `
@@ -223,7 +223,7 @@ if ($ShowPlan) {
 function Invoke-DirectRead {
     param([string]$Text)
 
-    Set-SpeechTerms (Import-SpeechTerms -Path $paths.TermsFile)
+    Set-SpeechTerms (Import-AllSpeechTerms -BasePath $paths.TermsFile -UserPath $paths.UserTermsFile)
 
     $plan = Build-SpeechPlan -Text $Text -Requested $Language -MlMode $MlMode `
         -MinChunkChars $settings.MinChunkChars `

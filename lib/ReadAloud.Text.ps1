@@ -246,6 +246,88 @@ function Import-SpeechTerms {
     return $ordered
 }
 
+function Import-AllSpeechTerms {
+    # El diccionario de fabrica y el del usuario (runtime\terminos_usuario.tsv,
+    # que sobrevive a las actualizaciones). Si un termino esta en los dos, manda
+    # el del usuario.
+    param([string]$BasePath, [string]$UserPath, [string]$Engine = 'piper')
+
+    $base = Import-SpeechTerms -Path $BasePath -Engine $Engine
+    $user = Import-SpeechTerms -Path $UserPath -Engine $Engine
+
+    $merged = @{}
+    foreach ($k in $base.Keys) { $merged[$k.ToLowerInvariant()] = @{ Key = $k; Value = $base[$k] } }
+    foreach ($k in $user.Keys) { $merged[$k.ToLowerInvariant()] = @{ Key = $k; Value = $user[$k] } }
+
+    $ordered = New-Object System.Collections.Specialized.OrderedDictionary
+    foreach ($entry in ($merged.Values | Sort-Object { $_.Key.Length } -Descending)) {
+        $ordered[$entry.Key] = $entry.Value
+    }
+    return $ordered
+}
+
+function Set-UserSpeechTerm {
+    # Agrega o reemplaza un termino en el archivo del usuario. SpokenQwen es la
+    # grafia para la voz propia; vacia, las dos voces usan Spoken. Devuelve
+    # falso si el termino o su pronunciacion no sirven.
+    param([string]$Path, [string]$Term, [string]$Spoken, [string]$SpokenQwen = '')
+
+    $Term = $Term.Trim()
+    $Spoken = $Spoken.Trim()
+    $SpokenQwen = $SpokenQwen.Trim()
+    if ($Term -eq '' -or $Spoken -eq '') { return $false }
+    foreach ($t in $Term, $Spoken, $SpokenQwen) {
+        if ($t -match "[\t\r\n]") { return $false }
+    }
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    if (Test-Path -LiteralPath $Path) {
+        foreach ($line in (Get-Content -LiteralPath $Path -Encoding UTF8)) {
+            $first = ($line -split "`t", 2)[0].Trim()
+            if ($first -ieq $Term) { continue }
+            $lines.Add($line)
+        }
+    }
+
+    $new = $Term + "`t" + $Spoken
+    if ($SpokenQwen -ne '') { $new += "`t" + $SpokenQwen }
+    $lines.Add($new)
+
+    $dir = Split-Path -Parent $Path
+    if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    [IO.File]::WriteAllLines($Path, $lines.ToArray(), (New-Object Text.UTF8Encoding($false)))
+    return $true
+}
+
+function Remove-UserSpeechTerm {
+    # Quita un termino del archivo del usuario. Falso si no estaba.
+    param([string]$Path, [string]$Term)
+
+    if (-not (Test-Path -LiteralPath $Path)) { return $false }
+    $Term = $Term.Trim()
+    $kept = New-Object System.Collections.Generic.List[string]
+    $found = $false
+    foreach ($line in (Get-Content -LiteralPath $Path -Encoding UTF8)) {
+        if ((($line -split "`t", 2)[0].Trim()) -ieq $Term) { $found = $true; continue }
+        $kept.Add($line)
+    }
+    if ($found) { [IO.File]::WriteAllLines($Path, $kept.ToArray(), (New-Object Text.UTF8Encoding($false))) }
+    return $found
+}
+
+function Find-SpeechTerm {
+    # Como se dice hoy un termino (con el diccionario ya cargado). $null si no
+    # esta.
+    param([string]$Term)
+
+    $key = $Term.Trim().ToLowerInvariant()
+    if ($key -eq '' -or -not $script:RA_TermLookup.ContainsKey($key)) { return $null }
+    $piper = $script:RA_TermLookup[$key]
+    $qwen = $script:RA_TermLookupQwen[$key]
+    if ($qwen -eq $piper) { $qwen = '' }
+    return @{ Piper = $piper; Qwen = $qwen }
+}
+
 function Set-SpeechTerms {
     # Se compila una sola expresion regular con todos los terminos en vez de
     # aplicar una sustitucion por termino. Ademas de ser mucho mas rapido,

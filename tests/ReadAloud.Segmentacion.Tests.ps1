@@ -213,3 +213,50 @@ Describe 'Diccionario por motor' {
         (Build-SpeechPlan -Text 'Sube el proyecto a GitHub hoy.').Chunks[0].Text | Should -Match 'Guit jab'
     }
 }
+
+Describe 'Diccionario del usuario' {
+    BeforeAll {
+        $base = Join-Path $TestDrive 'base.tsv'
+        $user = Join-Path $TestDrive 'usuario.tsv'
+        Set-Content -LiteralPath $base -Value @("deploy`tdiploi", "GitHub`tGuit jab`tGuit jap") -Encoding UTF8
+    }
+
+    AfterAll {
+        Set-SpeechTerms $null
+    }
+
+    It 'guardar agrega, y volver a guardar reemplaza' {
+        Set-UserSpeechTerm -Path $user -Term 'cache' -Spoken 'cash' | Should -BeTrue
+        Set-UserSpeechTerm -Path $user -Term 'CACHE' -Spoken 'cache2' | Should -BeTrue
+        @(Get-Content -LiteralPath $user -Encoding UTF8).Count | Should -Be 1
+        (Import-SpeechTerms -Path $user)['CACHE'] | Should -BeExactly 'cache2'
+    }
+
+    It 'rechaza lo que no sirve' {
+        Set-UserSpeechTerm -Path $user -Term '' -Spoken 'x' | Should -BeFalse
+        Set-UserSpeechTerm -Path $user -Term 'x' -Spoken '' | Should -BeFalse
+        Set-UserSpeechTerm -Path $user -Term "a`tb" -Spoken 'x' | Should -BeFalse
+    }
+
+    It 'el del usuario manda sobre el de fabrica, tambien con la voz propia' {
+        Set-UserSpeechTerm -Path $user -Term 'github' -Spoken 'Guitjab' -SpokenQwen 'Guit-jap' | Should -BeTrue
+        Set-SpeechTerms (Import-AllSpeechTerms -BasePath $base -UserPath $user) (Import-AllSpeechTerms -BasePath $base -UserPath $user -Engine 'qwen')
+        Expand-EnglishTerms 'Sube a GitHub' | Should -BeExactly 'Sube a Guitjab'
+        Expand-EnglishTerms 'Sube a GitHub' -Engine 'qwen' | Should -BeExactly 'Sube a Guit-jap'
+        Expand-EnglishTerms 'haz deploy' | Should -BeExactly 'haz diploi'
+        (Find-SpeechTerm 'DEPLOY').Piper | Should -BeExactly 'diploi'
+        (Find-SpeechTerm 'github').Qwen | Should -BeExactly 'Guit-jap'
+        Find-SpeechTerm 'nada' | Should -BeNullOrEmpty
+    }
+
+    It 'quitar devuelve el de fabrica' {
+        Remove-UserSpeechTerm -Path $user -Term 'GITHUB' | Should -BeTrue
+        Remove-UserSpeechTerm -Path $user -Term 'GITHUB' | Should -BeFalse
+        Set-SpeechTerms (Import-AllSpeechTerms -BasePath $base -UserPath $user) (Import-AllSpeechTerms -BasePath $base -UserPath $user -Engine 'qwen')
+        Expand-EnglishTerms 'Sube a GitHub' -Engine 'qwen' | Should -BeExactly 'Sube a Guit jap'
+    }
+
+    It 'sin archivo del usuario, solo el de fabrica' {
+        (Import-AllSpeechTerms -BasePath $base -UserPath (Join-Path $TestDrive 'no.tsv')).Count | Should -Be 2
+    }
+}
