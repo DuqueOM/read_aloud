@@ -135,6 +135,40 @@ $xamlAjustes = @'
       <Setter Property="Padding" Value="6,4"/>
       <Setter Property="Margin" Value="0,0,0,2"/>
     </Style>
+    <Style x:Key="Lista" TargetType="ListBox">
+      <Setter Property="Background" Value="#14FFFFFF"/>
+      <Setter Property="Foreground" Value="#E6E6EA"/>
+      <Setter Property="BorderBrush" Value="#26FFFFFF"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="FontFamily" Value="Segoe UI"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Height" Value="150"/>
+      <Setter Property="ItemContainerStyle">
+        <Setter.Value>
+          <Style TargetType="ListBoxItem">
+            <Setter Property="Padding" Value="6,3"/>
+            <Setter Property="Foreground" Value="#E6E6EA"/>
+            <Setter Property="Template">
+              <Setter.Value>
+                <ControlTemplate TargetType="ListBoxItem">
+                  <Border x:Name="Fondo" Background="Transparent" Padding="{TemplateBinding Padding}">
+                    <ContentPresenter/>
+                  </Border>
+                  <ControlTemplate.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                      <Setter TargetName="Fondo" Property="Background" Value="#26FFFFFF"/>
+                    </Trigger>
+                    <Trigger Property="IsSelected" Value="True">
+                      <Setter TargetName="Fondo" Property="Background" Value="#334ADE80"/>
+                    </Trigger>
+                  </ControlTemplate.Triggers>
+                </ControlTemplate>
+              </Setter.Value>
+            </Setter>
+          </Style>
+        </Setter.Value>
+      </Setter>
+    </Style>
     <Style x:Key="Nota" TargetType="TextBlock">
       <Setter Property="Foreground" Value="#8A8A94"/>
       <Setter Property="FontFamily" Value="Segoe UI"/>
@@ -310,18 +344,31 @@ $xamlAjustes = @'
 
           <TextBlock Style="{StaticResource Seccion}" Text="PRONUNCIACIÓN"/>
           <TextBlock Style="{StaticResource Nota}"
-                     Text="Si una palabra en inglés (o una sigla) suena mal, escribe cómo debería sonar con ortografía española y pulsa Probar. Guardar la aplica a las próximas lecturas, sin reiniciar."/>
+                     Text="Aquí está todo lo que cambia cómo suenan las palabras: el diccionario de fábrica y tus correcciones. Elige el idioma del texto y la voz que quieres afinar, busca la palabra (o escribe una nueva), cámbiala y pulsa Probar. Guardar la aplica a la lectura siguiente."/>
+          <TextBlock Style="{StaticResource Etiqueta}" Text="Idioma del texto"/>
+          <WrapPanel>
+            <RadioButton GroupName="DicIdioma" Tag="es" Content="Español"/>
+            <RadioButton GroupName="DicIdioma" Tag="en" Content="Inglés"/>
+          </WrapPanel>
+          <TextBlock Style="{StaticResource Etiqueta}" Text="Voz que se afina"/>
+          <WrapPanel>
+            <RadioButton GroupName="DicMotor" Tag="piper" Content="Piper"/>
+            <RadioButton GroupName="DicMotor" Tag="qwen" Content="Voz propia"/>
+          </WrapPanel>
+          <TextBlock x:Name="DicMotorNota" Style="{StaticResource Nota}"/>
+          <TextBlock Style="{StaticResource Etiqueta}" Text="Buscar"/>
+          <TextBox x:Name="DicBuscar" Style="{StaticResource Campo}"/>
+          <ListBox x:Name="DicLista" Style="{StaticResource Lista}" Margin="0,4,0,0"/>
+          <TextBlock x:Name="DicConteo" Style="{StaticResource Nota}" Margin="0,2,0,0"/>
           <TextBlock Style="{StaticResource Etiqueta}" Text="Palabra"/>
           <TextBox x:Name="TerminoPalabra" Style="{StaticResource Campo}"/>
-          <TextBlock Style="{StaticResource Etiqueta}" Text="Cómo se dice (Piper y, si no hay otra, la voz propia)"/>
+          <TextBlock x:Name="TerminoDiceEtiqueta" Style="{StaticResource Etiqueta}" Text="Cómo se dice"/>
           <TextBox x:Name="TerminoDice" Style="{StaticResource Campo}"/>
-          <TextBlock Style="{StaticResource Etiqueta}" Text="Cómo se dice con la voz propia (opcional)"/>
-          <TextBox x:Name="TerminoDiceQwen" Style="{StaticResource Campo}"/>
           <WrapPanel Margin="0,8,0,0">
             <Button x:Name="BtnTerminoProbar" Content="Probar" Padding="12,5" Margin="0,0,6,6" Background="#14FFFFFF"/>
             <Button x:Name="BtnTerminoGuardar" Content="Guardar" Padding="12,5" Margin="0,0,6,6" Background="#333B82F6"/>
             <Button x:Name="BtnTerminoQuitar" Content="Quitar el mío" Padding="12,5" Margin="0,0,6,6" Background="#14FFFFFF"
-                    ToolTip="Quita tu corrección y vuelve a la del diccionario de fábrica"/>
+                    ToolTip="Quita tu corrección y vuelve a la del diccionario de fábrica; si la palabra era solo tuya, la borra"/>
           </WrapPanel>
           <TextBlock x:Name="TerminoNota" Style="{StaticResource Nota}" Visibility="Collapsed"/>
 
@@ -375,8 +422,8 @@ foreach ($nombre in @('Titulo', 'Cerrar', 'Scroll', 'Opacidad', 'OpacidadValor',
                       'PausaParrafo', 'PausaParrafoValor', 'Restablecer',
                       'AtajosFilas', 'BtnAtajosRestablecer', 'AtajosAviso', 'AcercaVersion', 'BtnDiagnostico', 'BtnActualizar', 'BtnGitHub',
                       'ActualizarNota', 'BtnInstalarUpdate',
-                      'TerminoPalabra', 'TerminoDice', 'TerminoDiceQwen', 'BtnTerminoProbar', 'BtnTerminoGuardar',
-                      'BtnTerminoQuitar', 'TerminoNota')) {
+                      'TerminoPalabra', 'TerminoDice', 'TerminoDiceEtiqueta', 'BtnTerminoProbar', 'BtnTerminoGuardar',
+                      'BtnTerminoQuitar', 'TerminoNota', 'DicMotorNota', 'DicBuscar', 'DicLista', 'DicConteo')) {
     $aj[$nombre] = $ajustesVentana.FindName($nombre)
 }
 
@@ -489,6 +536,8 @@ $gruposAjustes = @{
     Cerrar      = @{ Clave = 'PlayerAutoClose'; Tipo = 'bool' }
     Salto       = @{ Clave = 'SkipSeconds'; Tipo = 'double'; Aplicar = { param($v) Update-SkipLabels } }
     Idioma      = @{ Clave = 'FallbackLanguage' }
+    DicIdioma   = @{ Clave = ''; Defecto = 'es'; Aplicar = { param($v) $script:dicIdioma = $v; Update-DicLista } }
+    DicMotor    = @{ Clave = ''; Defecto = 'piper'; Aplicar = { param($v) $script:dicMotor = $v; Update-DicLista } }
 }
 
 function ConvertTo-ValorAjuste {
@@ -548,14 +597,16 @@ foreach ($opcion in @(Get-OpcionesAjuste $ajustesVentana)) {
     $grupo = $gruposAjustes[$opcion.GroupName]
     if ($null -eq $grupo) { continue }
     $valor = ConvertTo-ValorAjuste ([string]$opcion.Tag) $grupo.Tipo
-    if (Test-MismoValor $settings[$grupo.Clave] $valor) { $opcion.IsChecked = $true }
+    if ($grupo.Clave -eq '') {
+        if ([string]$opcion.Tag -eq $grupo.Defecto) { $opcion.IsChecked = $true }
+    } elseif (Test-MismoValor $settings[$grupo.Clave] $valor) { $opcion.IsChecked = $true }
 
     $opcion.Add_Checked({
         param($sender, $e)
         if ($script:cargandoAjustes) { return }
         $g = $gruposAjustes[$sender.GroupName]
         $v = ConvertTo-ValorAjuste ([string]$sender.Tag) $g.Tipo
-        Save-Ajuste $g.Clave $v
+        if ($g.Clave -ne '') { Save-Ajuste $g.Clave $v }
         if ($g.Tambien) { Save-Ajuste $g.Tambien $v }
         if ($g.Aplicar) { & $g.Aplicar $v }
     })
@@ -640,6 +691,7 @@ function Show-SettingsWindow {
     Update-MotorNota
     Update-RendimientoNota
     Update-AtajosLista
+    Update-DicLista
     $aj.AcercaVersion.Text = 'Read Aloud ' + (Get-ReadAloudVersion -Root $paths.Root)
 
     $area = [Windows.SystemParameters]::WorkArea
@@ -845,48 +897,120 @@ function Set-ActualizarNota {
 $script:actualizacion = $null
 
 # --------------------------------------------------------------------------
-# Pronunciacion: el diccionario del usuario (runtime\terminos_usuario.tsv).
+# Pronunciacion: el diccionario de fabrica y el del usuario, por idioma y por
+# voz (Piper o la voz propia).
 # --------------------------------------------------------------------------
+$script:dicIdioma = 'es'
+$script:dicMotor = 'piper'
+$script:dicCargando = $false
+
 function Set-TerminoNota {
     param([string]$Texto)
     $aj.TerminoNota.Text = $Texto
     $aj.TerminoNota.Visibility = $(if ($Texto) { 'Visible' } else { 'Collapsed' })
 }
 
-# Al salir del campo de la palabra, se muestra como se dice hoy.
-$aj.TerminoPalabra.Add_LostFocus({
-    $actual = Find-SpeechTerm $aj.TerminoPalabra.Text
-    if ($null -eq $actual) {
-        if ($aj.TerminoPalabra.Text.Trim() -ne '') { Set-TerminoNota 'Esa palabra no está en el diccionario: se lee como viene.' }
-        return
+function Get-DicRutas {
+    if ($script:dicIdioma -eq 'en') { return @{ Base = $paths.TermsFileEn; User = $paths.UserTermsFileEn } }
+    return @{ Base = $paths.TermsFile; User = $paths.UserTermsFileEs }
+}
+
+function Get-DicGrafia {
+    # Como se dice una entrada con la voz que se esta afinando.
+    param($Entrada)
+    if ($script:dicMotor -eq 'qwen' -and $Entrada.Qwen -ne '') { return $Entrada.Qwen }
+    return $Entrada.Piper
+}
+
+function Update-DicLista {
+    if ($null -eq $aj.DicLista) { return }
+    $rutas = Get-DicRutas
+    $todas = @(Get-SpeechTermEntries -BasePath $rutas.Base -UserPath $rutas.User)
+    $filtro = $aj.DicBuscar.Text.Trim()
+    $origenes = @{ 'fabrica' = 'fábrica'; 'mio' = 'mío'; 'fabrica+mio' = 'fábrica, cambiado por ti' }
+
+    $script:dicCargando = $true
+    try {
+        $aj.DicLista.Items.Clear()
+        $mostradas = 0
+        foreach ($e in $todas) {
+            if ($filtro -ne '' -and $e.Term.IndexOf($filtro, [StringComparison]::OrdinalIgnoreCase) -lt 0 -and
+                (Get-DicGrafia $e).IndexOf($filtro, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+            $item = New-Object Windows.Controls.ListBoxItem
+            $item.Content = '{0}  →  {1}' -f $e.Term, (Get-DicGrafia $e)
+            $item.ToolTip = $origenes[$e.Origin]
+            if ($e.Origin -ne 'fabrica') { $item.FontWeight = [Windows.FontWeights]::SemiBold }
+            $item.Tag = $e
+            [void]$aj.DicLista.Items.Add($item)
+            $mostradas++
+        }
+        $aj.DicConteo.Text = '{0} de {1} palabras. En negrita, las que cambiaste tú.' -f $mostradas, $todas.Count
+    } finally {
+        $script:dicCargando = $false
     }
-    $aj.TerminoDice.Text = $actual.Piper
-    $aj.TerminoDiceQwen.Text = $actual.Qwen
-    Set-TerminoNota 'Así suena hoy. Cámbialo y pulsa Probar.'
+
+    $voz = $(if ($script:dicMotor -eq 'qwen') { 'la voz propia' } else { 'Piper' })
+    $aj.TerminoDiceEtiqueta.Text = 'Cómo se dice con ' + $voz
+    $idiomaClave = $script:dicIdioma
+    $motorActual = $engines[$idiomaClave]
+    if ($script:dicMotor -eq 'qwen' -and $motorActual -ne 'qwen') {
+        $aj.DicMotorNota.Text = 'Ahora este idioma lee con Piper: lo de la voz propia se aplicará cuando la uses.'
+    } elseif ($script:dicMotor -eq 'piper' -and $motorActual -eq 'qwen') {
+        $aj.DicMotorNota.Text = 'Ahora este idioma lee con la voz propia: lo de Piper se aplicará cuando lo uses.'
+    } else {
+        $aj.DicMotorNota.Text = ''
+    }
+}
+
+$aj.DicBuscar.Add_TextChanged({ Update-DicLista })
+
+$aj.DicLista.Add_SelectionChanged({
+    if ($script:dicCargando -or $null -eq $aj.DicLista.SelectedItem) { return }
+    $e = $aj.DicLista.SelectedItem.Tag
+    $aj.TerminoPalabra.Text = $e.Term
+    $aj.TerminoDice.Text = Get-DicGrafia $e
+    Set-TerminoNota ''
 })
 
 $aj.BtnTerminoProbar.Add_Click({
-    # Se lee la pronunciacion tal cual, con el motor que este en uso para el
-    # espanol: si hay voz propia y se dio una grafia para ella, esa.
     $texto = $aj.TerminoDice.Text.Trim()
-    if ($engines['es'] -eq 'qwen' -and $aj.TerminoDiceQwen.Text.Trim() -ne '') { $texto = $aj.TerminoDiceQwen.Text.Trim() }
     if ($texto -eq '') { Set-TerminoNota 'Escribe cómo se dice para poder probarlo.'; return }
-    $sync.Requests.Enqueue((@{ cmd = 'speak'; lang = 'Spanish'; text = ('Se dice: ' + $texto + '.') } | ConvertTo-Json -Compress))
+    $lang = 'Spanish'; $frase = 'Se dice: ' + $texto + '.'
+    if ($script:dicIdioma -eq 'en') { $lang = 'English'; $frase = 'It is pronounced: ' + $texto + '.' }
+    $sync.Requests.Enqueue((@{ cmd = 'speak'; lang = $lang; text = $frase } | ConvertTo-Json -Compress))
     $sync.WakeUi.Invoke()
     Set-TerminoNota ''
 })
 
 $aj.BtnTerminoGuardar.Add_Click({
-    $ok = Set-UserSpeechTerm -Path $paths.UserTermsFile -Term $aj.TerminoPalabra.Text -Spoken $aj.TerminoDice.Text -SpokenQwen $aj.TerminoDiceQwen.Text
-    if (-not $ok) { Set-TerminoNota 'Escribe la palabra y cómo se dice (sin tabuladores).'; return }
+    $rutas = Get-DicRutas
+    $palabra = $aj.TerminoPalabra.Text.Trim()
+    $texto = $aj.TerminoDice.Text.Trim()
+    $actual = Find-SpeechTerm $palabra -Lang $script:dicIdioma
+
+    # Se cambia solo la grafia de la voz elegida: la de la otra se conserva.
+    if ($script:dicMotor -eq 'qwen') {
+        $piper = $(if ($actual) { $actual.Piper } else { $palabra })
+        $qwen = $(if ($texto -eq $piper) { '' } else { $texto })
+    } else {
+        $piper = $texto
+        $qwen = $(if ($actual) { $actual.Qwen } else { '' })
+    }
+    if (-not (Set-UserSpeechTerm -Path $rutas.User -Term $palabra -Spoken $piper -SpokenQwen $qwen)) {
+        Set-TerminoNota 'Escribe la palabra y cómo se dice (sin tabuladores).'
+        return
+    }
     Update-SpeechDictionary
+    Update-DicLista
     Set-TerminoNota 'Guardado: se aplica desde la próxima lectura.'
 })
 
 $aj.BtnTerminoQuitar.Add_Click({
-    if (Remove-UserSpeechTerm -Path $paths.UserTermsFile -Term $aj.TerminoPalabra.Text) {
+    $rutas = Get-DicRutas
+    if (Remove-UserSpeechTerm -Path $rutas.User -Term $aj.TerminoPalabra.Text) {
         Update-SpeechDictionary
-        Set-TerminoNota 'Quitado: vuelve a sonar como en el diccionario de fábrica.'
+        Update-DicLista
+        Set-TerminoNota 'Quitado: vuelve a sonar como en el diccionario de fábrica (o como viene, si era solo tuya).'
     } else {
         Set-TerminoNota 'Esa palabra no tiene una corrección tuya.'
     }

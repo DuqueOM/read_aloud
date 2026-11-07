@@ -1,0 +1,14 @@
+# Diccionario de pronunciacion para la voz en ingles: termino <TAB> como debe sonar.
+#
+# Igual que terms_es.tsv, pero para los textos que se leen con la voz en ingles:
+# sirve para siglas y nombres que esa voz lee mal. Una linea por termino,
+# separado por UN TABULADOR; una tercera columna, opcional, es la grafia para la
+# voz propia (Qwen). No distingue mayusculas. Tambien se edita desde los ajustes
+# (seccion Pronunciacion), donde lo tuyo no se pierde al actualizar.
+#
+kubectl	cube control
+nginx	engine x
+sudo	sue doo
+chmod	ch mod
+GUI	gooey
+regex	rej ex

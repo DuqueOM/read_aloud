@@ -97,8 +97,7 @@ $purged = Clear-OldTempAudio -TmpDir $paths.TmpDir -MaxAgeHours $settings.MaxTmp
 Write-DaemonLog "Inicio. Temporales eliminados: $purged"
 
 function Update-SpeechDictionary {
-    Set-SpeechTerms (Import-AllSpeechTerms -BasePath $paths.TermsFile -UserPath $paths.UserTermsFile) `
-        (Import-AllSpeechTerms -BasePath $paths.TermsFile -UserPath $paths.UserTermsFile -Engine 'qwen')
+    Initialize-SpeechTerms -Paths $paths
 }
 Update-SpeechDictionary
 
@@ -1926,7 +1925,7 @@ function Start-Speaking {
     $plan = Build-SpeechPlan -Text $Text -Requested $Requested `
         -MinChunkChars $settings.MinChunkChars `
         -FirstChunkChars $settings.FirstChunkChars -MaxChunkChars $settings.MaxChunkChars `
-        -Fallback $settings.FallbackLanguage -Pauses (Get-ConfiguredPauses) -Engine $engines['es']
+        -Fallback $settings.FallbackLanguage -Pauses (Get-ConfiguredPauses) -Engine $engines['es'] -EngineEn $engines['en']
 
     $index = 0
     $pausas = 0.0
