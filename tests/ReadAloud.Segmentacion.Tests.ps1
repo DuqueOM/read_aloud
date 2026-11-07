@@ -178,3 +178,38 @@ Describe 'Build-SpeechPlan: arboles y frases largas' {
         (($plan.Chunks | ForEach-Object { $_.Display }) -join ' ') | Should -BeExactly $frase
     }
 }
+
+Describe 'Diccionario por motor' {
+    BeforeAll {
+        $tsv = Join-Path $TestDrive 'terms.tsv'
+        $lineas = @(
+            "GitHub`tGuit jab`tGuit jap"
+            "deploy`tdiploi"
+        )
+        Set-Content -LiteralPath $tsv -Value $lineas -Encoding UTF8
+        Set-SpeechTerms (Import-SpeechTerms -Path $tsv) (Import-SpeechTerms -Path $tsv -Engine 'qwen')
+    }
+
+    AfterAll {
+        Set-SpeechTerms $null
+    }
+
+    It 'Piper usa la segunda columna' {
+        Expand-EnglishTerms 'Sube a GitHub' | Should -BeExactly 'Sube a Guit jab'
+        Expand-EnglishTerms 'Sube a GitHub' -Engine 'piper' | Should -BeExactly 'Sube a Guit jab'
+    }
+
+    It 'la voz propia usa la tercera si existe' {
+        Expand-EnglishTerms 'Sube a GitHub' -Engine 'qwen' | Should -BeExactly 'Sube a Guit jap'
+    }
+
+    It 'sin tercera columna, las dos voces usan la segunda' {
+        Expand-EnglishTerms 'haz deploy' -Engine 'qwen' | Should -BeExactly 'haz diploi'
+        Expand-EnglishTerms 'haz deploy' | Should -BeExactly 'haz diploi'
+    }
+
+    It 'el plan usa la grafia del motor pedido' {
+        (Build-SpeechPlan -Text 'Sube el proyecto a GitHub hoy.' -Engine 'qwen').Chunks[0].Text | Should -Match 'Guit jap'
+        (Build-SpeechPlan -Text 'Sube el proyecto a GitHub hoy.').Chunks[0].Text | Should -Match 'Guit jab'
+    }
+}

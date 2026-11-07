@@ -87,7 +87,7 @@ function Get-ConfiguredPauses {
 $purged = Clear-OldTempAudio -TmpDir $paths.TmpDir -MaxAgeHours $settings.MaxTmpAgeHours
 Write-DaemonLog "Inicio. Temporales eliminados: $purged"
 
-Set-SpeechTerms (Import-SpeechTerms -Path $paths.TermsFile)
+Set-SpeechTerms (Import-SpeechTerms -Path $paths.TermsFile) (Import-SpeechTerms -Path $paths.TermsFile -Engine 'qwen')
 
 # La expresion regular del diccionario se compila la primera vez que se usa, y
 # esa compilacion tardaba cerca de medio segundo justo en la primera lectura
@@ -1858,7 +1858,7 @@ function Start-Speaking {
     $plan = Build-SpeechPlan -Text $Text -Requested $Requested `
         -MinChunkChars $settings.MinChunkChars `
         -FirstChunkChars $settings.FirstChunkChars -MaxChunkChars $settings.MaxChunkChars `
-        -Fallback $settings.FallbackLanguage -Pauses (Get-ConfiguredPauses)
+        -Fallback $settings.FallbackLanguage -Pauses (Get-ConfiguredPauses) -Engine $engines['es']
 
     $index = 0
     $pausas = 0.0

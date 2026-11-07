@@ -14,6 +14,8 @@
 #   - Guarda el archivo en UTF-8.
 #   - Prueba un termino con:  .\read_aloud.ps1 -InputText "hay que hacer el deploy"
 #   - Si una palabra ya suena bien, borra su linea. Menos reglas es mejor.
+#   - Una tercera columna, opcional, es la grafia para la voz propia (Qwen), que
+#     no pronuncia igual que Piper. Si falta, las dos voces usan la segunda.
 
 # --- Siglas: se leen deletreadas al modo espanol ---------------------------
 API	a pe i
@@ -62,7 +64,7 @@ IA	inteligencia artificial
 
 # --- Nombres propios de herramientas ---------------------------------------
 PowerShell	Pauer Chel
-GitHub	Guit jab
+GitHub	Guit jab	Guit jap
 GitLab	Guit lab
 Git	Guit
 Python	Paiton

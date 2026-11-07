@@ -210,7 +210,10 @@ function Split-IntoLanguageSegments {
 function Import-SpeechTerms {
     # Carga config\terms_es.tsv: termino en ingles <TAB> como se debe pronunciar
     # con voz en espanol. Las lineas que empiezan con # son comentarios.
-    param([string]$Path)
+    # Una tercera columna, opcional, es la grafia para la voz propia (Qwen);
+    # si falta, las dos voces usan la segunda. Con -Engine 'qwen' se devuelve
+    # el diccionario de esa voz.
+    param([string]$Path, [string]$Engine = 'piper')
 
     $map = New-Object System.Collections.Specialized.OrderedDictionary
 
@@ -222,11 +225,12 @@ function Import-SpeechTerms {
         $trimmed = $line.Trim()
         if ($trimmed -eq '' -or $trimmed.StartsWith('#')) { continue }
 
-        $parts = $trimmed -split "`t+", 2
+        $parts = $trimmed -split "`t+", 3
         if ($parts.Count -lt 2) { continue }
 
         $term = $parts[0].Trim()
         $spoken = $parts[1].Trim()
+        if ($Engine -eq 'qwen' -and $parts.Count -ge 3 -and $parts[2].Trim() -ne '') { $spoken = $parts[2].Trim() }
         if ($term -eq '' -or $spoken -eq '') { continue }
 
         # Los terminos mas largos se aplican primero para que "pull request"
@@ -247,10 +251,11 @@ function Set-SpeechTerms {
     # aplicar una sustitucion por termino. Ademas de ser mucho mas rapido,
     # evita que el resultado de una sustitucion vuelva a coincidir con otra
     # regla y se deforme dos veces.
-    param($Terms)
+    param($Terms, $QwenTerms = $null)
 
     $script:RA_TermMap = $Terms
     $script:RA_TermLookup = @{}
+    $script:RA_TermLookupQwen = @{}
     $script:RA_TermRegex = $null
 
     if ($null -eq $Terms -or $Terms.Count -eq 0) { return }
@@ -259,6 +264,11 @@ function Set-SpeechTerms {
 
     foreach ($term in $Terms.Keys) {
         $script:RA_TermLookup[$term.ToLowerInvariant()] = $Terms[$term]
+        if ($null -ne $QwenTerms -and $QwenTerms.Contains($term)) {
+            $script:RA_TermLookupQwen[$term.ToLowerInvariant()] = $QwenTerms[$term]
+        } else {
+            $script:RA_TermLookupQwen[$term.ToLowerInvariant()] = $Terms[$term]
+        }
         [void]$alternatives.Add([regex]::Escape($term))
     }
 
@@ -280,11 +290,12 @@ function Expand-EnglishTerms {
     # en espanol los diga bien. Esto resuelve el caso real de trabajo: una frase
     # en espanol con palabras sueltas en ingles, donde cambiar de voz sonaria
     # peor que ajustar la grafia.
-    param([string]$Text)
+    param([string]$Text, [string]$Engine = 'piper')
 
     if ($null -eq $script:RA_TermRegex) { return $Text }
 
     $lookup = $script:RA_TermLookup
+    if ($Engine -eq 'qwen') { $lookup = $script:RA_TermLookupQwen }
 
     $evaluator = [Text.RegularExpressions.MatchEvaluator] {
         param($match)
@@ -353,7 +364,8 @@ function Normalize-ForSpeech {
         [string]$Text,
         [string]$Lang,
         [string]$MlMode = 'MachineLearning',
-        [switch]$SkipTerms
+        [switch]$SkipTerms,
+        [string]$Engine = 'piper'
     )
 
     $t = $Text
@@ -390,7 +402,7 @@ function Normalize-ForSpeech {
     $t = Expand-Units -Text $t -Lang $Lang
 
     if ($Lang -eq 'es' -and -not $SkipTerms) {
-        $t = Expand-EnglishTerms -Text $t
+        $t = Expand-EnglishTerms -Text $t -Engine $Engine
     }
 
     if ($Lang -eq 'es') {
@@ -749,7 +761,8 @@ function Build-SpeechPlan {
         [string]$Fallback = 'es',
         [hashtable]$Pauses = $null,
         [int]$FirstChunkChars = 70,
-        [int]$MaxChunkChars = 180
+        [int]$MaxChunkChars = 180,
+        [string]$Engine = 'piper'
     )
 
     if ($null -eq $Pauses) { $Pauses = Get-DefaultPauses }
@@ -783,7 +796,7 @@ function Build-SpeechPlan {
                 )
 
                 foreach ($pieza in @(Split-LongText -Text $unidad -Limits $limites)) {
-                    $normalized = Normalize-ForSpeech -Text $pieza -Lang $segment.Lang -MlMode $MlMode
+                    $normalized = Normalize-ForSpeech -Text $pieza -Lang $segment.Lang -MlMode $MlMode -Engine $Engine
                     $prepared = (Prepare-TextForPiper -Text $normalized).Trim()
                     if ($prepared -eq '') { continue }
 
