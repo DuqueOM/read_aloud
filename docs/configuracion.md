@@ -307,8 +307,8 @@ Si quieres controlar el lector desde otro programa, escribe una línea JSON en
 | `{"cmd":"toggle"}` | Pausa o continúa |
 | `{"cmd":"back"}` | Retrocede (`SkipSeconds`) |
 | `{"cmd":"forward"}` | Avanza (`SkipSeconds`) |
-| `{"cmd":"louder"}` | Sube el volumen un paso (10 %) |
-| `{"cmd":"quieter"}` | Baja el volumen un paso (10 %) |
+| `{"cmd":"louder"}` | Sube el volumen un paso (5 %) |
+| `{"cmd":"quieter"}` | Baja el volumen un paso (5 %) |
 | `{"cmd":"prev"}` | Frase anterior; con más de 2 s de la actual, vuelve primero a su comienzo |
 | `{"cmd":"next"}` | Frase siguiente |
 | `{"cmd":"faster"}` | Sube la velocidad un paso |
