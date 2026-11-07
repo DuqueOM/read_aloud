@@ -35,6 +35,9 @@ function Get-ReadAloudPaths {
         StateFile   = Join-Path $runtimeDir 'player.json'
         UserSettingsFile = Join-Path $runtimeDir 'ajustes.json'
         TermsFile   = Join-Path $root 'config\terms_es.tsv'
+        TermsFileEn = Join-Path $root 'config\terms_en.tsv'
+        UserTermsFileEs = Join-Path $runtimeDir 'terminos_usuario_es.tsv'
+        UserTermsFileEn = Join-Path $runtimeDir 'terminos_usuario_en.tsv'
         SettingsFile= Join-Path $root 'config\settings.psd1'
         LocalSettingsFile = Join-Path $root 'config\settings.local.psd1'
         DaemonScript= Join-Path $root 'read_aloud_daemon.ps1'
@@ -62,7 +65,17 @@ function Get-ReadAloudSettings {
         ShowPlayer          = $true
         PlayerAutoClose     = $true
         PlayerOpacity       = 0.8
+        Language            = 'auto'
+        Theme               = 'system'
+        Accent              = 'green'
         SkipSeconds         = 10
+        HotkeyRead          = 'Ctrl+Alt+V'
+        HotkeyStop          = 'Ctrl+Shift+Q'
+        HotkeyToggle        = 'Ctrl+Shift+Space'
+        HotkeyBack          = 'Ctrl+Shift+,'
+        HotkeyForward       = 'Ctrl+Shift+.'
+        HotkeyFaster        = 'Ctrl+Shift+]'
+        HotkeySlower        = 'Ctrl+Shift+['
         PauseParagraph      = 0.35
         PauseBeforeHeading  = 0.55
         PauseAfterHeading   = 0.30
@@ -123,6 +136,24 @@ function Get-UserSettings {
         Write-Warning "No pude leer $($Paths.UserSettingsFile); lo ignoro. $($_.Exception.Message)"
     }
     return $valores
+}
+
+function Invoke-LogRotation {
+    # Si el registro pasa de $MaxBytes, se guarda como <nombre>.1 (reemplazando
+    # al anterior) y se empieza uno nuevo: ocupa como mucho el doble y no crece
+    # sin fin. Se llama al arrancar, cuando nadie mas lo esta escribiendo.
+    param([string]$Path, [long]$MaxBytes = 1048576)
+
+    try {
+        if (-not (Test-Path -LiteralPath $Path)) { return $false }
+        if ((Get-Item -LiteralPath $Path).Length -le $MaxBytes) { return $false }
+        $old = $Path + '.1'
+        if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $old -Force }
+        Move-Item -LiteralPath $Path -Destination $old -Force
+        return $true
+    } catch {
+        return $false
+    }
 }
 
 function Save-UserSetting {

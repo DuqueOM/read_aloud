@@ -43,9 +43,8 @@ $script:RA_SpanishChars = @(
     [char]0x00F1, [char]0x00D1, [char]0x00BF, [char]0x00A1
 )
 
-$script:RA_TermMap = $null
-$script:RA_TermLookup = @{}
-$script:RA_TermRegex = $null
+# Un diccionario por idioma ('es' y 'en'): cada fragmento usa el de su idioma.
+$script:RA_TermState = @{}
 
 function Remove-Diacritics {
     param([string]$Text)
@@ -246,28 +245,141 @@ function Import-SpeechTerms {
     return $ordered
 }
 
+function Import-AllSpeechTerms {
+    # El diccionario de fabrica y el del usuario (runtime\terminos_usuario.tsv,
+    # que sobrevive a las actualizaciones). Si un termino esta en los dos, manda
+    # el del usuario.
+    param([string]$BasePath, [string]$UserPath, [string]$Engine = 'piper')
+
+    $base = Import-SpeechTerms -Path $BasePath -Engine $Engine
+    $user = Import-SpeechTerms -Path $UserPath -Engine $Engine
+
+    $merged = @{}
+    foreach ($k in $base.Keys) { $merged[$k.ToLowerInvariant()] = @{ Key = $k; Value = $base[$k] } }
+    foreach ($k in $user.Keys) { $merged[$k.ToLowerInvariant()] = @{ Key = $k; Value = $user[$k] } }
+
+    $ordered = New-Object System.Collections.Specialized.OrderedDictionary
+    # psbase: un termino llamado "values" o "keys" taparia la propiedad del hashtable.
+    foreach ($entry in ($merged.psbase.Values | Sort-Object { $_.Key.Length } -Descending)) {
+        $ordered[$entry.Key] = $entry.Value
+    }
+    return $ordered
+}
+
+function Set-UserSpeechTerm {
+    # Agrega o reemplaza un termino en el archivo del usuario. SpokenQwen es la
+    # grafia para la voz propia; vacia, las dos voces usan Spoken. Devuelve
+    # falso si el termino o su pronunciacion no sirven.
+    param([string]$Path, [string]$Term, [string]$Spoken, [string]$SpokenQwen = '')
+
+    $Term = $Term.Trim()
+    $Spoken = $Spoken.Trim()
+    $SpokenQwen = $SpokenQwen.Trim()
+    if ($Term -eq '' -or $Spoken -eq '') { return $false }
+    foreach ($t in $Term, $Spoken, $SpokenQwen) {
+        if ($t -match "[\t\r\n]") { return $false }
+    }
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    if (Test-Path -LiteralPath $Path) {
+        foreach ($line in (Get-Content -LiteralPath $Path -Encoding UTF8)) {
+            $first = ($line -split "`t", 2)[0].Trim()
+            if ($first -ieq $Term) { continue }
+            $lines.Add($line)
+        }
+    }
+
+    $new = $Term + "`t" + $Spoken
+    if ($SpokenQwen -ne '') { $new += "`t" + $SpokenQwen }
+    $lines.Add($new)
+
+    $dir = Split-Path -Parent $Path
+    if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    [IO.File]::WriteAllLines($Path, $lines.ToArray(), (New-Object Text.UTF8Encoding($false)))
+    return $true
+}
+
+function Remove-UserSpeechTerm {
+    # Quita un termino del archivo del usuario. Falso si no estaba.
+    param([string]$Path, [string]$Term)
+
+    if (-not (Test-Path -LiteralPath $Path)) { return $false }
+    $Term = $Term.Trim()
+    $kept = New-Object System.Collections.Generic.List[string]
+    $found = $false
+    foreach ($line in (Get-Content -LiteralPath $Path -Encoding UTF8)) {
+        if ((($line -split "`t", 2)[0].Trim()) -ieq $Term) { $found = $true; continue }
+        $kept.Add($line)
+    }
+    if ($found) { [IO.File]::WriteAllLines($Path, $kept.ToArray(), (New-Object Text.UTF8Encoding($false))) }
+    return $found
+}
+
+function Find-SpeechTerm {
+    # Como se dice hoy un termino (con el diccionario ya cargado). $null si no
+    # esta.
+    param([string]$Term, [string]$Lang = 'es')
+
+    $state = $script:RA_TermState[$Lang]
+    $key = $Term.Trim().ToLowerInvariant()
+    if ($null -eq $state -or $key -eq '' -or -not $state.Lookup.ContainsKey($key)) { return $null }
+    $piper = $state.Lookup[$key]
+    $qwen = $state.LookupQwen[$key]
+    if ($qwen -eq $piper) { $qwen = '' }
+    return @{ Piper = $piper; Qwen = $qwen }
+}
+
+function Get-SpeechTermEntries {
+    # Todo lo que dice el diccionario de un idioma, de fabrica y del usuario,
+    # para listarlo: termino, como se dice con Piper y con la voz propia, y de
+    # donde viene ('fabrica', 'mio' o 'fabrica+mio' si el usuario cambio uno de
+    # fabrica). Ordenado por termino.
+    param([string]$BasePath, [string]$UserPath)
+
+    $base = Import-SpeechTerms -Path $BasePath
+    $baseQ = Import-SpeechTerms -Path $BasePath -Engine 'qwen'
+    $user = Import-SpeechTerms -Path $UserPath
+    $userQ = Import-SpeechTerms -Path $UserPath -Engine 'qwen'
+
+    $rows = @{}
+    foreach ($k in $base.Keys) {
+        $rows[$k.ToLowerInvariant()] = @{ Term = $k; Piper = $base[$k]; Qwen = $baseQ[$k]; Origin = 'fabrica' }
+    }
+    foreach ($k in $user.Keys) {
+        $id = $k.ToLowerInvariant()
+        $origin = $(if ($rows.ContainsKey($id)) { 'fabrica+mio' } else { 'mio' })
+        $rows[$id] = @{ Term = $k; Piper = $user[$k]; Qwen = $userQ[$k]; Origin = $origin }
+    }
+
+    $list = New-Object System.Collections.Generic.List[object]
+    foreach ($id in ([string[]]@($rows.psbase.Keys) | Sort-Object)) {
+        $r = $rows[$id]
+        if ($r.Qwen -eq $r.Piper) { $r.Qwen = '' }
+        $list.Add([pscustomobject]$r)
+    }
+    return $list.ToArray()
+}
+
 function Set-SpeechTerms {
     # Se compila una sola expresion regular con todos los terminos en vez de
     # aplicar una sustitucion por termino. Ademas de ser mucho mas rapido,
     # evita que el resultado de una sustitucion vuelva a coincidir con otra
     # regla y se deforme dos veces.
-    param($Terms, $QwenTerms = $null)
+    param($Terms, $QwenTerms = $null, [string]$Lang = 'es')
 
-    $script:RA_TermMap = $Terms
-    $script:RA_TermLookup = @{}
-    $script:RA_TermLookupQwen = @{}
-    $script:RA_TermRegex = $null
+    $state = @{ Map = $Terms; Lookup = @{}; LookupQwen = @{}; Regex = $null }
+    $script:RA_TermState[$Lang] = $state
 
     if ($null -eq $Terms -or $Terms.Count -eq 0) { return }
 
     $alternatives = New-Object System.Collections.Generic.List[string]
 
     foreach ($term in $Terms.Keys) {
-        $script:RA_TermLookup[$term.ToLowerInvariant()] = $Terms[$term]
+        $state.Lookup[$term.ToLowerInvariant()] = $Terms[$term]
         if ($null -ne $QwenTerms -and $QwenTerms.Contains($term)) {
-            $script:RA_TermLookupQwen[$term.ToLowerInvariant()] = $QwenTerms[$term]
+            $state.LookupQwen[$term.ToLowerInvariant()] = $QwenTerms[$term]
         } else {
-            $script:RA_TermLookupQwen[$term.ToLowerInvariant()] = $Terms[$term]
+            $state.LookupQwen[$term.ToLowerInvariant()] = $Terms[$term]
         }
         [void]$alternatives.Add([regex]::Escape($term))
     }
@@ -276,26 +388,42 @@ function Set-SpeechTerms {
     # .NET elige la primera que coincide: por eso "pull request" gana a "pull".
     $pattern = '(?<![\p{L}\p{N}])(?:' + ($alternatives -join '|') + ')(?![\p{L}\p{N}])'
 
-    $script:RA_TermRegex = New-Object regex(
+    $state.Regex = New-Object regex(
         $pattern,
         ([Text.RegularExpressions.RegexOptions]::IgnoreCase -bor [Text.RegularExpressions.RegexOptions]::Compiled))
 }
 
+function Initialize-SpeechTerms {
+    # Carga los dos diccionarios (espanol e ingles), cada uno con el de fabrica
+    # y el del usuario, y para Piper y para la voz propia.
+    param([hashtable]$Paths)
+
+    Set-SpeechTerms (Import-AllSpeechTerms -BasePath $Paths.TermsFile -UserPath $Paths.UserTermsFileEs) `
+        (Import-AllSpeechTerms -BasePath $Paths.TermsFile -UserPath $Paths.UserTermsFileEs -Engine 'qwen') -Lang 'es'
+    Set-SpeechTerms (Import-AllSpeechTerms -BasePath $Paths.TermsFileEn -UserPath $Paths.UserTermsFileEn) `
+        (Import-AllSpeechTerms -BasePath $Paths.TermsFileEn -UserPath $Paths.UserTermsFileEn -Engine 'qwen') -Lang 'en'
+}
+
 function Get-SpeechTerms {
-    return $script:RA_TermMap
+    param([string]$Lang = 'es')
+
+    $state = $script:RA_TermState[$Lang]
+    if ($null -eq $state) { return $null }
+    return $state.Map
 }
 
 function Expand-EnglishTerms {
-    # Reescribe terminos tecnicos en ingles con grafia espanola para que la voz
-    # en espanol los diga bien. Esto resuelve el caso real de trabajo: una frase
-    # en espanol con palabras sueltas en ingles, donde cambiar de voz sonaria
-    # peor que ajustar la grafia.
-    param([string]$Text, [string]$Engine = 'piper')
+    # Reescribe terminos con la grafia que la voz dice bien. En espanol resuelve
+    # el caso real de trabajo: una frase con palabras sueltas en ingles, donde
+    # cambiar de voz sonaria peor que ajustar la grafia. En ingles sirve para
+    # siglas y nombres que la voz inglesa lee mal.
+    param([string]$Text, [string]$Engine = 'piper', [string]$Lang = 'es')
 
-    if ($null -eq $script:RA_TermRegex) { return $Text }
+    $state = $script:RA_TermState[$Lang]
+    if ($null -eq $state -or $null -eq $state.Regex) { return $Text }
 
-    $lookup = $script:RA_TermLookup
-    if ($Engine -eq 'qwen') { $lookup = $script:RA_TermLookupQwen }
+    $lookup = $state.Lookup
+    if ($Engine -eq 'qwen') { $lookup = $state.LookupQwen }
 
     $evaluator = [Text.RegularExpressions.MatchEvaluator] {
         param($match)
@@ -305,7 +433,7 @@ function Expand-EnglishTerms {
         return $match.Value
     }
 
-    return $script:RA_TermRegex.Replace($Text, $evaluator)
+    return $state.Regex.Replace($Text, $evaluator)
 }
 
 function Expand-Units {
@@ -401,8 +529,8 @@ function Normalize-ForSpeech {
 
     $t = Expand-Units -Text $t -Lang $Lang
 
-    if ($Lang -eq 'es' -and -not $SkipTerms) {
-        $t = Expand-EnglishTerms -Text $t -Engine $Engine
+    if (-not $SkipTerms) {
+        $t = Expand-EnglishTerms -Text $t -Engine $Engine -Lang $Lang
     }
 
     if ($Lang -eq 'es') {
@@ -762,9 +890,11 @@ function Build-SpeechPlan {
         [hashtable]$Pauses = $null,
         [int]$FirstChunkChars = 70,
         [int]$MaxChunkChars = 180,
-        [string]$Engine = 'piper'
+        [string]$Engine = 'piper',
+        [string]$EngineEn = ''
     )
 
+    if ($EngineEn -eq '') { $EngineEn = $Engine }
     if ($null -eq $Pauses) { $Pauses = Get-DefaultPauses }
 
     $docLang = Get-DocumentLanguage -Text $Text -Requested $Requested -Fallback $Fallback
@@ -796,7 +926,7 @@ function Build-SpeechPlan {
                 )
 
                 foreach ($pieza in @(Split-LongText -Text $unidad -Limits $limites)) {
-                    $normalized = Normalize-ForSpeech -Text $pieza -Lang $segment.Lang -MlMode $MlMode -Engine $Engine
+                    $normalized = Normalize-ForSpeech -Text $pieza -Lang $segment.Lang -MlMode $MlMode -Engine $(if ($segment.Lang -eq 'en') { $EngineEn } else { $Engine })
                     $prepared = (Prepare-TextForPiper -Text $normalized).Trim()
                     if ($prepared -eq '') { continue }
 

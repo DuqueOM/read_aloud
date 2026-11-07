@@ -213,3 +213,116 @@ Describe 'Diccionario por motor' {
         (Build-SpeechPlan -Text 'Sube el proyecto a GitHub hoy.').Chunks[0].Text | Should -Match 'Guit jab'
     }
 }
+
+Describe 'Diccionario del usuario' {
+    BeforeAll {
+        $base = Join-Path $TestDrive 'base.tsv'
+        $user = Join-Path $TestDrive 'usuario.tsv'
+        Set-Content -LiteralPath $base -Value @("deploy`tdiploi", "GitHub`tGuit jab`tGuit jap") -Encoding UTF8
+    }
+
+    AfterAll {
+        Set-SpeechTerms $null
+    }
+
+    It 'guardar agrega, y volver a guardar reemplaza' {
+        Set-UserSpeechTerm -Path $user -Term 'cache' -Spoken 'cash' | Should -BeTrue
+        Set-UserSpeechTerm -Path $user -Term 'CACHE' -Spoken 'cache2' | Should -BeTrue
+        @(Get-Content -LiteralPath $user -Encoding UTF8).Count | Should -Be 1
+        (Import-SpeechTerms -Path $user)['CACHE'] | Should -BeExactly 'cache2'
+    }
+
+    It 'rechaza lo que no sirve' {
+        Set-UserSpeechTerm -Path $user -Term '' -Spoken 'x' | Should -BeFalse
+        Set-UserSpeechTerm -Path $user -Term 'x' -Spoken '' | Should -BeFalse
+        Set-UserSpeechTerm -Path $user -Term "a`tb" -Spoken 'x' | Should -BeFalse
+    }
+
+    It 'el del usuario manda sobre el de fabrica, tambien con la voz propia' {
+        Set-UserSpeechTerm -Path $user -Term 'github' -Spoken 'Guitjab' -SpokenQwen 'Guit-jap' | Should -BeTrue
+        Set-SpeechTerms (Import-AllSpeechTerms -BasePath $base -UserPath $user) (Import-AllSpeechTerms -BasePath $base -UserPath $user -Engine 'qwen')
+        Expand-EnglishTerms 'Sube a GitHub' | Should -BeExactly 'Sube a Guitjab'
+        Expand-EnglishTerms 'Sube a GitHub' -Engine 'qwen' | Should -BeExactly 'Sube a Guit-jap'
+        Expand-EnglishTerms 'haz deploy' | Should -BeExactly 'haz diploi'
+        (Find-SpeechTerm 'DEPLOY').Piper | Should -BeExactly 'diploi'
+        (Find-SpeechTerm 'github').Qwen | Should -BeExactly 'Guit-jap'
+        Find-SpeechTerm 'nada' | Should -BeNullOrEmpty
+    }
+
+    It 'quitar devuelve el de fabrica' {
+        Remove-UserSpeechTerm -Path $user -Term 'GITHUB' | Should -BeTrue
+        Remove-UserSpeechTerm -Path $user -Term 'GITHUB' | Should -BeFalse
+        Set-SpeechTerms (Import-AllSpeechTerms -BasePath $base -UserPath $user) (Import-AllSpeechTerms -BasePath $base -UserPath $user -Engine 'qwen')
+        Expand-EnglishTerms 'Sube a GitHub' -Engine 'qwen' | Should -BeExactly 'Sube a Guit jap'
+    }
+
+    It 'sin archivo del usuario, solo el de fabrica' {
+        (Import-AllSpeechTerms -BasePath $base -UserPath (Join-Path $TestDrive 'no.tsv')).Count | Should -Be 2
+    }
+}
+
+Describe 'Diccionario por idioma y listado' {
+    BeforeAll {
+        $baseEs = Join-Path $TestDrive 'es.tsv'
+        $baseEn = Join-Path $TestDrive 'en.tsv'
+        $userEs = Join-Path $TestDrive 'u_es.tsv'
+        $userEn = Join-Path $TestDrive 'u_en.tsv'
+        Set-Content -LiteralPath $baseEs -Value @("deploy`tdiploi", "GitHub`tGuit jab`tGuit jap") -Encoding UTF8
+        Set-Content -LiteralPath $baseEn -Value @("sudo`tsue doo") -Encoding UTF8
+        $rutas = @{ TermsFile = $baseEs; TermsFileEn = $baseEn; UserTermsFileEs = $userEs; UserTermsFileEn = $userEn }
+        Initialize-SpeechTerms -Paths $rutas
+    }
+
+    AfterAll {
+        Set-SpeechTerms $null
+        Set-SpeechTerms $null -Lang 'en'
+    }
+
+    It 'cada idioma usa su diccionario' {
+        Expand-EnglishTerms 'haz sudo y deploy' -Lang 'es' | Should -BeExactly 'haz sudo y diploi'
+        Expand-EnglishTerms 'haz sudo y deploy' -Lang 'en' | Should -BeExactly 'haz sue doo y deploy'
+    }
+
+    It 'un fragmento en ingles usa el diccionario de ingles al normalizar' {
+        (Normalize-ForSpeech -Text 'Run sudo now.' -Lang 'en') | Should -Match 'sue doo'
+        (Normalize-ForSpeech -Text 'Corre sudo ahora.' -Lang 'es') | Should -Not -Match 'sue doo'
+    }
+
+    It 'el plan elige el motor de cada idioma' {
+        Set-UserSpeechTerm -Path $userEn -Term 'sudo' -Spoken 'sudo' -SpokenQwen 'sue-doo' | Should -BeTrue
+        Initialize-SpeechTerms -Paths $rutas
+        $texto = "Run sudo now to continue with the setup of the machine. Luego corre sudo de nuevo para seguir con la instalacion completa."
+        $plan = Build-SpeechPlan -Text $texto -Engine 'piper' -EngineEn 'qwen'
+        ($plan.Chunks | Where-Object { $_.Lang -eq 'en' } | Select-Object -First 1).Text | Should -Match 'sue-doo'
+    }
+
+    It 'Get-SpeechTermEntries dice el origen y la grafia de cada motor' {
+        Set-UserSpeechTerm -Path $userEs -Term 'GitHub' -Spoken 'Guitjab' | Should -BeTrue
+        Set-UserSpeechTerm -Path $userEs -Term 'zzz' -Spoken 'ceta' | Should -BeTrue
+        $e = Get-SpeechTermEntries -BasePath $baseEs -UserPath $userEs
+        ($e | ForEach-Object Term) | Should -Be @('deploy', 'GitHub', 'zzz')
+        ($e | Where-Object Term -eq 'deploy').Origin | Should -BeExactly 'fabrica'
+        ($e | Where-Object Term -eq 'GitHub').Origin | Should -BeExactly 'fabrica+mio'
+        ($e | Where-Object Term -eq 'GitHub').Piper | Should -BeExactly 'Guitjab'
+        ($e | Where-Object Term -eq 'zzz').Origin | Should -BeExactly 'mio'
+    }
+}
+
+Describe 'Terminos que se llaman como propiedades' {
+    It 'el diccionario de fabrica completo se carga y se lista (hay terminos "keys" y "values")' {
+        $paths = @{
+            TermsFile = (Join-Path $PSScriptRoot '..\config\terms_es.tsv')
+            TermsFileEn = (Join-Path $PSScriptRoot '..\config\terms_en.tsv')
+            UserTermsFileEs = (Join-Path $TestDrive 'no_es.tsv')
+            UserTermsFileEn = (Join-Path $TestDrive 'no_en.tsv')
+        }
+        $fabrica = (Import-SpeechTerms -Path $paths.TermsFile).Count
+        $fabrica | Should -BeGreaterThan 200
+        (Import-AllSpeechTerms -BasePath $paths.TermsFile -UserPath $paths.UserTermsFileEs).Count | Should -Be $fabrica
+        @(Get-SpeechTermEntries -BasePath $paths.TermsFile -UserPath $paths.UserTermsFileEs).Count | Should -Be $fabrica
+        Initialize-SpeechTerms -Paths $paths
+        Expand-EnglishTerms 'las keys y los values' | Should -BeExactly ('las kis y los v' + [char]0x00E1 + 'lius')
+        Set-SpeechTerms $null
+        Set-SpeechTerms $null -Lang 'en'
+    }
+}

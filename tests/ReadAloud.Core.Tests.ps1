@@ -299,3 +299,25 @@ Describe 'Add-WavSilence' {
         (Get-Item -LiteralPath $f).Length | Should -Be $antes
     }
 }
+
+Describe 'Invoke-LogRotation' {
+    It 'no toca un registro pequeno' {
+        $log = Join-Path $TestDrive 'a.log'
+        Set-Content -LiteralPath $log -Value 'hola'
+        Invoke-LogRotation -Path $log -MaxBytes 100 | Should -BeFalse
+        Test-Path -LiteralPath $log | Should -BeTrue
+    }
+
+    It 'guarda el grande como .1, reemplazando al anterior' {
+        $log = Join-Path $TestDrive 'b.log'
+        Set-Content -LiteralPath ($log + '.1') -Value 'muy viejo'
+        Set-Content -LiteralPath $log -Value ('x' * 500)
+        Invoke-LogRotation -Path $log -MaxBytes 100 | Should -BeTrue
+        Test-Path -LiteralPath $log | Should -BeFalse
+        (Get-Content -LiteralPath ($log + '.1') -Raw).Length | Should -BeGreaterThan 400
+    }
+
+    It 'sin registro no hace nada' {
+        Invoke-LogRotation -Path (Join-Path $TestDrive 'no_existe.log') | Should -BeFalse
+    }
+}

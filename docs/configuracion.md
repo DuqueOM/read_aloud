@@ -57,7 +57,7 @@ El archivo debe existir en `read_aloud_piper\voices`. Consulta las opciones en
 | `QwenBatch` | `4` | Frases que se generan juntas |
 | `QwenBatchChars` | `320` | Tope de caracteres por grupo, para que unas frases largas no retrasen a las que esperan detrás. `0` = sin tope |
 | `QwenIdleMinutes` | `0` | Minutos sin leer tras los que Qwen se cierra; `0` es nunca |
-| `QwenLoadWaitSeconds` | `6` | Si se lee mientras Qwen aún carga, espera hasta esos segundos desde que arrancó; después lee con Piper hasta que Qwen esté listo, en vez de quedarse mudo |
+| `QwenLoadWaitSeconds` | `6` | Si se lee mientras Qwen aún carga, espera hasta esos segundos desde que arrancó; después lee con Piper hasta que Qwen esté listo, en vez de quedarse mudo. En los ajustes (Voz) es «Si la voz propia aún está cargando»: «Leer con Piper mientras tanto» (6) o «Esperar a la voz propia» (120) |
 | `QwenReopen` | `$true` | Volver a cargar Qwen en cuanto la tarjeta queda libre, tras cederla |
 | `QwenReopenFreeGB` | `6` | Memoria libre de la tarjeta que hace falta para volver a cargarlo |
 | `Performance` | `'rapido'` | `'rapido'` deja la voz cargada; `'ahorro'` la carga al leer y la libera tras `SaverIdleMinutes` (ver [Panel de ajustes](#panel-de-ajustes)) |
@@ -185,6 +185,9 @@ Si trabajas más en inglés que en español, cámbialo a `'en'`.
 | `ShowPlayer` | `$true` | Muestra la ventana flotante durante la lectura |
 | `PlayerAutoClose` | `$true` | La cierra sola al terminar |
 | `PlayerOpacity` | `0.8` | Opacidad en reposo, de `0.3` a `1.0` |
+| `Language` | `'auto'` | Idioma de la interfaz: `'auto'` (el de Windows), `'es'` o `'en'`. Al cambiarlo desde los ajustes el lector se reinicia solo |
+| `Theme` | `'system'` | Tema de color del reproductor y de los ajustes: `'system'` (el de Windows), `'dark'` o `'light'`. Se aplica al instante |
+| `Accent` | `'green'` | Color de acento: `green`, `blue`, `purple`, `pink`, `orange`, `red`, `teal` o `yellow`. Se aplica al instante |
 | `SkipSeconds` | `10` | Segundos que saltan los botones y los atajos |
 | `PlayerScale` | `1.0` | Tamaño de todo el reproductor, de `0.8` a `1.6` |
 | `TextFontSize` | `13` | Tamaño de la letra del panel de texto, de `10` a `22` |
@@ -256,14 +259,20 @@ sobre `settings.psd1`, y "Restablecer todo" lo borra y vuelve a los de
 | Sección | Ajuste | Cuándo se nota |
 |---|---|---|
 | Apariencia | Opacidad en reposo, tamaño del reproductor, letra del texto, panel de texto al aparecer y su alto y ancho | Al momento |
-| Voz | Motor (automático, voz propia o Piper), voz de Piper en español y en inglés | Al reiniciar el lector |
-| Voz | Rendimiento: rápido o ahorro de recursos, y en ahorro, a los cuántos minutos sin leer se libera la voz | Al reiniciar el lector |
+| Voz | Motor (automático, voz propia o Piper), voz de Piper en español y en inglés | En unos segundos (se recargan las voces) |
+| Voz | Rendimiento: rápido o ahorro de recursos, y en ahorro, a los cuántos minutos sin leer se libera la voz | En unos segundos (se recargan las voces) |
 | Lectura | Cerrar al terminar, salto de los botones, idioma de los textos ambiguos, pausa entre párrafos | Al momento o en la próxima lectura |
-| Lectura | Pausa entre frases | Al reiniciar el lector |
+| Lectura | Pausa entre frases | En unos segundos (se recargan las voces) |
+| Apariencia | Tema y color de acento | Al momento |
+| Atajos | Cada atajo, con "Restablecer atajos" | Al momento |
+| Apariencia | Idioma de la aplicación | Reinicia el lector solo (unos segundos) |
+| Pronunciación | Tu diccionario, por idioma y por voz | En la próxima lectura |
 
-Los ajustes de voz van a los procesos de síntesis, que se abren al arrancar.
-Cuando cambias uno, el panel ofrece "Reiniciar ahora": el lector se cierra y
-vuelve a abrir solo en unos segundos, y corta la lectura en curso.
+Ningún ajuste del panel pide reiniciar el lector. Los de voz van a los procesos
+de síntesis: al cambiarlos, el lector cierra esos procesos y abre otros con lo
+nuevo (tras 0,7 s sin más cambios, para agrupar varios). Si estaba leyendo, el
+fragmento en curso termina y los siguientes salen con la voz nueva; lo demás
+(reproductor, atajos, bandeja) no se toca.
 
 **Rendimiento**, solo con la voz propia de Qwen3-TTS:
 
@@ -284,17 +293,43 @@ vez al día cuando inicias sesión.
 
 ## Atajos de teclado
 
-Los atajos están en `read_aloud_hotkey.ahk`, arriba del todo. La sintaxis de
-AutoHotkey usa `^` para Ctrl, `+` para Shift y `!` para Alt.
+Los atajos los registra el proceso residente; no hace falta instalar nada
+más. Lo normal es cambiarlos en los ajustes (el icono de la bandeja o la
+tuerca del reproductor), sección **Atajos de teclado**: haz clic en uno y pulsa
+la combinación nueva (`Esc` cancela, `Supr` lo desactiva). Se aplica al
+momento, avisa si la combinación ya la usa otra acción, Windows o otro
+programa, y **Restablecer atajos** vuelve a los de fábrica. Quedan guardados
+en `ajustes.json`; los valores de fábrica son estos y también se pueden poner
+en `config/settings.psd1` o `settings.local.psd1`:
 
-```autohotkey
-^+v:: ReadSelection()                    ; Ctrl+Shift+V
-^+q:: SendCommand('{"cmd":"stop"}')      ; Ctrl+Shift+Q
-^+Space:: SendCommand('{"cmd":"toggle"}')
-```
+| Ajuste | Por defecto | Acción |
+|---|---|---|
+| `HotkeyRead` | `Ctrl+Alt+V` | Leer lo seleccionado |
+| `HotkeyStop` | `Ctrl+Shift+Q` | Detener |
+| `HotkeyToggle` | `Ctrl+Shift+Space` | Pausar o continuar |
+| `HotkeyBack` | `Ctrl+Shift+,` | Retroceder `SkipSeconds` |
+| `HotkeyForward` | `Ctrl+Shift+.` | Avanzar `SkipSeconds` |
+| `HotkeyFaster` | `Ctrl+Shift+]` | Subir la velocidad |
+| `HotkeySlower` | `Ctrl+Shift+[` | Bajar la velocidad |
 
-Después de editarlos, recarga el script desde el icono de AutoHotkey en la
-bandeja del sistema, o cierra sesión y vuelve a entrar.
+El formato son los modificadores y la tecla unidos con `+`: `Ctrl+Alt+R`,
+`Win+Shift+F9`. Modificadores: `Ctrl`, `Alt`, `Shift`, `Win`. Teclas: letras,
+cifras, `F1` a `F24`, `Space`, `Enter`, flechas, `Home`, `End`, `PageUp`,
+`PageDown`, coma, punto, `[` `]`, y las multimedia (`MediaPlayPause`,
+`MediaNext`, `MediaPrevious`, `MediaStop`), que pueden ir solas. Un valor
+vacío (`''`) desactiva el atajo. Reinicia el proceso residente para que los
+cambios surtan efecto.
+
+Lo que conviene saber al elegirlos:
+
+- `Ctrl+Shift+V` no se usa porque muchos programas lo tienen para pegar sin
+  formato. Leer es `Ctrl+Alt+V`, que se siente como pegar.
+- `Ctrl+Shift+flechas` es la selección por palabras de Windows; se rechaza,
+  igual que `Ctrl+Alt+Supr` y similares.
+- En teclados en español, `Ctrl+Alt` equivale a `AltGr`: evita combinarlo con
+  letras que escriben un símbolo (`Q` es `@`).
+- Si otro programa ya tiene un atajo, Read Aloud no puede quitárselo: lo avisa
+  con un globo en la bandeja y lo anota en `daemon.log`.
 
 ## Órdenes disponibles
 

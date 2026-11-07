@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-07
+
+Read Aloud for anyone: no AutoHotkey, an installer, and everything adjustable
+from the settings panel.
+
+### Added
+
+- Keyboard shortcuts handled by the resident process itself (no AutoHotkey),
+  with a tray icon ("Quit Read Aloud", settings). Reading is now `Ctrl+Alt+V`
+  (it keeps the feel of pasting and leaves `Ctrl+Shift+V`, paste without
+  formatting, alone). Shortcuts are recorded from the settings panel (click one
+  and press the new combination), checked for duplicates, reserved
+  combinations and other programs, and applied at once.
+- Windows installer (`ReadAloud-Setup-<version>.exe`, Inno Setup), per user and
+  without administrator rights, built by CI on every release together with its
+  `.sha256`. Start menu shortcuts (settings, close, install or repair the
+  voices, uninstall), an optional desktop shortcut that opens the settings
+  without reading anything, and optional start with Windows. Uninstalling asks
+  whether to keep your settings and dictionary.
+- Settings panel: theme (like Windows, dark, light) and eight accent colors
+  applied instantly; interface in English and Spanish (`Language`); a
+  pronunciation section listing the whole dictionary, by text language and by
+  voice (Piper or the own voice), with search, test, save and remove; keyboard
+  shortcuts; "About" with version and contact, "Copy diagnostics" and "Check for
+  updates" (queries GitHub only when pressed, verifies the SHA-256 of the
+  installer and opens it only if you confirm); choice between reading with
+  Piper or waiting while the own voice is still loading.
+- English pronunciation dictionary (`config/terms_en.tsv`) and a user
+  dictionary per language that updates do not touch.
+- Accessibility: names for screen readers on every control and a visible
+  keyboard focus.
+- Issue templates, `-Quit` and `-ShowSettings` options in `read_aloud.ps1`, and
+  log rotation (`daemon.log`, `qwen.log`).
+
+### Changed
+
+- No setting asks for a restart any more: voice, engine, performance and
+  sentence pause reload the voice processes in place, and shortcuts and colors
+  apply instantly. Only changing the interface language restarts the reader.
+- An error in a window handler no longer closes the resident process silently:
+  it is written to `daemon.log`.
+
+### Removed
+
+- `read_aloud_hotkey.ahk` and the AutoHotkey requirement. `install_startup.ps1`
+  removes the old shortcut and script if it finds them.
+
+### Fixed
+
+- The dictionary merge dropped almost every word when a term was called
+  `keys` or `values` (they shadowed the hashtable properties).
+
 ## [1.1.0] - 2026-11-07
 
 Fluidity and control of the player.
@@ -137,6 +189,7 @@ First public version.
 - GitHub Actions running Pester, PSScriptAnalyzer, ruff and gitleaks over the
   whole history, with every action pinned to a commit.
 
-[Unreleased]: https://github.com/DuqueOM/read_aloud/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/DuqueOM/read_aloud/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.2.0
 [1.1.0]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.1.0
 [1.0.0]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.0.0

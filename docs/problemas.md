@@ -12,9 +12,9 @@ residente está vivo. El registro está en
 
 ## No suena nada al pulsar el atajo
 
-**Comprueba que AutoHotkey está corriendo.** Busca su icono verde en la
-bandeja del sistema, junto al reloj. Si no está, abre `read_aloud_hotkey.ahk`
-con doble clic.
+**Comprueba que Read Aloud está corriendo.** Busca su icono (un círculo verde
+con un altavoz) en la bandeja del sistema, junto al reloj. Si no está, el
+proceso residente no está activo: arráncalo como se explica abajo.
 
 **Comprueba que el proceso residente está vivo.** El diagnóstico lo dice. Si
 no lo está, arráncalo:
@@ -23,9 +23,11 @@ no lo está, arráncalo:
 powershell -File .\read_aloud_daemon.ps1
 ```
 
-**Comprueba que el atajo no está ocupado.** Algunos programas se quedan con
-`Ctrl+Shift+V`. Prueba a leer desde la consola con `.\read_aloud.ps1`; si así
-suena, el problema es el atajo y no el lector. Cámbialo en el archivo `.ahk`.
+**Comprueba que el atajo no está ocupado.** Si otro programa ya tiene
+`Ctrl+Alt+V`, Read Aloud lo avisa con un globo al arrancar y lo anota en
+`daemon.log` ("no disponible: in-use"). Prueba a leer desde la consola con
+`.ead_aloud.ps1`; si así suena, el problema es el atajo y no el lector.
+Cámbialo con los ajustes `Hotkey...` de `config/settings.psd1`.
 
 ## Empieza a leer y se corta
 
@@ -71,8 +73,6 @@ Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
     Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -like '*-File*read_aloud_daemon.ps1*' } |
     ForEach-Object { Stop-Process -Id $_.ProcessId }
 ```
-
-También revisa que no haya dos copias del script de AutoHotkey activas.
 
 ## La ventana del reproductor estorba
 
