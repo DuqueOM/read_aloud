@@ -74,6 +74,7 @@ function Get-ReadAloudSettings {
         QwenBatch           = 4
         QwenBatchChars      = 320
         QwenIdleMinutes     = 0
+        QwenLoadWaitSeconds = 6
         QwenMinVramGB       = 7
         QwenReopen          = $true
         QwenReopenFreeGB    = 6

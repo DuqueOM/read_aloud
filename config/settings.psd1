@@ -42,6 +42,11 @@
     # siguiente para volver a cargar.
     QwenIdleMinutes = 0
 
+    # Si la lectura llega cuando Qwen aun esta cargando, espera hasta esos
+    # segundos desde que arranco; pasados, lee con Piper hasta que Qwen
+    # termine de cargar, en vez de dejar la lectura muda.
+    QwenLoadWaitSeconds = 6
+
     # Si Qwen cedio la tarjeta, se vuelve a cargar en cuanto queden libres
     # QwenReopenFreeGB, para que la lectura siguiente no espere la carga.
     QwenReopen = $true

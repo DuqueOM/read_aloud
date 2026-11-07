@@ -57,6 +57,7 @@ El archivo debe existir en `read_aloud_piper\voices`. Consulta las opciones en
 | `QwenBatch` | `4` | Frases que se generan juntas |
 | `QwenBatchChars` | `320` | Tope de caracteres por grupo, para que unas frases largas no retrasen a las que esperan detrás. `0` = sin tope |
 | `QwenIdleMinutes` | `0` | Minutos sin leer tras los que Qwen se cierra; `0` es nunca |
+| `QwenLoadWaitSeconds` | `6` | Si se lee mientras Qwen aún carga, espera hasta esos segundos desde que arrancó; después lee con Piper hasta que Qwen esté listo, en vez de quedarse mudo |
 | `QwenReopen` | `$true` | Volver a cargar Qwen en cuanto la tarjeta queda libre, tras cederla |
 | `QwenReopenFreeGB` | `6` | Memoria libre de la tarjeta que hace falta para volver a cargarlo |
 | `Performance` | `'rapido'` | `'rapido'` deja la voz cargada; `'ahorro'` la carga al leer y la libera tras `SaverIdleMinutes` (ver [Panel de ajustes](#panel-de-ajustes)) |

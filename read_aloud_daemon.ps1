@@ -246,6 +246,9 @@ $synthScript = {
 
     function New-QwenProcess {
         $q = $cfg.Qwen
+        # El servidor crea este archivo cuando termina de cargar; uno de una
+        # vida anterior no debe hacerlo pasar por listo.
+        Remove-Item -LiteralPath $q.ReadyFile -Force -ErrorAction SilentlyContinue
         $qwenArgs = @(
             ('"' + $q.Script + '"')
             '--voz', ('"' + $q.VoiceDir + '"')
@@ -255,6 +258,7 @@ $synthScript = {
             '--inactivo', $q.IdleMinutes
             '--lote', $q.Batch
             '--marca', ('"' + $q.BusyFile + '"')
+            '--listo', ('"' + $q.ReadyFile + '"')
         ) -join ' '
 
         $psi = New-Object Diagnostics.ProcessStartInfo
@@ -305,7 +309,30 @@ $synthScript = {
             }
             return $Lang
         }
-        return 'qwen'
+        if (Test-QwenReady) { return 'qwen' }
+
+        # La voz Qwen aun carga (de 15 a 50 s segun lo fria que este la
+        # cache del disco). Se le da un margen corto desde que arranco; pasado
+        # ese margen se lee con Piper en vez de dejar la lectura muda, y en
+        # cuanto el servidor avisa que esta listo, los fragmentos siguientes
+        # vuelven a ser de Qwen.
+        $arranque = [DateTime]::Now
+        try { $arranque = (Get-PiperProcess -Lang $Lang -Key 'qwen').Process.StartTime } catch { }
+        $limite = $arranque.AddSeconds($cfg.Qwen.WaitSeconds)
+        while ([DateTime]::Now -lt $limite -and -not $sync.Stopping) {
+            if (Test-QwenReady) { return 'qwen' }
+            if (-not $processes.ContainsKey('qwen') -or $processes['qwen'].Process.HasExited) { break }
+            Start-Sleep -Milliseconds 100
+        }
+        if (Test-QwenReady) { return 'qwen' }
+        Write-SynthLog 'La voz Qwen aun esta cargando: se lee con Piper hasta que termine.'
+        return $Lang
+    }
+
+    function Test-QwenReady {
+        if (-not $processes.ContainsKey('qwen')) { return $false }
+        if ($processes['qwen'].Process.HasExited) { return $false }
+        return (Test-Path -LiteralPath $cfg.Qwen.ReadyFile)
     }
 
     function Get-BatchLimit {
@@ -618,6 +645,8 @@ Start-BackgroundRunspace -Script $synthScript -Variables @{
             HfHome      = $qwenVoice.HfHome
             Log         = $qwenVoice.Log
             BusyFile    = $qwenVoice.BusyFile
+            ReadyFile   = (Join-Path (Split-Path -Parent $qwenVoice.Log) 'qwen.listo')
+            WaitSeconds = [double]$settings.QwenLoadWaitSeconds
             Batch       = [Math]::Max(1, [int]$settings.QwenBatch)
             BatchChars  = [int]$settings.QwenBatchChars
             IdleMinutes = $(if ($ahorro) { [double]$settings.SaverIdleMinutes } else { [double]$settings.QwenIdleMinutes }).ToString($invariant)
