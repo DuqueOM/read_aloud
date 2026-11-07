@@ -65,6 +65,14 @@
     # que no suenen entrecortadas.
     MinChunkChars = 25
 
+    # Una frase mas larga que esto se parte donde se haria una pausa (; : una
+    # coma, una raya). El primer fragmento de cada lectura usa FirstChunkChars,
+    # el segundo uno y medio de eso, y el resto MaxChunkChars: asi la voz
+    # empieza pronto y no hay un fragmento largo que retrase a los demas.
+    # MaxChunkChars = 0 desactiva el partido.
+    FirstChunkChars = 70
+    MaxChunkChars = 180
+
     # Idioma que se usa cuando el texto es demasiado corto o ambiguo.
     FallbackLanguage = 'es'
 

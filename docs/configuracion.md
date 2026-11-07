@@ -123,6 +123,13 @@ una voz más plana y predecible; subirlos, más variada y a veces inestable.
 | Valor | Por defecto | Qué hace |
 |---|---|---|
 | `MinChunkChars` | `25` | Frases más cortas que esto se juntan con la siguiente |
+| `FirstChunkChars` | `70` | Largo máximo del primer fragmento de una lectura. Corto, para que la voz empiece pronto |
+| `MaxChunkChars` | `180` | Largo máximo del resto. Una frase más larga se parte en una pausa (`;` `:` coma, raya). `0` no parte nada |
+
+El segundo fragmento usa uno y medio de `FirstChunkChars`. El tope crece porque
+un fragmento largo retrasa a los que vienen detrás: la voz propia genera por
+grupos y cada grupo tarda lo que su frase más larga. Es igual para Piper y para
+la voz propia.
 
 Cada frase es un fragmento de audio, y cada fragmento es lo que se resalta en
 el panel de texto. Solo las frases muy cortas, como un `OK.` suelto, se juntan

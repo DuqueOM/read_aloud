@@ -1250,6 +1250,11 @@ function Build-TextPanel {
                     $parrafo.Margin = New-Object Windows.Thickness(0, $arriba, 0, 4)
                 }
                 'fila'   { $parrafo.Margin = New-Object Windows.Thickness(0, 0, 0, 2) }
+                'arbol'  {
+                    # Letra de ancho fijo: las ramas del arbol quedan alineadas.
+                    $parrafo.Margin = New-Object Windows.Thickness(0, 0, 0, 1)
+                    $parrafo.FontFamily = New-Object Windows.Media.FontFamily('Consolas')
+                }
                 'vineta' { $parrafo.Margin = New-Object Windows.Thickness(6, 0, 0, 2) }
                 default  { $parrafo.Margin = New-Object Windows.Thickness(0, 0, 0, 8) }
             }
@@ -1569,6 +1574,7 @@ function Start-Speaking {
 
     $plan = Build-SpeechPlan -Text $Text -Requested $Requested `
         -MinChunkChars $settings.MinChunkChars `
+        -FirstChunkChars $settings.FirstChunkChars -MaxChunkChars $settings.MaxChunkChars `
         -Fallback $settings.FallbackLanguage -Pauses (Get-ConfiguredPauses)
 
     $index = 0

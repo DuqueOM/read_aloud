@@ -1,0 +1,19 @@
+idioma del texto: es
+[0] es, bloque 0 (parrafo), pausa 0.35 s
+    voz:     ¿Por qué no ves algunas de estas cosas?
+    muestra: ¿Por qué no ves algunas de estas cosas?
+[1] es, bloque 1 (vineta), pausa 0.00 s
+    voz:     .Guit/ en tu editor: como todos los editores basados en VS Code,
+    muestra: •  `.git/` en tu editor: como todos los editores basados en VS Code,
+[2] es, bloque 1 (vineta), pausa 0.00 s
+    voz:     oculta .Guit/ por defecto (ajuste fails.exclude).
+    muestra: oculta `.git/` por defecto (ajuste `files.exclude`).
+[3] es, bloque 1 (vineta), pausa 0.18 s
+    voz:     Sigue ahí; compruébalo en la terminal con ls -la dentro del repositorio.
+    muestra: Sigue ahí; compruébalo en la terminal con `ls -la` dentro del repositorio.
+[4] es, bloque 2 (vineta), pausa 0.00 s
+    voz:     .caché/ en Guit status: está vacía hasta que corras pruebas, y Guit no lista carpetas vacías.
+    muestra: •  `.cache/` en `git status`: está vacía hasta que corras pruebas, y git no lista carpetas vacías.
+[5] es, bloque 2 (vineta), pausa 0.00 s
+    voz:     Tu editor sí la muestra (en gris).
+    muestra: Tu editor sí la muestra (en gris).

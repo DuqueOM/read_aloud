@@ -21,13 +21,13 @@ idioma del texto: es
     voz:     2) Ejecuta el instalador.
     muestra: 2) Ejecuta el instalador.
 [7] es, bloque 7 (fila), pausa 0.18 s
-    voz:     | Voz | Idioma | Calidad |.
+    voz:     Voz, Idioma, Calidad.
     muestra: | Voz | Idioma | Calidad |
 [8] es, bloque 8 (fila), pausa 0.18 s
-    voz:     | es_MX | español | alta |.
+    voz:     es_MX, español, alta.
     muestra: | es_MX | español | alta |
 [9] es, bloque 9 (fila), pausa 0.18 s
-    voz:     | en_US | inglés | media |.
+    voz:     en_US, inglés, media.
     muestra: | en_US | inglés | media |
 [10] es, bloque 10 (parrafo), pausa 0.00 s
     voz:     Último párrafo, que cierra el texto.

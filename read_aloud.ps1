@@ -182,6 +182,7 @@ if ($ShowPlan) {
 
     $plan = Build-SpeechPlan -Text $text -Requested $Language -MlMode $MlMode `
         -MinChunkChars $settings.MinChunkChars `
+        -FirstChunkChars $settings.FirstChunkChars -MaxChunkChars $settings.MaxChunkChars `
         -Fallback $settings.FallbackLanguage
 
     $profile = Get-LanguageProfile -Text $text
@@ -217,6 +218,7 @@ function Invoke-DirectRead {
 
     $plan = Build-SpeechPlan -Text $Text -Requested $Language -MlMode $MlMode `
         -MinChunkChars $settings.MinChunkChars `
+        -FirstChunkChars $settings.FirstChunkChars -MaxChunkChars $settings.MaxChunkChars `
         -Fallback $settings.FallbackLanguage
 
     $voice = Get-VoiceModelPath -Paths $paths -Settings $settings -Lang $plan.DocumentLang

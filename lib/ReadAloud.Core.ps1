@@ -56,6 +56,8 @@ function Get-ReadAloudSettings {
         NoiseScale          = 0.667
         NoiseW              = 0.8
         MinChunkChars       = 25
+        FirstChunkChars     = 70
+        MaxChunkChars       = 180
         FallbackLanguage    = 'es'
         ShowPlayer          = $true
         PlayerAutoClose     = $true

@@ -1,0 +1,8 @@
+mi-proyecto/
+├── .claude/                       E   (gris en el IDE)
+│   └── notas/guia/LEEME.md        E   ← guía privada
+├── .githooks/
+│   └── pre-commit                 S   ← revisiones antes de cada commit (versionado)
+├── .cache/                        I   ← caché de pruebas (hoy vacía)
+├── docs/
+│   └── PLAN.md                    S   ← el plan de trabajo
