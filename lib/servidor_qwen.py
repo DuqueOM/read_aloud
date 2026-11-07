@@ -277,7 +277,9 @@ def main() -> int:
         ultima = time.monotonic()
         ordenes = []
         try:
-            datos = json.loads(linea)
+            # Con la consola de Windows en UTF-8, quien escribe en la entrada
+            # puede anteponer una marca BOM a la primera linea.
+            datos = json.loads(linea.lstrip("﻿"))
             ordenes = datos if isinstance(datos, list) else [datos]
             inicio = time.perf_counter()
             generar(qwen, ordenes)
