@@ -2338,6 +2338,8 @@ $sync.WakeUi = [Action]{ if ($timer.Interval -ne $pulseBusy) { $timer.Interval =
 $sync.Dispatcher = [Windows.Threading.Dispatcher]::CurrentDispatcher
 
 $timer.Add_Tick({
+    Step-UpdateCheck
+
     # 1. Ordenes que llegaron por la tuberia.
     $line = $null
     while ($sync.Requests.TryDequeue([ref]$line)) {
@@ -2602,11 +2604,67 @@ $itemSalir.Add_Click({
 })
 $script:tray.ContextMenuStrip = $trayMenu
 $script:tray.Add_DoubleClick({ Show-SettingsWindow })
+$script:tray.Add_BalloonTipClicked({
+    if ($script:avisoActualizacion) {
+        Show-SettingsWindow -Mostrar
+        Search-Updates
+    } else {
+        Show-SettingsWindow -Mostrar
+    }
+})
 $script:tray.Visible = $true
 
 if ($hotkeyFailed.Count -gt 0) {
     $lista = ($hotkeyFailed | ForEach-Object { $_.Text }) -join ', '
     $script:tray.ShowBalloonTip(8000, 'Read Aloud', ((T 'Estos atajos no se pudieron activar porque otro programa los usa: {0}. Cambialos en los ajustes.') -f $lista), [Windows.Forms.ToolTipIcon]::Warning)
+}
+
+# --------------------------------------------------------------------------
+# Aviso de versiones nuevas (ajuste UpdateCheck). Una consulta a GitHub al dia y
+# al abrir Read Aloud, en otro hilo para no frenar la ventana. Solo avisa con un
+# globo en la bandeja: el instalador se descarga y se abre desde los ajustes,
+# con confirmacion. Si la consulta falla (sin internet), se reintenta en una hora.
+# --------------------------------------------------------------------------
+$script:estadoActualizaciones = Read-UpdateState -Path $paths.UpdateStateFile
+$script:revisionActual = $null
+$script:avisoActualizacion = $false
+$script:proximaRevision = [DateTime]::UtcNow.AddSeconds(45)
+if (-not (Test-UpdateCheckDue -LastCheckUtc $script:estadoActualizaciones.LastCheckUtc -NowUtc ([DateTime]::UtcNow))) {
+    $script:proximaRevision = ([datetime]$script:estadoActualizaciones.LastCheckUtc).AddHours(24)
+}
+
+function Step-UpdateCheck {
+    # Se llama en cada pulso: arranca la consulta cuando toca y recoge su resultado.
+    if ($null -eq $script:revisionActual) {
+        if (-not [bool]$settings.UpdateCheck) { return }
+        if ([DateTime]::UtcNow -lt $script:proximaRevision) { return }
+        $ps = [powershell]::Create()
+        [void]$ps.AddScript({ param($lib) . $lib; try { Get-LatestRelease } catch { $null } }).AddArgument((Join-Path $PSScriptRoot 'lib\ReadAloud.Update.ps1'))
+        $script:revisionActual = @{ PS = $ps; Handle = $ps.BeginInvoke() }
+        return
+    }
+    if (-not $script:revisionActual.Handle.IsCompleted) { return }
+
+    $release = $null
+    try { $release = @($script:revisionActual.PS.EndInvoke($script:revisionActual.Handle))[0] } catch { }
+    try { $script:revisionActual.PS.Dispose() } catch { }
+    $script:revisionActual = $null
+
+    if ($null -eq $release -or -not $release.tag_name) {
+        $script:proximaRevision = [DateTime]::UtcNow.AddHours(1)
+        return
+    }
+
+    $script:estadoActualizaciones.LastCheckUtc = [DateTime]::UtcNow
+    $script:proximaRevision = [DateTime]::UtcNow.AddHours(24)
+    $actual = Get-ReadAloudVersion -Root $paths.Root
+    if ((Test-NewerVersion -Current $actual -Latest $release.tag_name) -and $script:estadoActualizaciones.NotifiedVersion -ne $release.tag_name) {
+        $script:estadoActualizaciones.NotifiedVersion = [string]$release.tag_name
+        $script:avisoActualizacion = $true
+        Write-DaemonLog ('Hay una version nueva: {0} (esta es la {1}).' -f $release.tag_name, $actual)
+        $script:tray.ShowBalloonTip(15000, 'Read Aloud', ((T 'Hay una version nueva de Read Aloud: {0}. Haz clic para verla e instalarla.') -f $release.tag_name), [Windows.Forms.ToolTipIcon]::Info)
+    }
+    Write-UpdateState -Path $paths.UpdateStateFile -State $script:estadoActualizaciones
 }
 
 $timer.Start()

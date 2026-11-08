@@ -37,6 +37,7 @@ function Get-ReadAloudPaths {
         TermsFile   = Join-Path $root 'config\terms_es.tsv'
         TermsFileEn = Join-Path $root 'config\terms_en.tsv'
         UserTermsFileEs = Join-Path $runtimeDir 'terminos_usuario_es.tsv'
+        UpdateStateFile = Join-Path $runtimeDir 'actualizaciones.json'
         UserTermsFileEn = Join-Path $runtimeDir 'terminos_usuario_en.tsv'
         SettingsFile= Join-Path $root 'config\settings.psd1'
         LocalSettingsFile = Join-Path $root 'config\settings.local.psd1'
@@ -66,6 +67,7 @@ function Get-ReadAloudSettings {
         PlayerAutoClose     = $true
         PlayerOpacity       = 0.8
         Language            = 'auto'
+        UpdateCheck         = $true
         Theme               = 'system'
         Accent              = 'green'
         SkipSeconds         = 10

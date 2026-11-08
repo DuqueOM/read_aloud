@@ -175,3 +175,42 @@ function Get-DiagnosticText {
     if ($env:USERPROFILE) { $text = $text.Replace($env:USERPROFILE, '%USERPROFILE%') }
     return $text
 }
+
+function Test-UpdateCheckDue {
+    # Si ya toca consultar: nunca se ha consultado, o pasaron $Hours desde la
+    # ultima vez (o la fecha guardada es del futuro, por un reloj cambiado).
+    param($LastCheckUtc, [datetime]$NowUtc, [double]$Hours = 24)
+
+    if ($null -eq $LastCheckUtc) { return $true }
+    try { $last = [datetime]$LastCheckUtc } catch { return $true }
+    if ($last.Kind -ne 'Utc') { $last = $last.ToUniversalTime() }
+    if ($last -gt $NowUtc) { return $true }
+    return (($NowUtc - $last).TotalHours -ge $Hours)
+}
+
+function Read-UpdateState {
+    # { LastCheckUtc, NotifiedVersion } de runtime\actualizaciones.json.
+    param([string]$Path)
+
+    $state = @{ LastCheckUtc = $null; NotifiedVersion = '' }
+    if (-not (Test-Path -LiteralPath $Path)) { return $state }
+    try {
+        $j = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop | ConvertFrom-Json
+        if ($j.LastCheckUtc) { $state.LastCheckUtc = [datetime]::Parse([string]$j.LastCheckUtc, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::AdjustToUniversal -bor [Globalization.DateTimeStyles]::AssumeUniversal) }
+        if ($j.NotifiedVersion) { $state.NotifiedVersion = [string]$j.NotifiedVersion }
+    } catch { }
+    return $state
+}
+
+function Write-UpdateState {
+    param([string]$Path, $State)
+
+    try {
+        $dir = Split-Path -Parent $Path
+        if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+        $last = ''
+        if ($null -ne $State.LastCheckUtc) { $last = ([datetime]$State.LastCheckUtc).ToUniversalTime().ToString('o', [Globalization.CultureInfo]::InvariantCulture) }
+        $json = @{ LastCheckUtc = $last; NotifiedVersion = [string]$State.NotifiedVersion } | ConvertTo-Json
+        [IO.File]::WriteAllText($Path, $json, (New-Object Text.UTF8Encoding($false)))
+    } catch { }
+}
