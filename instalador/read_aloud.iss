@@ -61,6 +61,8 @@ en.KeepData=Read Aloud was removed.%n%nDo you want to keep your settings and pro
 en.IconVoices=Install or repair the voices
 es.StatusVoices=Descargando el motor de voz y las voces (unos 200 MB). Puede tardar unos minutos...
 en.StatusVoices=Downloading the voice engine and voices (about 200 MB). This can take a few minutes...
+es.VoicesFailed=No se pudieron descargar el motor de voz y las voces (suele ser la conexión a internet, un firewall o un antivirus).%n%nRead Aloud queda instalado: abre «Instalar o reparar las voces» en el menú Inicio para reintentar, o te lo ofrecerá la primera vez que lo abras. El detalle queda en read_aloud_piper\runtime\setup.log.
+en.VoicesFailed=The voice engine and voices could not be downloaded (usually the internet connection, a firewall or an antivirus).%n%nRead Aloud is installed: open "Install or repair the voices" in the Start menu to retry, or it will offer to do it the first time you open it. The details are in read_aloud_piper\runtime\setup.log.
 es.RunNow=Iniciar Read Aloud ahora
 en.RunNow=Start Read Aloud now
 
@@ -85,7 +87,10 @@ Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.es.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\CHANGELOG.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\lib\*"; DestDir: "{app}\lib"; Excludes: "__pycache__"; Flags: ignoreversion recursesubdirs
-Source: "..\config\*"; DestDir: "{app}\config"; Excludes: "*.local.psd1"; Flags: ignoreversion
+Source: "..\config\*"; DestDir: "{app}\config"; Excludes: "*.local.psd1,settings.psd1"; Flags: ignoreversion
+; settings.psd1 se edita a mano (esta documentado): solo se instala si no existe, para no
+; borrar lo que la persona haya cambiado al actualizar.
+Source: "..\config\settings.psd1"; DestDir: "{app}\config"; Flags: onlyifdoesntexist
 Source: "..\docs\*.md"; DestDir: "{app}\docs"; Flags: ignoreversion
 
 [Icons]
@@ -99,7 +104,6 @@ Name: "{userstartup}\Read Aloud"; Filename: "{sys}\wscript.exe"; Parameters: """
 
 [Run]
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\crear_icono.ps1"""; WorkingDir: "{app}"; Flags: runhidden waituntilterminated
-Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\setup.ps1"" -NoStartupPrompt"; WorkingDir: "{app}"; StatusMsg: "{cm:StatusVoices}"; Flags: waituntilterminated
 Filename: "{sys}\wscript.exe"; Parameters: """{app}\iniciar_read_aloud.vbs"""; WorkingDir: "{app}"; Description: "{cm:RunNow}"; Flags: postinstall nowait skipifsilent
 
 [UninstallRun]
@@ -107,16 +111,52 @@ Filename: "{sys}\wscript.exe"; Parameters: """{app}\cerrar_read_aloud.vbs"""; Ru
 
 [Code]
 // Al actualizar, el proceso residente tiene los archivos en uso: se cierra antes.
+// Y los diccionarios de fabrica se reemplazan por los nuevos: se guarda una copia
+// de los actuales por si la persona los habia editado a mano (lo suyo, sus
+// ajustes y su diccionario, vive en read_aloud_piper\runtime y no se toca).
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   Codigo: Integer;
+  Copia: String;
+  Nombre: String;
+  I: Integer;
 begin
   if FileExists(ExpandConstant('{app}\cerrar_read_aloud.vbs')) then
   begin
     Exec(ExpandConstant('{sys}\wscript.exe'), '"' + ExpandConstant('{app}\cerrar_read_aloud.vbs') + '"', '', SW_HIDE, ewWaitUntilTerminated, Codigo);
     Sleep(2500);
   end;
+
+  if DirExists(ExpandConstant('{app}\config')) then
+  begin
+    Copia := ExpandConstant('{app}\copia_de_config_anterior');
+    ForceDirectories(Copia);
+    for I := 0 to 1 do
+    begin
+      if I = 0 then Nombre := 'terms_es.tsv' else Nombre := 'terms_en.tsv';
+      if FileExists(ExpandConstant('{app}\config\') + Nombre) then
+        FileCopy(ExpandConstant('{app}\config\') + Nombre, Copia + '\' + Nombre, False);
+    end;
+  end;
   Result := '';
+end;
+
+// Despues de copiar los archivos se baja el motor de voz y las voces. Si falla,
+// la instalacion no se da por buena en silencio: se avisa y se dice como seguir.
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  Codigo: Integer;
+  Ok: Boolean;
+begin
+  if CurStep = ssPostInstall then
+  begin
+    WizardForm.StatusLabel.Caption := CustomMessage('StatusVoices');
+    Ok := Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+      '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\setup.ps1') + '" -NoStartupPrompt -PauseOnError',
+      ExpandConstant('{app}'), SW_SHOWNORMAL, ewWaitUntilTerminated, Codigo);
+    if (not Ok) or (Codigo <> 0) then
+      SuppressibleMsgBox(CustomMessage('VoicesFailed'), mbError, MB_OK, IDOK);
+  end;
 end;
 
 // Al desinstalar se borra lo que bajo setup.ps1 (motor y voces, unos 200 MB). Lo

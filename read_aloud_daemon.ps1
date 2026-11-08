@@ -36,6 +36,7 @@ Add-Type -AssemblyName WindowsBase
 
 $paths = Get-ReadAloudPaths
 $settings = Get-ReadAloudSettings -Paths $paths
+Set-UiLanguage (Resolve-UiLanguage -Setting ([string]$settings.Language))
 
 # --------------------------------------------------------------------------
 # Una sola instancia. Sin esto, dos daemons pelean por la tuberia y el audio
@@ -107,15 +108,52 @@ Update-SpeechDictionary
 # del dia. Ejercerla aqui la paga por adelantado.
 [void](Expand-EnglishTerms -Text 'deploy cache pull request')
 
+function Show-ForegroundMessage {
+    # Un cuadro de aviso que se ve aunque el proceso no tenga ventanas: este
+    # proceso arranca oculto, y un MessageBox sin dueno puede quedar detras de
+    # las demas ventanas sin que nadie lo vea. Se le da un dueno invisible que
+    # esta por encima de todo.
+    param([string]$Text, [string]$Buttons = 'OK', [string]$Image = 'Information', [string]$Default = 'OK')
+
+    $dueno = New-Object Windows.Window -Property @{
+        Topmost = $true; WindowStyle = 'None'; ShowInTaskbar = $false; ShowActivated = $true
+        Width = 1; Height = 1; Left = -10000; Top = -10000; Opacity = 0
+    }
+    $dueno.Show()
+    try {
+        return [Windows.MessageBox]::Show($dueno, $Text, 'Read Aloud', $Buttons, $Image, $Default)
+    } finally {
+        $dueno.Close()
+    }
+}
+
+function Invoke-VoiceRepair {
+    # Falta el motor Piper o la voz en espanol (una instalacion cuya descarga
+    # fallo, o archivos borrados): se ofrece bajarlos ahora, en una ventana que
+    # muestra el avance, en vez de dejar un lector que no suena y no dice por que.
+    Write-DaemonLog 'Falta el motor Piper o la voz en espanol: se ofrece descargarlos.'
+    $respuesta = Show-ForegroundMessage -Buttons 'YesNo' -Image 'Question' -Default 'Yes' -Text (T 'Read Aloud no encontro el motor de voz o la voz en espanol (unos 200 MB). Descargarlos ahora? Se abrira una ventana que muestra el avance.')
+    if ($respuesta -ne 'Yes') { return $false }
+
+    $setup = Start-Process -FilePath 'powershell.exe' -Wait -PassThru -ArgumentList @(
+        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"' + (Join-Path $PSScriptRoot 'setup.ps1') + '"'),
+        '-NoStartupPrompt', '-PauseOnError')
+    Write-DaemonLog ('setup.ps1 termino con el codigo {0}.' -f $setup.ExitCode)
+    return ($setup.ExitCode -eq 0)
+}
+
 $voiceEs = Get-VoiceModelPath -Paths $paths -Settings $settings -Lang 'es'
 $voiceEn = Get-VoiceModelPath -Paths $paths -Settings $settings -Lang 'en'
 
-if (-not (Test-PiperInstalled -Paths $paths)) {
-    Write-DaemonLog 'Piper no esta instalado. Ejecuta setup.ps1.'
-    [Windows.MessageBox]::Show(
-        "No encontre Piper en:`n$($paths.PiperDir)`n`nEjecuta setup.ps1 para instalarlo.",
-        'Read Aloud', 'OK', 'Warning') | Out-Null
-    exit 1
+if (-not (Test-PiperInstalled -Paths $paths) -or -not $voiceEs.Ready) {
+    $reparado = Invoke-VoiceRepair
+    $voiceEs = Get-VoiceModelPath -Paths $paths -Settings $settings -Lang 'es'
+    $voiceEn = Get-VoiceModelPath -Paths $paths -Settings $settings -Lang 'en'
+    if (-not $reparado -or -not (Test-PiperInstalled -Paths $paths) -or -not $voiceEs.Ready) {
+        Write-DaemonLog 'Piper o la voz en espanol siguen sin estar instalados.'
+        [void](Show-ForegroundMessage -Image 'Warning' -Text (T 'Read Aloud no puede leer sin el motor de voz y la voz en espanol. Abre Instalar o reparar las voces en el menu Inicio, o mira read_aloud_piper\runtime\setup.log.'))
+        exit 1
+    }
 }
 
 if (-not $voiceEs.Ready) {

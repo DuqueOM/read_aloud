@@ -6,14 +6,23 @@
 #   .\setup.ps1                  Instala el motor y las voces en espanol e ingles
 #   .\setup.ps1 -SkipEnglish     Solo la voz en espanol
 #   .\setup.ps1 -Force           Vuelve a descargar aunque ya este todo
+#   .\setup.ps1 -PauseOnError    Si algo falla, espera una tecla antes de cerrar
+#                                (lo usan el instalador y el aviso del programa,
+#                                que abren esta ventana y no queremos que el
+#                                error desaparezca antes de poder leerlo)
 #
-# Se descargan unos 150 MB la primera vez. Despues, nada.
+# Se descargan unos 200 MB la primera vez. Despues, nada. Todo lo que se ve aqui
+# queda tambien en read_aloud_piper\runtime\setup.log.
+#
+# Si algo falla, se puede volver a ejecutar sin riesgo: lo que ya esta no se
+# descarga otra vez.
 
 [CmdletBinding()]
 param(
     [switch]$SkipEnglish,
     [switch]$Force,
-    [switch]$NoStartupPrompt
+    [switch]$NoStartupPrompt,
+    [switch]$PauseOnError
 )
 
 $ErrorActionPreference = 'Stop'
@@ -27,6 +36,7 @@ $settings = Get-ReadAloudSettings -Paths $paths
 
 $piperRelease = '2023.11.14-2'
 $piperUrl = "https://github.com/rhasspy/piper/releases/download/$piperRelease/piper_windows_amd64.zip"
+$vcRedistUrl = 'https://aka.ms/vs/17/release/vc_redist.x64.exe'
 
 # Cada voz apunta a su ruta en el repositorio oficial de voces de Piper.
 $voiceCatalog = @{
@@ -47,6 +57,8 @@ function Write-Step {
 }
 
 function Get-RemoteFile {
+    # Descarga con hasta tres intentos (una red que parpadea no debe dejar la
+    # instalacion a medias) y respetando el proxy del sistema.
     param(
         [string]$Url,
         [string]$Destination
@@ -61,16 +73,37 @@ function Get-RemoteFile {
     }
 
     $temp = "$Destination.part"
-    $client = New-Object Net.WebClient
+    $last = $null
 
-    try {
-        $client.DownloadFile($Url, $temp)
-        Move-Item -LiteralPath $temp -Destination $Destination -Force
-    } finally {
-        $client.Dispose()
-        if (Test-Path -LiteralPath $temp) {
-            Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        $client = New-Object Net.WebClient
+        try {
+            $proxy = [Net.WebRequest]::GetSystemWebProxy()
+            if ($proxy) {
+                $proxy.Credentials = [Net.CredentialCache]::DefaultCredentials
+                $client.Proxy = $proxy
+            }
+            $client.DownloadFile($Url, $temp)
+            if ((Get-Item -LiteralPath $temp).Length -lt 1024) { throw 'El archivo descargado esta vacio.' }
+            Move-Item -LiteralPath $temp -Destination $Destination -Force
+            $last = $null
+            break
+        } catch {
+            $last = $_.Exception.Message
+            if ($attempt -lt 3) {
+                Write-Host ("    fallo ({0}); reintento {1} de 3" -f $last, ($attempt + 1)) -ForegroundColor Yellow
+                Start-Sleep -Seconds (3 * $attempt)
+            }
+        } finally {
+            $client.Dispose()
+            if (Test-Path -LiteralPath $temp) {
+                Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+            }
         }
+    }
+
+    if ($null -ne $last) {
+        throw ("No pude descargar {0}: {1}`nRevisa tu conexion a internet y que ningun firewall, proxy o antivirus bloquee github.com y huggingface.co." -f $name, $last)
     }
 
     $size = (Get-Item -LiteralPath $Destination).Length / 1MB
@@ -122,6 +155,44 @@ function Install-Voice {
     Get-RemoteFile -Url "$voicesBaseUrl/$remote.onnx.json" -Destination $config
 }
 
+function Install-VcRuntime {
+    # piper.exe necesita el Visual C++ Redistributable de Microsoft. Casi todos
+    # los Windows lo traen (lo instalan muchos programas), pero uno recien
+    # instalado puede no tenerlo y entonces piper.exe ni arranca. Si falta, se
+    # baja el instalador oficial, se comprueba que esta firmado por Microsoft y
+    # se ejecuta (Windows pide permiso de administrador una vez).
+    if (Test-VcRuntime) {
+        Write-Host '    ya estaba instalado' -ForegroundColor DarkGray
+        return
+    }
+
+    Write-Host '    falta el Visual C++ Redistributable que necesita Piper' -ForegroundColor Yellow
+    $exe = Join-Path $env:TEMP 'vc_redist.x64.exe'
+    Get-RemoteFile -Url $vcRedistUrl -Destination $exe
+
+    $firma = Get-AuthenticodeSignature -LiteralPath $exe
+    if ($firma.Status -ne 'Valid' -or $firma.SignerCertificate.Subject -notlike '*Microsoft Corporation*') {
+        Remove-Item -LiteralPath $exe -Force -ErrorAction SilentlyContinue
+        throw 'El instalador descargado del Visual C++ no esta firmado por Microsoft: no se ejecuta.'
+    }
+
+    Write-Host '    instalando (Windows pedira permiso de administrador)' -ForegroundColor Gray
+    try {
+        $proceso = Start-Process -FilePath $exe -ArgumentList '/install', '/quiet', '/norestart' -Verb RunAs -Wait -PassThru
+    } catch {
+        Write-Host ("    no se pudo ejecutar: {0}" -f $_.Exception.Message) -ForegroundColor Yellow
+        Write-Host '    instalalo a mano desde https://aka.ms/vs/17/release/vc_redist.x64.exe y vuelve a ejecutar esto' -ForegroundColor Yellow
+        return
+    } finally {
+        Remove-Item -LiteralPath $exe -Force -ErrorAction SilentlyContinue
+    }
+
+    # 3010: instalado, pide reiniciar Windows (no hace falta para probar).
+    if ($proceso.ExitCode -ne 0 -and $proceso.ExitCode -ne 3010) {
+        Write-Host ("    el instalador del Visual C++ termino con el codigo {0}" -f $proceso.ExitCode) -ForegroundColor Yellow
+    }
+}
+
 function Test-Installation {
     $probe = Join-Path $paths.TmpDir 'setup_probe.wav'
 
@@ -151,11 +222,16 @@ function Test-Installation {
     $psi.RedirectStandardOutput = $true
     $psi.CreateNoWindow = $true
 
-    $process = [Diagnostics.Process]::Start($psi)
-    $process.StandardInput.WriteLine('Instalacion completa.')
-    $process.StandardInput.Close()
-    [void]$process.StandardOutput.ReadToEnd()
-    $process.WaitForExit(30000)
+    try {
+        $process = [Diagnostics.Process]::Start($psi)
+        $process.StandardInput.WriteLine('Instalacion completa.')
+        $process.StandardInput.Close()
+        [void]$process.StandardOutput.ReadToEnd()
+        [void]$process.WaitForExit(30000)
+    } catch {
+        Write-Host ("    piper.exe no arranco: {0}" -f $_.Exception.Message) -ForegroundColor Red
+        return $false
+    }
 
     $ok = (Test-Path -LiteralPath $probe) -and ((Get-Item -LiteralPath $probe).Length -gt 1000)
 
@@ -164,41 +240,72 @@ function Test-Installation {
         Write-Host ("    prueba correcta: {0:N1} segundos de audio" -f $duration) -ForegroundColor Green
     } else {
         Write-Host '    la prueba no genero audio' -ForegroundColor Red
+        if (-not (Test-VcRuntime)) {
+            Write-Host '    probable causa: falta el Visual C++ Redistributable (https://aka.ms/vs/17/release/vc_redist.x64.exe)' -ForegroundColor Yellow
+        }
     }
 
     Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue
     return $ok
 }
 
-Write-Host 'Read Aloud - instalacion' -ForegroundColor White
-Write-Host ("Carpeta destino: {0}" -f $paths.BaseDir) -ForegroundColor Gray
+# Lo que se ve aqui queda tambien en un archivo, para poder ver despues que fallo
+# (por ejemplo, en el equipo de otra persona).
+if (-not (Test-Path -LiteralPath $paths.RuntimeDir)) {
+    New-Item -ItemType Directory -Path $paths.RuntimeDir -Force | Out-Null
+}
+$logFile = Join-Path $paths.RuntimeDir 'setup.log'
+[void](Invoke-LogRotation -Path $logFile -MaxBytes 524288)
+$transcript = $false
+try { Start-Transcript -Path $logFile -Append -Force | Out-Null; $transcript = $true } catch { }
 
-Write-Step 'Motor Piper'
-Install-Piper
+$exitCode = 0
+try {
+    Write-Host 'Read Aloud - instalacion' -ForegroundColor White
+    Write-Host ("Carpeta destino: {0}" -f $paths.BaseDir) -ForegroundColor Gray
 
-Write-Step 'Voz en espanol'
-Install-Voice -Name $settings.VoiceEs
+    Write-Step 'Motor Piper'
+    Install-Piper
 
-if (-not $SkipEnglish) {
-    Write-Step 'Voz en ingles'
-    Write-Host '    sin esta voz, el texto en ingles se lee con acento espanol' -ForegroundColor DarkGray
-    Install-Voice -Name $settings.VoiceEn
+    Write-Step 'Voz en espanol'
+    Install-Voice -Name $settings.VoiceEs
+
+    if (-not $SkipEnglish) {
+        Write-Step 'Voz en ingles'
+        Write-Host '    sin esta voz, el texto en ingles se lee con acento espanol' -ForegroundColor DarkGray
+        Install-Voice -Name $settings.VoiceEn
+    }
+
+    Write-Step 'Visual C++ (lo que necesita Piper para arrancar)'
+    Install-VcRuntime
+
+    Write-Step 'Prueba de funcionamiento'
+    if (-not (Test-Installation)) { throw 'La prueba de funcionamiento no genero audio.' }
+
+    Write-Host ''
+    Write-Host 'Todo listo.' -ForegroundColor Green
+    if (-not $NoStartupPrompt) {
+        Write-Host ''
+        Write-Host 'Siguiente paso:' -ForegroundColor White
+        Write-Host '  .\install_startup.ps1     deja los atajos activos al iniciar Windows'
+        Write-Host ''
+        Write-Host 'O pruebalo ahora mismo:'
+        Write-Host '  .\read_aloud.ps1 -InputText "Hola, ya quedo funcionando."'
+    }
+} catch {
+    $exitCode = 1
+    Write-Host ''
+    Write-Host 'La instalacion quedo incompleta:' -ForegroundColor Red
+    Write-Host ('  ' + $_.Exception.Message) -ForegroundColor Red
+    Write-Host ''
+    Write-Host 'Se puede reintentar: menu Inicio, "Instalar o reparar las voces", o .\setup.ps1' -ForegroundColor Yellow
+    Write-Host ("El detalle queda en {0}" -f $logFile) -ForegroundColor Yellow
+} finally {
+    if ($transcript) { try { Stop-Transcript | Out-Null } catch { } }
 }
 
-Write-Step 'Prueba de funcionamiento'
-$ok = Test-Installation
-
-Write-Host ''
-
-if (-not $ok) {
-    Write-Host 'La instalacion quedo incompleta. Revisa los mensajes de arriba.' -ForegroundColor Red
-    exit 1
+if ($exitCode -ne 0 -and $PauseOnError) {
+    Write-Host ''
+    [void](Read-Host 'Pulsa Enter para cerrar esta ventana')
 }
-
-Write-Host 'Todo listo.' -ForegroundColor Green
-Write-Host ''
-Write-Host 'Siguiente paso:' -ForegroundColor White
-Write-Host '  .\install_startup.ps1     deja los atajos activos al iniciar Windows'
-Write-Host ''
-Write-Host 'O pruebalo ahora mismo:'
-Write-Host '  .\read_aloud.ps1 -InputText "Hola, ya quedo funcionando."'
+exit $exitCode

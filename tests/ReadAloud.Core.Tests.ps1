@@ -321,3 +321,18 @@ Describe 'Invoke-LogRotation' {
         Invoke-LogRotation -Path (Join-Path $TestDrive 'no_existe.log') | Should -BeFalse
     }
 }
+
+Describe 'Test-VcRuntime' {
+    It 'es verdadero si estan las tres bibliotecas y falso si falta una' {
+        $dir = Join-Path $TestDrive 'sys'
+        New-Item -ItemType Directory -Path $dir | Out-Null
+        foreach ($f in 'vcruntime140.dll', 'vcruntime140_1.dll') { Set-Content -LiteralPath (Join-Path $dir $f) -Value 'x' }
+        Test-VcRuntime -SystemDir $dir | Should -BeFalse
+        Set-Content -LiteralPath (Join-Path $dir 'msvcp140.dll') -Value 'x'
+        Test-VcRuntime -SystemDir $dir | Should -BeTrue
+    }
+
+    It 'en esta maquina, con Windows normal, se detecta' {
+        Test-VcRuntime | Should -BeTrue
+    }
+}

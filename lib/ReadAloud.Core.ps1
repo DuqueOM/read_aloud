@@ -318,6 +318,17 @@ function Test-PiperInstalled {
     )
 }
 
+function Test-VcRuntime {
+    # piper.exe necesita las bibliotecas de Visual C++ de Microsoft. Estan en
+    # System32 si el equipo tiene instalado el Visual C++ Redistributable 2015-2022.
+    param([string]$SystemDir = [Environment]::SystemDirectory)
+
+    foreach ($dll in 'vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll') {
+        if (-not (Test-Path -LiteralPath (Join-Path $SystemDir $dll))) { return $false }
+    }
+    return $true
+}
+
 function Get-WavDuration {
     # Lee la cabecera RIFF para saber cuanto dura el fragmento sin reproducirlo.
     # El reproductor necesita esto para dibujar la barra de progreso completa
