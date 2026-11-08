@@ -10,6 +10,21 @@ Eso revisa el motor, las voces, el diccionario, los ajustes y si el proceso
 residente está vivo. El registro está en
 `read_aloud_piper\runtime\daemon.log`.
 
+## Instalé Read Aloud y no tiene voz (falta el motor o las voces)
+
+Si la descarga que hace el instalador falló (sin internet, un firewall, un
+antivirus, un proxy), Read Aloud lo avisa al abrirse y ofrece descargar el
+motor y las voces. También sirve "Instalar o reparar las voces" del menú
+Inicio, que abre una ventana con el avance y se puede repetir sin riesgo: lo
+que ya está no se vuelve a bajar.
+
+Si sigue fallando, mira `read_aloud_piper\runtime\setup.log`: dice qué archivo
+no se pudo bajar y por qué. Hacen falta acceso a `github.com` y
+`huggingface.co`. Si Piper no arranca aunque esté descargado, suele faltar el
+Visual C++ Redistributable de Microsoft: `setup.ps1` lo detecta y lo instala
+(Windows pide permiso de administrador una vez); a mano:
+https://aka.ms/vs/17/release/vc_redist.x64.exe.
+
 ## No suena nada al pulsar el atajo
 
 **Comprueba que Read Aloud está corriendo.** Busca su icono (un círculo verde

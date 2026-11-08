@@ -134,6 +134,22 @@ Aloud", "Install or repair the voices" and "Uninstall Read Aloud" (also in
 "Apps" in Windows Settings; it asks whether to keep your settings and
 dictionary).
 
+The installer downloads the voice engine and the voices (about 200 MB). If
+that fails (no internet, a firewall or an antivirus in the way), it tells you,
+and Read Aloud offers to download them the first time you open it; you can
+also use "Install or repair the voices" in the Start menu. What happened is
+written in `read_aloud_piper\runtime\setup.log` (the first thing to send if you
+ask for help).
+
+**Updating.** Installing a newer version over the old one keeps your settings,
+your pronunciation dictionary, `config/settings.psd1` and
+`config/settings.local.psd1`. The factory dictionaries (`config/terms_*.tsv`)
+are replaced by the new ones; the previous ones are kept in
+`copia_de_config_anterior`. Read Aloud checks GitHub once a day and, if there
+is a new version, shows a notice in the tray; it installs nothing without your
+confirmation, sends none of your data, and you can turn the notice off in
+Settings > About.
+
 **From the repository (for developers):**
 
 ```powershell

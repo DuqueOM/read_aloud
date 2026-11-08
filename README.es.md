@@ -132,6 +132,21 @@ ajustes (sin leer nada), y el menú Inicio trae "Ajustes de Read Aloud",
 (también en "Aplicaciones" de la Configuración de Windows; pregunta si quieres
 conservar tus ajustes y tu diccionario).
 
+El instalador descarga el motor de voz y las voces (unos 200 MB). Si falla
+(sin internet, un firewall o un antivirus de por medio), te lo dice, y Read
+Aloud ofrece descargarlos la primera vez que lo abras; también puedes usar
+"Instalar o reparar las voces" del menú Inicio. Lo que pasó queda en
+`read_aloud_piper\runtime\setup.log` (lo primero que hay que mandar si pides
+ayuda).
+
+**Actualizar.** Instalar una versión nueva sobre la anterior conserva tus
+ajustes, tu diccionario de pronunciación, `config/settings.psd1` y
+`config/settings.local.psd1`. Los diccionarios de fábrica
+(`config/terms_*.tsv`) se reemplazan por los nuevos; los anteriores quedan en
+`copia_de_config_anterior`. Read Aloud consulta GitHub una vez al día y, si hay
+una versión nueva, muestra un aviso en la bandeja; no instala nada sin que lo
+confirmes, no envía ningún dato tuyo y el aviso se apaga en Ajustes > Acerca de.
+
 **Desde el repositorio (para desarrolladores):**
 
 ```powershell

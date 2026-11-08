@@ -174,8 +174,12 @@ begin
     DelTree(ExpandConstant('{app}\read_aloud_piper\bin'), True, True, True);
     DelTree(ExpandConstant('{app}\read_aloud_piper\voices'), True, True, True);
     DelTree(ExpandConstant('{app}\read_aloud_piper\tmp'), True, True, True);
+    DelTree(ExpandConstant('{app}\copia_de_config_anterior'), True, True, True);
     if not Conservar then
+    begin
       DelTree(ExpandConstant('{app}\read_aloud_piper'), True, True, True);
+      DelTree(ExpandConstant('{app}\config'), True, True, True);
+    end;
     RemoveDir(ExpandConstant('{app}'));
   end;
 end;
