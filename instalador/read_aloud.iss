@@ -63,6 +63,8 @@ es.StatusVoices=Descargando el motor de voz y las voces (unos 200 MB). Puede tar
 en.StatusVoices=Downloading the voice engine and voices (about 200 MB). This can take a few minutes...
 es.VoicesFailed=No se pudieron descargar el motor de voz y las voces (suele ser la conexión a internet, un firewall o un antivirus).%n%nRead Aloud queda instalado: abre «Instalar o reparar las voces» en el menú Inicio para reintentar, o te lo ofrecerá la primera vez que lo abras. El detalle queda en read_aloud_piper\runtime\setup.log.
 en.VoicesFailed=The voice engine and voices could not be downloaded (usually the internet connection, a firewall or an antivirus).%n%nRead Aloud is installed: open "Install or repair the voices" in the Start menu to retry, or it will offer to do it the first time you open it. The details are in read_aloud_piper\runtime\setup.log.
+es.LockedLeft=Algunos archivos de Read Aloud estaban en uso y no se pudieron borrar. Reinicia el equipo y borra la carpeta de instalacion a mano.
+en.LockedLeft=Some Read Aloud files were in use and could not be deleted. Restart the computer and delete the installation folder by hand.
 es.RunNow=Iniciar Read Aloud ahora
 en.RunNow=Start Read Aloud now
 
@@ -80,6 +82,10 @@ Source: "..\iniciar_read_aloud.vbs"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\cerrar_read_aloud.vbs"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\abrir_ajustes_read_aloud.vbs"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\crear_icono.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\parar_read_aloud.ps1"; DestDir: "{app}"; Flags: ignoreversion
+; El mismo, extraible antes de copiar nada: al actualizar desde una version que aun no
+; lo tenia, hay que cerrar los procesos de Piper antes de reemplazar archivos.
+Source: "..\parar_read_aloud.ps1"; DestDir: "{tmp}"; Flags: dontcopy
 Source: "..\VERSION"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\NOTICE"; DestDir: "{app}"; Flags: ignoreversion
@@ -108,6 +114,7 @@ Filename: "{sys}\wscript.exe"; Parameters: """{app}\iniciar_read_aloud.vbs"""; W
 
 [UninstallRun]
 Filename: "{sys}\wscript.exe"; Parameters: """{app}\cerrar_read_aloud.vbs"""; RunOnceId: "CerrarReadAloud"; Flags: runhidden waituntilterminated
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\parar_read_aloud.ps1"" -Root ""{app}"""; RunOnceId: "PararReadAloud"; Flags: runhidden waituntilterminated
 
 [Code]
 // Al actualizar, el proceso residente tiene los archivos en uso: se cierra antes.
@@ -125,6 +132,17 @@ begin
   begin
     Exec(ExpandConstant('{sys}\wscript.exe'), '"' + ExpandConstant('{app}\cerrar_read_aloud.vbs') + '"', '', SW_HIDE, ewWaitUntilTerminated, Codigo);
     Sleep(2500);
+  end;
+
+  // Lo que siga vivo (el proceso residente que no alcanzo a cerrarse, los
+  // piper.exe que dejo huerfanos) tiene archivos abiertos y Windows no deja
+  // sobrescribirlos. Solo se cierran los de esta carpeta.
+  if DirExists(ExpandConstant('{app}')) then
+  begin
+    ExtractTemporaryFile('parar_read_aloud.ps1');
+    Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+      '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{tmp}\parar_read_aloud.ps1') + '" -Root "' + ExpandConstant('{app}') + '"',
+      '', SW_HIDE, ewWaitUntilTerminated, Codigo);
   end;
 
   if DirExists(ExpandConstant('{app}\config')) then
@@ -171,7 +189,11 @@ begin
     Conservar := False;
     if not UninstallSilent then
       Conservar := MsgBox(CustomMessage('KeepData'), mbConfirmation, MB_YESNO or MB_DEFBUTTON1) = IDYES;
-    DelTree(ExpandConstant('{app}\read_aloud_piper\bin'), True, True, True);
+    if not DelTree(ExpandConstant('{app}\read_aloud_piper\bin'), True, True, True) then
+    begin
+      Sleep(1500);
+      DelTree(ExpandConstant('{app}\read_aloud_piper\bin'), True, True, True);
+    end;
     DelTree(ExpandConstant('{app}\read_aloud_piper\voices'), True, True, True);
     DelTree(ExpandConstant('{app}\read_aloud_piper\tmp'), True, True, True);
     DelTree(ExpandConstant('{app}\copia_de_config_anterior'), True, True, True);
@@ -181,5 +203,7 @@ begin
       DelTree(ExpandConstant('{app}\config'), True, True, True);
     end;
     RemoveDir(ExpandConstant('{app}'));
+    if DirExists(ExpandConstant('{app}\read_aloud_piper\bin')) then
+      SuppressibleMsgBox(CustomMessage('LockedLeft'), mbInformation, MB_OK, IDOK);
   end;
 end;
