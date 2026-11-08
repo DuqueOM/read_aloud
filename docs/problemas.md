@@ -18,6 +18,14 @@ motor y las voces. También sirve "Instalar o reparar las voces" del menú
 Inicio, que abre una ventana con el avance y se puede repetir sin riesgo: lo
 que ya está no se vuelve a bajar.
 
+Si `setup.log` dice "Acceso denegado" al reemplazar `espeak-ng.dll` (u otro
+archivo de `bin\piper`), es que un `piper.exe` seguía abierto y Windows no deja
+sobrescribir sus DLL. Desde la 1.3.2 el instalador y `setup.ps1` lo cierran antes
+y el motor se reemplaza de una vez; en la 1.3.1 o anterior, cierra Read Aloud
+(bandeja > Salir) y ejecuta `parar_read_aloud.ps1` (o, en PowerShell:
+`Get-Process piper | Stop-Process -Force`) y vuelve a abrir "Instalar o
+reparar las voces".
+
 Si sigue fallando, mira `read_aloud_piper\runtime\setup.log`: dice qué archivo
 no se pudo bajar y por qué. Hacen falta acceso a `github.com` y
 `huggingface.co`. Si Piper no arranca aunque esté descargado, suele faltar el

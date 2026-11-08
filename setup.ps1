@@ -110,6 +110,20 @@ function Get-RemoteFile {
     Write-Host ("    listo  {0:N1} MB" -f $size) -ForegroundColor DarkGray
 }
 
+function Stop-PiperInUse {
+    # Un piper.exe que sigue vivo (hijo del proceso residente, o huerfano de una
+    # instalacion anterior) tiene cargadas las DLL de bin\piper, y Windows no deja
+    # sobrescribirlas: la extraccion fallaba con "Acceso denegado" a medias y la
+    # instalacion quedaba sin motor. Se cierran antes; el proceso residente los
+    # vuelve a abrir solo cuando hace falta.
+    $script = Join-Path $PSScriptRoot 'parar_read_aloud.ps1'
+    if (-not (Test-Path -LiteralPath $script)) { return }
+    $cerrados = @(& $script -Root $PSScriptRoot -OnlyPiper)
+    if ($cerrados.Count -gt 0) {
+        Write-Host ("    se cerraron {0} proceso(s) de Piper que estaban en uso" -f $cerrados.Count) -ForegroundColor DarkGray
+    }
+}
+
 function Install-Piper {
     if ((Test-PiperInstalled -Paths $paths) -and -not $Force) {
         Write-Host '    ya estaba instalado' -ForegroundColor DarkGray
@@ -118,19 +132,59 @@ function Install-Piper {
 
     $binDir = Join-Path $paths.BaseDir 'bin'
     $zipPath = Join-Path $env:TEMP 'piper_windows_amd64.zip'
+    $trabajo = Join-Path $env:TEMP ('piper_extraer_' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
 
     Get-RemoteFile -Url $piperUrl -Destination $zipPath
 
-    if (-not (Test-Path -LiteralPath $binDir)) {
-        New-Item -ItemType Directory -Path $binDir -Force | Out-Null
+    try {
+        # Se extrae primero a una carpeta temporal: si algo sale mal, lo que habia
+        # no se toca, y el motor nunca queda a medias.
+        Write-Host '    descomprimiendo' -ForegroundColor Gray
+        New-Item -ItemType Directory -Path $trabajo -Force | Out-Null
+        Expand-Archive -LiteralPath $zipPath -DestinationPath $trabajo -Force
+
+        $nuevo = Join-Path $trabajo 'piper'
+        if (-not (Test-Path -LiteralPath (Join-Path $nuevo 'piper.exe')) -or -not (Test-Path -LiteralPath (Join-Path $nuevo 'espeak-ng-data'))) {
+            throw 'El paquete descargado no trae piper.exe y espeak-ng-data donde se esperaba.'
+        }
+
+        Stop-PiperInUse
+
+        if (-not (Test-Path -LiteralPath $binDir)) {
+            New-Item -ItemType Directory -Path $binDir -Force | Out-Null
+        }
+
+        $destino = Join-Path $binDir 'piper'
+        $anterior = $destino + '.anterior'
+        if (Test-Path -LiteralPath $anterior) { Remove-Item -LiteralPath $anterior -Recurse -Force -ErrorAction SilentlyContinue }
+
+        $apartado = $false
+        if (Test-Path -LiteralPath $destino) {
+            try {
+                Move-Item -LiteralPath $destino -Destination $anterior -Force -ErrorAction Stop
+                $apartado = $true
+            } catch {
+                throw ("No pude reemplazar el motor Piper porque algo lo esta usando ({0}). Cierra Read Aloud (icono de la bandeja > Salir) y vuelve a intentarlo." -f $_.Exception.Message)
+            }
+        }
+
+        try {
+            Move-Item -LiteralPath $nuevo -Destination $destino -ErrorAction Stop
+        } catch {
+            if ($apartado -and -not (Test-Path -LiteralPath $destino)) {
+                Move-Item -LiteralPath $anterior -Destination $destino -ErrorAction SilentlyContinue
+            }
+            throw ("No pude instalar el motor Piper: {0}" -f $_.Exception.Message)
+        }
+
+        if ($apartado) { Remove-Item -LiteralPath $anterior -Recurse -Force -ErrorAction SilentlyContinue }
+    } finally {
+        Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $trabajo) { Remove-Item -LiteralPath $trabajo -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
-    Write-Host '    descomprimiendo' -ForegroundColor Gray
-    Expand-Archive -LiteralPath $zipPath -DestinationPath $binDir -Force
-    Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
-
     if (-not (Test-PiperInstalled -Paths $paths)) {
-        throw "El paquete se descomprimio pero no encuentro piper.exe en $($paths.PiperDir)."
+        throw "El motor se instalo pero no encuentro piper.exe en $($paths.PiperDir)."
     }
 }
 

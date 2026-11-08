@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-11-08
+
+The engine could be left half-installed when Piper was still running.
+
+### Fixed
+
+- Installing or repairing the voices failed with "Access denied" on
+  `espeak-ng.dll` when a `piper.exe` was still alive (a child of the resident
+  process, or an orphan from an earlier install): Windows does not let you
+  overwrite a DLL that a process has loaded, and the engine was left without
+  `espeak-ng-data`. Found from the `setup.log` of a real install.
+  - `setup.ps1` closes the `piper.exe` of its own folder, extracts the engine to a
+    temporary folder and only then replaces `bin/piper` in one move, putting the
+    old one back if that fails. It never leaves a half-installed engine.
+  - The installer and the uninstaller close the resident process, the voice
+    server and any `piper.exe` of the installation folder before replacing or
+    deleting files (new `parar_read_aloud.ps1`; it only touches processes of that
+    folder, never another copy or another program that uses Piper).
+  - The uninstaller retries and warns if some file was still in use.
+
 ## [1.3.1] - 2026-11-07
 
 Installations that end without a voice, and updates that keep what is yours.
@@ -245,7 +265,8 @@ First public version.
 - GitHub Actions running Pester, PSScriptAnalyzer, ruff and gitleaks over the
   whole history, with every action pinned to a commit.
 
-[Unreleased]: https://github.com/DuqueOM/read_aloud/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/DuqueOM/read_aloud/compare/v1.3.2...HEAD
+[1.3.2]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.3.2
 [1.3.1]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.3.1
 [1.3.0]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.3.0
 [1.2.0]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.2.0
