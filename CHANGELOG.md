@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-11-07
+
+Installations that end without a voice, and updates that keep what is yours.
+
+### Fixed
+
+- A fresh install could end with no voice engine and no voice models when the
+  download of `setup.ps1` failed (the window closed by itself and the installer
+  went on as if nothing had happened). Now each download is retried three times
+  with the system proxy, the error says which file failed and what to check,
+  the installer warns you and explains how to retry, everything is written to
+  `read_aloud_piper/runtime/setup.log`, and Read Aloud itself offers to
+  download the missing engine or voice when it opens.
+- Piper needs the Microsoft Visual C++ Redistributable: `setup.ps1` checks for
+  it and, if missing, downloads Microsoft's installer, verifies its signature
+  and runs it.
+
+### Added
+
+- "Tell me when there is a new version" (on by default, in Settings > About):
+  one query to GitHub a day (and when Read Aloud opens), only a notice in the
+  tray; it installs nothing without your confirmation and sends none of your
+  data.
+
+### Changed
+
+- Updating keeps `config/settings.psd1` (it is edited by hand) and leaves a copy
+  of the replaced factory dictionaries in `copia_de_config_anterior`. Settings,
+  your dictionary and `settings.local.psd1` were already untouched.
+- Uninstalling also removes the configuration copy, and the settings
+  and dictionary if you choose not to keep them.
+
 ## [1.3.0] - 2026-11-07
 
 Fixes found while testing 1.2 and new screenshots.
@@ -213,7 +245,8 @@ First public version.
 - GitHub Actions running Pester, PSScriptAnalyzer, ruff and gitleaks over the
   whole history, with every action pinned to a commit.
 
-[Unreleased]: https://github.com/DuqueOM/read_aloud/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/DuqueOM/read_aloud/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.3.1
 [1.3.0]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.3.0
 [1.2.0]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.2.0
 [1.1.0]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.1.0

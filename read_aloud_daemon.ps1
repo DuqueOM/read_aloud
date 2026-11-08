@@ -36,6 +36,7 @@ Add-Type -AssemblyName WindowsBase
 
 $paths = Get-ReadAloudPaths
 $settings = Get-ReadAloudSettings -Paths $paths
+Set-UiLanguage (Resolve-UiLanguage -Setting ([string]$settings.Language))
 
 # --------------------------------------------------------------------------
 # Una sola instancia. Sin esto, dos daemons pelean por la tuberia y el audio
@@ -107,15 +108,52 @@ Update-SpeechDictionary
 # del dia. Ejercerla aqui la paga por adelantado.
 [void](Expand-EnglishTerms -Text 'deploy cache pull request')
 
+function Show-ForegroundMessage {
+    # Un cuadro de aviso que se ve aunque el proceso no tenga ventanas: este
+    # proceso arranca oculto, y un MessageBox sin dueno puede quedar detras de
+    # las demas ventanas sin que nadie lo vea. Se le da un dueno invisible que
+    # esta por encima de todo.
+    param([string]$Text, [string]$Buttons = 'OK', [string]$Image = 'Information', [string]$Default = 'OK')
+
+    $dueno = New-Object Windows.Window -Property @{
+        Topmost = $true; WindowStyle = 'None'; ShowInTaskbar = $false; ShowActivated = $true
+        Width = 1; Height = 1; Left = -10000; Top = -10000; Opacity = 0
+    }
+    $dueno.Show()
+    try {
+        return [Windows.MessageBox]::Show($dueno, $Text, 'Read Aloud', $Buttons, $Image, $Default)
+    } finally {
+        $dueno.Close()
+    }
+}
+
+function Invoke-VoiceRepair {
+    # Falta el motor Piper o la voz en espanol (una instalacion cuya descarga
+    # fallo, o archivos borrados): se ofrece bajarlos ahora, en una ventana que
+    # muestra el avance, en vez de dejar un lector que no suena y no dice por que.
+    Write-DaemonLog 'Falta el motor Piper o la voz en espanol: se ofrece descargarlos.'
+    $respuesta = Show-ForegroundMessage -Buttons 'YesNo' -Image 'Question' -Default 'Yes' -Text (T 'Read Aloud no encontro el motor de voz o la voz en espanol (unos 200 MB). Descargarlos ahora? Se abrira una ventana que muestra el avance.')
+    if ($respuesta -ne 'Yes') { return $false }
+
+    $setup = Start-Process -FilePath 'powershell.exe' -Wait -PassThru -ArgumentList @(
+        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"' + (Join-Path $PSScriptRoot 'setup.ps1') + '"'),
+        '-NoStartupPrompt', '-PauseOnError')
+    Write-DaemonLog ('setup.ps1 termino con el codigo {0}.' -f $setup.ExitCode)
+    return ($setup.ExitCode -eq 0)
+}
+
 $voiceEs = Get-VoiceModelPath -Paths $paths -Settings $settings -Lang 'es'
 $voiceEn = Get-VoiceModelPath -Paths $paths -Settings $settings -Lang 'en'
 
-if (-not (Test-PiperInstalled -Paths $paths)) {
-    Write-DaemonLog 'Piper no esta instalado. Ejecuta setup.ps1.'
-    [Windows.MessageBox]::Show(
-        "No encontre Piper en:`n$($paths.PiperDir)`n`nEjecuta setup.ps1 para instalarlo.",
-        'Read Aloud', 'OK', 'Warning') | Out-Null
-    exit 1
+if (-not (Test-PiperInstalled -Paths $paths) -or -not $voiceEs.Ready) {
+    $reparado = Invoke-VoiceRepair
+    $voiceEs = Get-VoiceModelPath -Paths $paths -Settings $settings -Lang 'es'
+    $voiceEn = Get-VoiceModelPath -Paths $paths -Settings $settings -Lang 'en'
+    if (-not $reparado -or -not (Test-PiperInstalled -Paths $paths) -or -not $voiceEs.Ready) {
+        Write-DaemonLog 'Piper o la voz en espanol siguen sin estar instalados.'
+        [void](Show-ForegroundMessage -Image 'Warning' -Text (T 'Read Aloud no puede leer sin el motor de voz y la voz en espanol. Abre Instalar o reparar las voces en el menu Inicio, o mira read_aloud_piper\runtime\setup.log.'))
+        exit 1
+    }
 }
 
 if (-not $voiceEs.Ready) {
@@ -2300,6 +2338,8 @@ $sync.WakeUi = [Action]{ if ($timer.Interval -ne $pulseBusy) { $timer.Interval =
 $sync.Dispatcher = [Windows.Threading.Dispatcher]::CurrentDispatcher
 
 $timer.Add_Tick({
+    Step-UpdateCheck
+
     # 1. Ordenes que llegaron por la tuberia.
     $line = $null
     while ($sync.Requests.TryDequeue([ref]$line)) {
@@ -2564,11 +2604,67 @@ $itemSalir.Add_Click({
 })
 $script:tray.ContextMenuStrip = $trayMenu
 $script:tray.Add_DoubleClick({ Show-SettingsWindow })
+$script:tray.Add_BalloonTipClicked({
+    if ($script:avisoActualizacion) {
+        Show-SettingsWindow -Mostrar
+        Search-Updates
+    } else {
+        Show-SettingsWindow -Mostrar
+    }
+})
 $script:tray.Visible = $true
 
 if ($hotkeyFailed.Count -gt 0) {
     $lista = ($hotkeyFailed | ForEach-Object { $_.Text }) -join ', '
     $script:tray.ShowBalloonTip(8000, 'Read Aloud', ((T 'Estos atajos no se pudieron activar porque otro programa los usa: {0}. Cambialos en los ajustes.') -f $lista), [Windows.Forms.ToolTipIcon]::Warning)
+}
+
+# --------------------------------------------------------------------------
+# Aviso de versiones nuevas (ajuste UpdateCheck). Una consulta a GitHub al dia y
+# al abrir Read Aloud, en otro hilo para no frenar la ventana. Solo avisa con un
+# globo en la bandeja: el instalador se descarga y se abre desde los ajustes,
+# con confirmacion. Si la consulta falla (sin internet), se reintenta en una hora.
+# --------------------------------------------------------------------------
+$script:estadoActualizaciones = Read-UpdateState -Path $paths.UpdateStateFile
+$script:revisionActual = $null
+$script:avisoActualizacion = $false
+$script:proximaRevision = [DateTime]::UtcNow.AddSeconds(45)
+if (-not (Test-UpdateCheckDue -LastCheckUtc $script:estadoActualizaciones.LastCheckUtc -NowUtc ([DateTime]::UtcNow))) {
+    $script:proximaRevision = ([datetime]$script:estadoActualizaciones.LastCheckUtc).AddHours(24)
+}
+
+function Step-UpdateCheck {
+    # Se llama en cada pulso: arranca la consulta cuando toca y recoge su resultado.
+    if ($null -eq $script:revisionActual) {
+        if (-not [bool]$settings.UpdateCheck) { return }
+        if ([DateTime]::UtcNow -lt $script:proximaRevision) { return }
+        $ps = [powershell]::Create()
+        [void]$ps.AddScript({ param($lib) . $lib; try { Get-LatestRelease } catch { $null } }).AddArgument((Join-Path $PSScriptRoot 'lib\ReadAloud.Update.ps1'))
+        $script:revisionActual = @{ PS = $ps; Handle = $ps.BeginInvoke() }
+        return
+    }
+    if (-not $script:revisionActual.Handle.IsCompleted) { return }
+
+    $release = $null
+    try { $release = @($script:revisionActual.PS.EndInvoke($script:revisionActual.Handle))[0] } catch { }
+    try { $script:revisionActual.PS.Dispose() } catch { }
+    $script:revisionActual = $null
+
+    if ($null -eq $release -or -not $release.tag_name) {
+        $script:proximaRevision = [DateTime]::UtcNow.AddHours(1)
+        return
+    }
+
+    $script:estadoActualizaciones.LastCheckUtc = [DateTime]::UtcNow
+    $script:proximaRevision = [DateTime]::UtcNow.AddHours(24)
+    $actual = Get-ReadAloudVersion -Root $paths.Root
+    if ((Test-NewerVersion -Current $actual -Latest $release.tag_name) -and $script:estadoActualizaciones.NotifiedVersion -ne $release.tag_name) {
+        $script:estadoActualizaciones.NotifiedVersion = [string]$release.tag_name
+        $script:avisoActualizacion = $true
+        Write-DaemonLog ('Hay una version nueva: {0} (esta es la {1}).' -f $release.tag_name, $actual)
+        $script:tray.ShowBalloonTip(15000, 'Read Aloud', ((T 'Hay una version nueva de Read Aloud: {0}. Haz clic para verla e instalarla.') -f $release.tag_name), [Windows.Forms.ToolTipIcon]::Info)
+    }
+    Write-UpdateState -Path $paths.UpdateStateFile -State $script:estadoActualizaciones
 }
 
 $timer.Start()

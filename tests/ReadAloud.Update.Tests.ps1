@@ -86,3 +86,30 @@ Describe 'Get-DiagnosticText' {
         $t | Should -Not -Match ([regex]::Escape($env:USERPROFILE))
     }
 }
+
+Describe 'Calendario del aviso de versiones' {
+    It 'Test-UpdateCheckDue: nunca consultado, hace <Horas> h, futuro' -ForEach @(
+        @{ Ultima = $null; Horas = 0; Esperado = $true }
+        @{ Ultima = '2026-11-07T10:00:00Z'; Horas = 2; Esperado = $false }
+        @{ Ultima = '2026-11-06T10:00:00Z'; Horas = 25; Esperado = $true }
+        @{ Ultima = '2026-11-08T10:00:00Z'; Horas = 0; Esperado = $true }
+        @{ Ultima = 'basura'; Horas = 0; Esperado = $true }
+    ) {
+        $ahora = [datetime]::Parse('2026-11-07T12:00:00Z', [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::AdjustToUniversal)
+        Test-UpdateCheckDue -LastCheckUtc $Ultima -NowUtc $ahora -Hours 24 | Should -Be $Esperado
+    }
+
+    It 'el estado se guarda y se lee, y un archivo roto da el estado vacio' {
+        $f = Join-Path $TestDrive 'act.json'
+        $s = Read-UpdateState -Path $f
+        $s.LastCheckUtc | Should -BeNullOrEmpty
+        $s.LastCheckUtc = [datetime]::UtcNow
+        $s.NotifiedVersion = 'v9.9.9'
+        Write-UpdateState -Path $f -State $s
+        $r = Read-UpdateState -Path $f
+        $r.NotifiedVersion | Should -BeExactly 'v9.9.9'
+        [Math]::Abs(($r.LastCheckUtc - $s.LastCheckUtc).TotalSeconds) | Should -BeLessThan 2
+        Set-Content -LiteralPath $f -Value '{ no es json'
+        (Read-UpdateState -Path $f).NotifiedVersion | Should -BeExactly ''
+    }
+}

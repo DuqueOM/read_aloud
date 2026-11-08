@@ -96,6 +96,11 @@
     # yellow. Se aplican al reiniciar el lector.
     # Idioma de la interfaz: 'auto' (el de Windows), 'es' o 'en'.
     Language = 'auto'
+
+    # Avisar cuando haya una version nueva: una consulta a GitHub al dia (y al
+    # abrir Read Aloud), que solo muestra un aviso en la bandeja; no instala nada
+    # sin que lo confirmes. No envia ningun dato tuyo. $false lo apaga.
+    UpdateCheck = $true
     Theme = 'system'
     Accent = 'green'
     SkipSeconds = 10

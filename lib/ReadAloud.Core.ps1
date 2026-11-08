@@ -37,6 +37,7 @@ function Get-ReadAloudPaths {
         TermsFile   = Join-Path $root 'config\terms_es.tsv'
         TermsFileEn = Join-Path $root 'config\terms_en.tsv'
         UserTermsFileEs = Join-Path $runtimeDir 'terminos_usuario_es.tsv'
+        UpdateStateFile = Join-Path $runtimeDir 'actualizaciones.json'
         UserTermsFileEn = Join-Path $runtimeDir 'terminos_usuario_en.tsv'
         SettingsFile= Join-Path $root 'config\settings.psd1'
         LocalSettingsFile = Join-Path $root 'config\settings.local.psd1'
@@ -66,6 +67,7 @@ function Get-ReadAloudSettings {
         PlayerAutoClose     = $true
         PlayerOpacity       = 0.8
         Language            = 'auto'
+        UpdateCheck         = $true
         Theme               = 'system'
         Accent              = 'green'
         SkipSeconds         = 10
@@ -316,6 +318,17 @@ function Test-PiperInstalled {
         (Test-Path -LiteralPath $Paths.PiperExe) -and
         (Test-Path -LiteralPath $Paths.EspeakData)
     )
+}
+
+function Test-VcRuntime {
+    # piper.exe necesita las bibliotecas de Visual C++ de Microsoft. Estan en
+    # System32 si el equipo tiene instalado el Visual C++ Redistributable 2015-2022.
+    param([string]$SystemDir = [Environment]::SystemDirectory)
+
+    foreach ($dll in 'vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll') {
+        if (-not (Test-Path -LiteralPath (Join-Path $SystemDir $dll))) { return $false }
+    }
+    return $true
 }
 
 function Get-WavDuration {

@@ -404,6 +404,12 @@ $xamlAjustes = @'
           <TextBlock x:Name="AcercaVersion" Style="{StaticResource Etiqueta}" Margin="0,2,0,4"/>
           <TextBlock Style="{StaticResource Nota}"
                      Text="Gratis y de código abierto. ¿Encontraste un error o tienes una idea? Abre una incidencia en GitHub o escribe a duqueortegamutis@gmail.com."/>
+          <TextBlock Style="{StaticResource Etiqueta}" Text="Avisarme cuando haya una versión nueva"/>
+          <WrapPanel>
+            <RadioButton GroupName="AvisoUpdate" Tag="True" Content="Sí"/>
+            <RadioButton GroupName="AvisoUpdate" Tag="False" Content="No"/>
+          </WrapPanel>
+          <TextBlock Style="{StaticResource Nota}" Text="Una consulta a GitHub al día; solo muestra un aviso, no instala nada sin que lo confirmes y no envía ningún dato tuyo."/>
           <WrapPanel Margin="0,8,0,0">
             <Button x:Name="BtnDiagnostico" Content="Copiar diagnóstico" Padding="12,5" Margin="0,0,6,6"
                     Background="#14FFFFFF"
@@ -552,6 +558,7 @@ $gruposAjustes = @{
     VozEs       = @{ Clave = 'VoiceEs'; Aplicar = { param($v) Request-SynthApply } }
     VozEn       = @{ Clave = 'VoiceEn'; Aplicar = { param($v) Request-SynthApply } }
     Rendimiento = @{ Clave = 'Performance'; Aplicar = { param($v) Update-RendimientoNota; Request-SynthApply } }
+    AvisoUpdate = @{ Clave = 'UpdateCheck'; Tipo = 'bool' }
     EsperaQwen  = @{ Clave = 'QwenLoadWaitSeconds'; Tipo = 'double'; Aplicar = { param($v) $synthConfig.Qwen.WaitSeconds = [double]$v } }
     Minutos     = @{ Clave = 'SaverIdleMinutes'; Tipo = 'double'; Aplicar = { param($v) Request-SynthApply } }
     Cerrar      = @{ Clave = 'PlayerAutoClose'; Tipo = 'bool' }
@@ -1056,7 +1063,9 @@ $aj.BtnDiagnostico.Add_Click({
 
 $aj.BtnGitHub.Add_Click({ Start-Process 'https://github.com/DuqueOM/read_aloud' })
 
-$aj.BtnActualizar.Add_Click({
+function Search-Updates {
+    # Consulta el ultimo release y deja el resultado en la seccion Acerca de.
+    # La usan el boton y el aviso de la bandeja.
     $aj.BtnInstalarUpdate.Visibility = 'Collapsed'
     $script:actualizacion = $null
     $ajustesVentana.Cursor = 'Wait'
@@ -1085,7 +1094,10 @@ $aj.BtnActualizar.Add_Click({
     } finally {
         $ajustesVentana.Cursor = $null
     }
-})
+}
+
+$aj.BtnActualizar.Add_Click({ Search-Updates })
+
 
 $aj.BtnInstalarUpdate.Add_Click({
     if ($null -eq $script:actualizacion) { return }
