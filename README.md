@@ -57,10 +57,10 @@ search every word, change how it is said for each language and each voice, and
 test it. See [docs/configuracion.md](docs/configuracion.md#panel-de-ajustes) (in
 Spanish).
 
-<p>
-  <img src="docs/media/ajustes.png" width="300" alt="The settings panel: appearance and voice">
-  <img src="docs/media/ajustes_pronunciacion.png" width="300" alt="The settings panel: reading and pronunciation">
-  <img src="docs/media/ajustes_atajos.png" width="300" alt="The settings panel: dictionary, keyboard shortcuts and About">
+<p align="center">
+  <img src="docs/media/ajustes.png" width="31%" alt="The settings panel: appearance and voice">
+  <img src="docs/media/ajustes_pronunciacion.png" width="31%" alt="The settings panel: reading and pronunciation">
+  <img src="docs/media/ajustes_atajos.png" width="31%" alt="The settings panel: dictionary, keyboard shortcuts and About">
 </p>
 
 
