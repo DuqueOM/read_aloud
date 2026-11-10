@@ -59,9 +59,9 @@ cómo se dice en cada idioma y con cada voz, y probarla. Ver
 [docs/configuracion.md](docs/configuracion.md#panel-de-ajustes).
 
 <p align="center">
-  <img src="docs/media/ajustes.png" width="32%" alt="El panel de ajustes: apariencia y voz">
-  <img src="docs/media/ajustes_pronunciacion.png" width="32%" alt="El panel de ajustes: lectura y pronunciación">
-  <img src="docs/media/ajustes_atajos.png" width="32%" alt="El panel de ajustes: diccionario, atajos de teclado y Acerca de">
+  <img src="docs/media/ajustes.png" width="31%" alt="El panel de ajustes: apariencia y voz">
+  <img src="docs/media/ajustes_pronunciacion.png" width="31%" alt="El panel de ajustes: lectura y pronunciación">
+  <img src="docs/media/ajustes_atajos.png" width="31%" alt="El panel de ajustes: diccionario, atajos de teclado y Acerca de">
 </p>
 
 ## Qué tiene por dentro
