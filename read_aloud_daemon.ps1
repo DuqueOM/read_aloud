@@ -205,7 +205,7 @@ $sync.Generation = 0
 $sync.Priority = -1
 $sync.PriorityGen = 0
 $sync.Stopping = $false
-$sync.ReloadSynth = $false
+$sync.ReloadSynth = $null
 
 $runspaces = New-Object System.Collections.Generic.List[object]
 
@@ -538,18 +538,31 @@ $synthScript = {
     $qwenWatch = @{ Next = [DateTime]::UtcNow; LastExit = $null; Failures = 0 }
 
     function Reset-SynthProcesses {
-        # Los ajustes de voz, motor, pausas y rendimiento cambiaron: se cierran
-        # todos los procesos de voz y se abren de nuevo con los valores nuevos,
-        # sin reiniciar el lector (ni los atajos, ni el reproductor).
+        # Los ajustes de voz cambiaron: se cierran solo los procesos que lo
+        # necesitan (Get-SynthReloadPlan) y se abren de nuevo con los valores
+        # nuevos, sin reiniciar el lector (ni los atajos, ni el reproductor).
+        # Qwen tarda de 15 a 60 s en cargar: no se toca si no hace falta.
+        param($Plan)
+
+        $cerrar = New-Object System.Collections.Generic.List[string]
         foreach ($key in @($processes.Keys)) {
+            if ($key -eq 'qwen') {
+                if ($Plan.Qwen -eq 'restart' -or $Plan.Qwen -eq 'stop') { $cerrar.Add($key) }
+            } elseif ($Plan.Piper) {
+                $cerrar.Add($key)
+            }
+        }
+        foreach ($key in $cerrar) {
             try { $processes[$key].Writer.Close() } catch { }
             try { $processes[$key].Process.Kill() } catch { }
             $processes.Remove($key)
         }
-        $qwenWatch.LastExit = $null
-        $qwenWatch.Failures = 0
-        $qwenWatch.Next = [DateTime]::UtcNow.AddSeconds(3)
-        Write-SynthLog 'Ajustes de voz cambiados: se recargan los motores.'
+        if ($Plan.Qwen -eq 'restart' -or $Plan.Qwen -eq 'start') {
+            $qwenWatch.LastExit = $null
+            $qwenWatch.Failures = 0
+            $qwenWatch.Next = [DateTime]::UtcNow.AddSeconds(3)
+        }
+        Write-SynthLog ('Ajustes de voz cambiados: Piper {0}, Qwen {1}.' -f $(if ($Plan.Piper) { 'se recarga' } else { 'sigue' }), $Plan.Qwen)
     }
 
     function Get-NvidiaFreeGB {
@@ -601,9 +614,10 @@ $synthScript = {
     while (-not $sync.Stopping) {
         $job = $null
 
-        if ($sync.ReloadSynth) {
-            $sync.ReloadSynth = $false
-            Reset-SynthProcesses
+        if ($null -ne $sync.ReloadSynth) {
+            $plan = $sync.ReloadSynth
+            $sync.ReloadSynth = $null
+            Reset-SynthProcesses -Plan $plan
         }
 
         if (-not $sync.SynthJobs.TryDequeue([ref]$job)) {
@@ -734,6 +748,7 @@ Start-BackgroundRunspace -Script $synthScript -Variables @{
 function Update-SynthSettings {
     # Aplica en caliente la voz, el motor, las pausas y el rendimiento que se
     # acaban de cambiar en los ajustes ($settings ya tiene los valores nuevos).
+    $antes = Get-SynthSnapshot
     $vEs = Get-VoiceModelPath -Paths $paths -Settings $settings -Lang 'es'
     $vEn = Get-VoiceModelPath -Paths $paths -Settings $settings -Lang 'en'
     if ($vEs.Ready) { $models['es'] = $vEs.Model }
@@ -750,10 +765,22 @@ function Update-SynthSettings {
     $synthConfig.Qwen.IdleMinutes = $(if ($script:ahorro) { [double]$settings.SaverIdleMinutes } else { [double]$settings.QwenIdleMinutes }).ToString($invariant)
     $synthConfig.Qwen.Reopen = (-not $script:ahorro) -and [bool]$settings.QwenReopen
 
-    Write-DaemonLog ('Ajustes de voz aplicados: es={0}, en={1}, rendimiento {2}' -f $engines['es'], $engines['en'], $settings.Performance)
-    $sync.ReloadSynth = $true
+    $plan = Get-SynthReloadPlan -Before $antes -After (Get-SynthSnapshot)
+    Write-DaemonLog ('Ajustes de voz aplicados: es={0}, en={1}, rendimiento {2}; Piper {3}, Qwen {4}' -f $engines['es'], $engines['en'], $settings.Performance, $(if ($plan.Piper) { 'se recarga' } else { 'sigue' }), $plan.Qwen)
+    if (-not $plan.Piper -and $plan.Qwen -eq 'none') { return }
+    $sync.ReloadSynth = $plan
     [void]$sync.SynthSignal.Set()
-    Start-Warmup
+    if ($plan.Piper) { Start-Warmup }
+}
+
+function Get-SynthSnapshot {
+    # Lo que leen los procesos de voz al arrancar, para saber cuales recargar.
+    return @{
+        Models   = @{ es = [string]$models['es']; en = [string]$models['en'] }
+        Silence  = [string]$synthConfig.SentenceSilence
+        QwenIdle = [string]$synthConfig.Qwen.IdleMinutes
+        Engines  = @{ es = [string]$engines['es']; en = [string]$engines['en'] }
+    }
 }
 
 # --------------------------------------------------------------------------
