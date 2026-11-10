@@ -299,3 +299,46 @@ Describe 'Get-NextStep' {
         Get-NextStep -Steps $volumen -Current 1.0 -Direction 1 | Should -Be 1
     }
 }
+
+
+Describe 'Get-SynthReloadPlan' {
+    BeforeAll {
+        function New-Estado {
+            param([string]$Es = 'es.onnx', [string]$En = 'en.onnx', [string]$Silencio = '0.36', [string]$Idle = '0', [string]$MotorEs = 'qwen', [string]$MotorEn = 'qwen')
+            @{ Models = @{ es = $Es; en = $En }; Silence = $Silencio; QwenIdle = $Idle; Engines = @{ es = $MotorEs; en = $MotorEn } }
+        }
+    }
+
+    It 'elegir otra vez la misma voz no recarga nada' {
+        $p = Get-SynthReloadPlan -Before (New-Estado) -After (New-Estado)
+        $p.Piper | Should -BeFalse
+        $p.Qwen | Should -BeExactly 'none'
+    }
+
+    It 'cambiar la voz de Piper recarga Piper y deja Qwen cargada' {
+        $p = Get-SynthReloadPlan -Before (New-Estado) -After (New-Estado -Es 'otra.onnx')
+        $p.Piper | Should -BeTrue
+        $p.Qwen | Should -BeExactly 'none'
+    }
+
+    It 'la pausa entre frases la leen los dos: se recargan los dos' {
+        $p = Get-SynthReloadPlan -Before (New-Estado) -After (New-Estado -Silencio '0.5')
+        $p.Piper | Should -BeTrue
+        $p.Qwen | Should -BeExactly 'restart'
+    }
+
+    It 'el rendimiento (minutos sin leer) solo reinicia Qwen' {
+        $p = Get-SynthReloadPlan -Before (New-Estado) -After (New-Estado -Idle '5')
+        $p.Piper | Should -BeFalse
+        $p.Qwen | Should -BeExactly 'restart'
+    }
+
+    It 'pasar a Piper en los dos idiomas cierra Qwen para liberar la tarjeta' {
+        (Get-SynthReloadPlan -Before (New-Estado) -After (New-Estado -MotorEs 'piper' -MotorEn 'piper')).Qwen | Should -BeExactly 'stop'
+    }
+
+    It 'pasar de Piper a Qwen la carga, y con un idioma aun en Qwen no se toca' {
+        (Get-SynthReloadPlan -Before (New-Estado -MotorEs 'piper' -MotorEn 'piper') -After (New-Estado)).Qwen | Should -BeExactly 'start'
+        (Get-SynthReloadPlan -Before (New-Estado) -After (New-Estado -MotorEn 'piper')).Qwen | Should -BeExactly 'none'
+    }
+}

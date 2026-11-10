@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.3] - 2026-11-10
+
+### Fixed
+
+- Changing a voice setting reloaded every voice process, including the own voice
+  (Qwen), which takes 15 to 60 s to load: choosing the engine it already had, or
+  changing a Piper voice, left the own voice reloading and the next readings
+  went to Piper meanwhile. Now only what changed is reloaded: Piper when its
+  voice or the sentence pause change, Qwen when the pause or the performance
+  mode change; switching every language to Piper closes Qwen to free the card,
+  and switching back loads it.
+
 ## [1.3.2] - 2026-11-08
 
 The engine could be left half-installed when Piper was still running.
@@ -265,7 +277,8 @@ First public version.
 - GitHub Actions running Pester, PSScriptAnalyzer, ruff and gitleaks over the
   whole history, with every action pinned to a commit.
 
-[Unreleased]: https://github.com/DuqueOM/read_aloud/compare/v1.3.2...HEAD
+[Unreleased]: https://github.com/DuqueOM/read_aloud/compare/v1.3.3...HEAD
+[1.3.3]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.3.3
 [1.3.2]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.3.2
 [1.3.1]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.3.1
 [1.3.0]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.3.0

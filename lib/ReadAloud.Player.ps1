@@ -192,3 +192,34 @@ function Get-NextStep {
     $nuevo = [Math]::Max(0, [Math]::Min($Steps.Count - 1, $mejor + $Direction))
     return $Steps[$nuevo]
 }
+
+function Get-SynthReloadPlan {
+    # Que procesos de voz hay que tocar al cambiar ajustes, comparando el antes y
+    # el despues (@{ Models; Silence; QwenIdle; Engines }). Cada recarga de Qwen
+    # cuesta de 15 a 60 s, asi que solo se hace si cambio algo que el servidor lee
+    # al arrancar. Cambiar solo el motor no reinicia nada: si ninguna voz usa ya
+    # Qwen, se cierra para liberar la tarjeta; si pasa a usarse, se carga.
+    #   Piper: $true si hay que reabrir los procesos de Piper.
+    #   Qwen:  'none', 'restart', 'stop' o 'start'.
+    param($Before, $After)
+
+    $piper = $false
+    foreach ($lang in 'es', 'en') {
+        if ([string]$Before.Models[$lang] -ne [string]$After.Models[$lang]) { $piper = $true }
+    }
+    if ([string]$Before.Silence -ne [string]$After.Silence) { $piper = $true }
+
+    $usedBefore = @($Before.Engines.Values) -contains 'qwen'
+    $usedAfter = @($After.Engines.Values) -contains 'qwen'
+    $qwenArgs = ([string]$Before.Silence -ne [string]$After.Silence) -or ([string]$Before.QwenIdle -ne [string]$After.QwenIdle)
+
+    $qwen = 'none'
+    if (-not $usedAfter) {
+        if ($usedBefore) { $qwen = 'stop' }
+    } elseif (-not $usedBefore) {
+        $qwen = 'start'
+    } elseif ($qwenArgs) {
+        $qwen = 'restart'
+    }
+    return @{ Piper = $piper; Qwen = $qwen }
+}
