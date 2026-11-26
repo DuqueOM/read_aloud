@@ -203,11 +203,14 @@ def razonable(texto: str, segundos: float) -> bool:
     return 0.35 * esperado <= segundos <= 2.5 * esperado + 1.0
 
 
-def generar(qwen, ordenes: list[dict]) -> None:
+def generar(qwen, ordenes: list[dict]) -> float:
+    """Genera el grupo y escribe un WAV por orden. Devuelve los segundos de audio
+    escritos: lo que dura al sonar, con la pausa final incluida."""
     textos = [o["text"] for o in ordenes]
     idiomas = [IDIOMAS.get(o.get("lang", "es"), "Spanish") for o in ordenes]
     tope = int(CODIGOS_POR_SEGUNDO * (2.5 * max(len(t) for t in textos) * SEGUNDOS_POR_LETRA + 3))
     pendientes = list(range(len(ordenes)))
+    segundos = 0.0
     for intento in range(2):
         wavs, tasa = qwen.generate_custom_voice(
             text=[textos[i] for i in pendientes],
@@ -222,10 +225,13 @@ def generar(qwen, ordenes: list[dict]) -> None:
                 log(f"duracion rara ({len(wav) / tasa:.1f} s), se repite: {textos[i]!r}")
                 repetir.append(i)
                 continue
-            sf.write(ordenes[i]["output_file"], pulir(wav, tasa), tasa, subtype="PCM_16")
+            pulido = pulir(wav, tasa)
+            sf.write(ordenes[i]["output_file"], pulido, tasa, subtype="PCM_16")
+            segundos += len(pulido) / tasa
         pendientes = repetir
         if not pendientes:
             break
+    return segundos
 
 
 def leer_entrada(cola: queue.Queue) -> None:
@@ -296,8 +302,12 @@ def main() -> int:
             datos = json.loads(linea.lstrip("﻿"))
             ordenes = datos if isinstance(datos, list) else [datos]
             inicio = time.perf_counter()
-            generar(qwen, ordenes)
-            log(f"{len(ordenes)} frase(s) en {time.perf_counter() - inicio:.1f} s")
+            audio = generar(qwen, ordenes)
+            gasto = time.perf_counter() - inicio
+            # Factor: segundos de generacion por segundo de audio. Por encima
+            # de 1, el grupo tarda mas en generarse que en sonar.
+            factor = f"{gasto / audio:.2f}" if audio > 0 else "-"
+            log(f"{len(ordenes)} frase(s) en {gasto:.1f} s, {audio:.1f} s de audio, factor {factor}")
         except Exception as error:  # una orden mala no debe tumbar el proceso
             log(f"error: {error!r}")
         # Una ruta por orden, como Piper, aunque haya fallado: Read Aloud
