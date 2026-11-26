@@ -20,12 +20,17 @@
 
 [CmdletBinding()]
 param(
-    [string]$Root = $PSScriptRoot,
+    [string]$Root = '',
     [switch]$OnlyPiper,
     [switch]$ListOnly
 )
 
 $ErrorActionPreference = 'Continue'
+
+# En Windows PowerShell 5.1, $PSScriptRoot no existe todavia en los valores
+# por defecto de param: se completa aqui. Vacio, el prefijo seria solo '\' y
+# coincidirian el proceso residente y el servidor de cualquier carpeta.
+if (-not $Root) { $Root = $PSScriptRoot }
 
 # La ruta con nombres largos: Windows informa asi la de cada proceso, y una carpeta
 # dada con nombres cortos (RUNNER~1) no coincidiria.

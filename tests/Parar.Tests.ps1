@@ -43,4 +43,42 @@ Describe 'parar_read_aloud.ps1' {
         New-Item -ItemType Directory -Path $vacia | Out-Null
         @(& $script:parar -Root $vacia).Count | Should -Be 0
     }
+
+    # Asi lo corre una persona a mano. En Windows PowerShell 5.1, $PSScriptRoot
+    # esta vacio en los valores por defecto de param: GetFullPath fallaba, el
+    # prefijo quedaba en '\' y se cerraba el proceso residente de cualquier
+    # carpeta, pero no el piper.exe de la propia.
+    It 'sin -Root, en Windows PowerShell 5.1, usa su propia carpeta y no falla' {
+        $propia = Join-Path $TestDrive 'propia'
+        $otra = Join-Path $TestDrive 'otra'
+        $pa = New-FalsoPiper $propia
+        $pb = New-FalsoPiper $otra
+        try {
+            $copia = Join-Path $propia 'parar_read_aloud.ps1'
+            Copy-Item -LiteralPath $script:parar -Destination $copia
+            Start-Sleep -Milliseconds 400
+
+            $info = New-Object System.Diagnostics.ProcessStartInfo
+            $info.FileName = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+            $info.Arguments = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -ListOnly' -f $copia
+            $info.UseShellExecute = $false
+            $info.CreateNoWindow = $true
+            $info.RedirectStandardOutput = $true
+            $info.RedirectStandardError = $true
+            $proceso = [System.Diagnostics.Process]::Start($info)
+            $errores = $proceso.StandardError.ReadToEndAsync()
+            $salida = $proceso.StandardOutput.ReadToEnd()
+            $proceso.WaitForExit()
+
+            $errores.Result.Trim() | Should -BeNullOrEmpty
+            $proceso.ExitCode | Should -Be 0
+            $lineas = @($salida -split "`r?`n" | Where-Object { $_.Trim() })
+            $lineas.Count | Should -Be 1
+            $lineas[0] | Should -Match ('^{0} piper.exe' -f $pa.Id)
+            $pa.HasExited | Should -BeFalse
+            $pb.HasExited | Should -BeFalse
+        } finally {
+            foreach ($p in $pa, $pb) { if (-not $p.HasExited) { $p.Kill() } }
+        }
+    }
 }
