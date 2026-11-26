@@ -41,6 +41,12 @@ argumentos.add_argument("--voz", required=True, help="carpeta de la voz afinada"
 argumentos.add_argument("--hf-home", required=True, help="cache de Hugging Face con el modelo base")
 argumentos.add_argument("--registro", required=True)
 argumentos.add_argument("--silencio", type=float, default=0.36, help="segundos de silencio al final")
+argumentos.add_argument(
+    "--pausa-maxima",
+    type=float,
+    default=0.0,
+    help="segundos que puede durar, como mucho, un silencio dentro de la frase; 0 los deja como salen",
+)
 argumentos.add_argument("--inactivo", type=float, default=0.0, help="minutos sin ordenes antes de terminar; 0 es nunca")
 argumentos.add_argument("--lote", type=int, default=4, help="frases que Read Aloud puede mandar juntas")
 argumentos.add_argument("--marca", default="", help="archivo que otro paso deja mientras usa la tarjeta grafica")
@@ -77,6 +83,9 @@ NIVEL_DB = -19.0  # el de las voces de Piper que usa Read Aloud
 PICO_DB = -1.0
 UMBRAL_SILENCIO_DB = -45.0
 MARGEN_S = 0.05
+# Al acortar un silencio interno, las dos partes se funden en este tiempo para
+# que el corte no haga clic.
+FUNDIDO_S = 0.005
 # Una frase que dura mucho mas o mucho menos de lo esperable por su largo es
 # casi siempre un fallo del muestreo (repite, se queda muda o corta): se
 # repite una vez. 12.5 codigos por segundo.
@@ -181,15 +190,52 @@ def cargar(carpeta: Path):
     return qwen
 
 
+def acortar_pausas(audio: np.ndarray, niveles: np.ndarray, tasa: int, tope: float) -> np.ndarray:
+    """Deja en `tope` segundos cada silencio interno que dure mas.
+
+    Qwen a veces calla casi un segundo a mitad de frase, mas que la pausa entre
+    dos frases. Se quita el centro del silencio y a cada lado queda la mitad
+    del tope, nunca menos que MARGEN_S: el silencio se mide con ventanas de
+    10 ms, asi que lo que queda pegado a la voz (una s que se apaga, una
+    respiracion) no se toca. Solo cuentan los silencios con voz a los dos
+    lados: los extremos ya vienen recortados."""
+    tope = max(tope, 2 * MARGEN_S)
+    conservar = int(tope * tasa)
+    izquierda = conservar // 2
+    fundido = int(FUNDIDO_S * tasa)
+    rampa = np.linspace(1.0, 0.0, fundido, dtype=np.float32)
+
+    callado = np.concatenate([[False], niveles <= UMBRAL_SILENCIO_DB, [False]])
+    bordes = np.diff(callado.astype(np.int8))
+    partes = []
+    desde = 0
+    for inicio, fin in zip(np.flatnonzero(bordes == 1), np.flatnonzero(bordes == -1)):
+        if inicio == 0 or fin >= len(audio) or fin - inicio <= conservar:
+            continue
+        corte = inicio + izquierda
+        sigue = fin - (conservar - izquierda)
+        partes.append(audio[desde:corte])
+        partes.append(audio[corte : corte + fundido] * rampa + audio[sigue : sigue + fundido] * rampa[::-1])
+        desde = sigue + fundido
+    if not partes:
+        return audio
+    partes.append(audio[desde:])
+    return np.concatenate(partes)
+
+
 def pulir(audio: np.ndarray, tasa: int) -> np.ndarray:
-    """Quita el silencio de los extremos, iguala el volumen y agrega la pausa final."""
+    """Quita el silencio de los extremos, acorta los internos largos (con
+    --pausa-maxima), iguala el volumen y agrega la pausa final."""
     audio = np.asarray(audio, dtype=np.float32)
     cuadro = int(0.01 * tasa)
     niveles = 20 * np.log10(np.sqrt(np.convolve(audio**2, np.ones(cuadro) / cuadro, mode="same")) + 1e-9)
     con_voz = np.where(niveles > UMBRAL_SILENCIO_DB)[0]
     if con_voz.size:
         margen = int(MARGEN_S * tasa)
-        audio = audio[max(0, con_voz[0] - margen) : con_voz[-1] + margen]
+        desde, hasta = max(0, con_voz[0] - margen), con_voz[-1] + margen
+        audio, niveles = audio[desde:hasta], niveles[desde:hasta]
+        if opciones.pausa_maxima > 0:
+            audio = acortar_pausas(audio, niveles, tasa, opciones.pausa_maxima)
         habla = audio[np.abs(audio) > 10 ** (UMBRAL_SILENCIO_DB / 20)]
         audio = audio * (10 ** (NIVEL_DB / 20) / (np.sqrt(np.mean(habla**2)) + 1e-9))
         pico = np.max(np.abs(audio))
