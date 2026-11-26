@@ -82,6 +82,16 @@ reproducir de principio a fin.
 Cada fragmento es una frase. Solo se juntan con la siguiente las frases de
 menos de 25 caracteres, que sonarían entrecortadas por sí solas.
 
+Una frase termina en un punto, una pregunta o una exclamación seguidos de
+espacio, salvo que la palabra siguiente empiece en minúscula ("a las 3 p. m.
+con", "no sé... y se fue") o que el punto sea de una abreviatura: títulos
+(Sr., Dra., Lic., Mr., Mrs.), formas como p. ej., EE. UU., a. m., e.g., i.e.,
+U.S., pág. o aprox., iniciales sueltas ("J. K.") y "No." o un mes en inglés
+delante de una cifra. "etc." delante de una mayúscula sí cierra la frase. Un
+corte de más es un fragmento de audio aparte, con su silencio y su tono de
+final en medio de la frase; uno de menos solo junta dos frases en un
+fragmento, y la voz lee el punto igual. Por eso, ante la duda, no se corta.
+
 Antes los fragmentos acumulaban frases hasta 220 caracteres. Se cambió por el
 panel de texto: si un fragmento lleva tres frases, el reproductor sabe que
 suena ese fragmento, pero no cuál de las tres. Con una frase por fragmento,

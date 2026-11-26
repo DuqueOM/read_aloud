@@ -83,6 +83,19 @@ mismo protocolo que Piper y que usa, de la carpeta de trabajo, el entorno
 `modelos\voz_app` (`ajuste.json`, `voz.safetensors` y `lora.safetensors`). Lo
 que pasa dentro queda en `read_aloud_piper\runtime\qwen.log`.
 
+Qwen genera las frases en grupos de hasta `QwenBatch`, y no hay audio de un
+grupo hasta que termina entero. `qwen.log` anota de cada grupo cuántas frases
+tenía, cuánto tardó, los segundos de audio que salieron y el factor (tiempo
+de generación entre segundos de audio: por encima de 1, el grupo tarda más en
+generarse que en sonar). Cuando el reproductor tiene que esperar un audio que
+aún no está listo, `daemon.log` lo anota con el fragmento, los segundos, el
+motor y el tamaño del grupo, y al terminar o detener la lectura deja un
+resumen. Para verlo por día:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\resumen_esperas.ps1 -Dias 3
+```
+
 Qwen tarda unos 20 s en cargar (hasta un minuto si Windows no tiene sus
 librerías en la cache del disco) y ocupa unos 5 GB de la tarjeta y 2.3 GB de
 RAM. Para que ninguna lectura espere esa carga, se abre con el proceso
