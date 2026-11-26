@@ -41,10 +41,12 @@ argumentos.add_argument("--voz", required=True, help="carpeta de la voz afinada"
 argumentos.add_argument("--hf-home", required=True, help="cache de Hugging Face con el modelo base")
 argumentos.add_argument("--registro", required=True)
 argumentos.add_argument("--silencio", type=float, default=0.36, help="segundos de silencio al final")
+# El tope de 0.3 s se eligio de oido (26 de noviembre de 2026) entre 0.6, 0.45
+# y 0.3, con ocho frases en espanol e ingles de la voz propia.
 argumentos.add_argument(
     "--pausa-maxima",
     type=float,
-    default=0.0,
+    default=0.3,
     help="segundos que puede durar, como mucho, un silencio dentro de la frase; 0 los deja como salen",
 )
 argumentos.add_argument("--inactivo", type=float, default=0.0, help="minutos sin ordenes antes de terminar; 0 es nunca")

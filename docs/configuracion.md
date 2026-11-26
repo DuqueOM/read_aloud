@@ -83,6 +83,13 @@ mismo protocolo que Piper y que usa, de la carpeta de trabajo, el entorno
 `modelos\voz_app` (`ajuste.json`, `voz.safetensors` y `lora.safetensors`). Lo
 que pasa dentro queda en `read_aloud_piper\runtime\qwen.log`.
 
+A veces Qwen calla casi un segundo a mitad de frase, más que la pausa entre
+dos frases. Por eso cada silencio interno de más de 0,3 s se deja en 0,3 s:
+se quita el centro del silencio, sin tocar la voz ni los extremos. El tope es
+`--pausa-maxima` en `lib\servidor_qwen.py` (`0` deja el audio como sale). No
+está en el panel de ajustes: la pausa que se oye entre frases y entre
+párrafos se cambia ahí, con «Pausa entre frases» y «Pausa entre párrafos».
+
 Qwen genera las frases en grupos de hasta `QwenBatch`, y no hay audio de un
 grupo hasta que termina entero. `qwen.log` anota de cada grupo cuántas frases
 tenía, cuánto tardó, los segundos de audio que salieron y el factor (tiempo
