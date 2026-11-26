@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Running `parar_read_aloud.ps1` by hand without `-Root` in Windows PowerShell
+  5.1 failed with "The path is not of a legal form" and went on with an empty
+  folder: it matched the resident process and the own voice server of any
+  folder, not only its own. It now uses its own folder. The installer, the
+  uninstaller and `setup.ps1` always pass `-Root` and were not affected.
+
 ## [1.3.4] - 2026-11-10
 
 Documentation only: the app is the same as in 1.3.3.
