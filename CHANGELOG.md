@@ -7,8 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.5] - 2026-11-26
+
+Fewer long pauses between sentences, and sliders in the settings panel that go
+where you click.
+
+### Added
+
+- `daemon.log` records every time the player has to wait for audio that is not
+  ready yet (the fragment, the seconds, the engine and how many sentences were
+  in its group), and a summary when a reading ends or is stopped. `qwen.log`
+  adds to each group the seconds of audio it produced and the factor
+  (generation time divided by audio time: above 1, the group takes longer to
+  generate than to play). `tools/resumen_esperas.ps1` summarizes both by day.
+
 ### Fixed
 
+- Text was split into sentences at every period followed by a space, so
+  "3.30 p. m. con el Sr. López" or "The U.S. team met Mr. Smith" were read as
+  several audio chunks, each with its own silence (about 0.46 s) and a falling,
+  end-of-sentence tone; "The U.S. team met Mr." was even read with the Spanish
+  voice. A sentence no longer ends when the next word starts in lowercase,
+  after common Spanish and English abbreviations (Sr., Dra., Lic., pág.,
+  p. ej., EE. UU., a. m., Mr., Mrs., vs., e.g., i.e., U.S. and others), after
+  single initials ("J. K.") or after "No." or an English month before a number.
+  "etc." before a capital letter still ends the sentence.
+- The own voice (Qwen) sometimes went silent for almost a second in the middle
+  of a sentence, longer than the pause between two sentences. Silences inside a
+  sentence are now capped at 0.3 s, chosen by ear (`--pausa-maxima` in
+  `lib/servidor_qwen.py`); the speech around them and the edges are not
+  touched.
+- Clicking the track of a slider in the settings panel moved it by a large
+  step instead of to the clicked point: "Pause between sentences" (0 to 1 s)
+  jumped to one end, and "Pause between paragraphs" went up 1 s and back down
+  on the next click. The six sliders now go to the clicked point and can be
+  dragged from there; Page Up and Page Down move a tenth of the range.
 - Running `parar_read_aloud.ps1` by hand without `-Root` in Windows PowerShell
   5.1 failed with "The path is not of a legal form" and went on with an empty
   folder: it matched the resident process and the own voice server of any
@@ -296,7 +329,8 @@ First public version.
 - GitHub Actions running Pester, PSScriptAnalyzer, ruff and gitleaks over the
   whole history, with every action pinned to a commit.
 
-[Unreleased]: https://github.com/DuqueOM/read_aloud/compare/v1.3.4...HEAD
+[Unreleased]: https://github.com/DuqueOM/read_aloud/compare/v1.3.5...HEAD
+[1.3.5]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.3.5
 [1.3.4]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.3.4
 [1.3.3]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.3.3
 [1.3.2]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.3.2
