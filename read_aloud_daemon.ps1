@@ -1319,20 +1319,28 @@ $ui.VolumeFader.Add_ValueChanged({
     if ($script:volumeSincronizando) { return }
     Set-PlaybackVolumeValue ([Math]::Round($e.NewValue) / 100.0) -NoSave
 })
-# Un clic en la pista lleva la perilla ahi (IsMoveToPointEnabled), pero WPF no
-# empieza a arrastrarla: si se sigue moviendo con el boton pulsado, no pasaba
-# nada. Este manejador, que recibe el clic aunque el deslizador ya lo diera por
-# atendido, le entrega el clic a la perilla para que siga al raton.
-$ui.VolumeFader.AddHandler([Windows.UIElement]::PreviewMouseLeftButtonDownEvent, [Windows.Input.MouseButtonEventHandler]{
-    param($sender, $e)
-    $pista = $sender.Template.FindName('PART_Track', $sender)
-    if ($null -eq $pista -or $pista.Thumb.IsMouseOver -or $pista.Thumb.IsDragging) { return }
-    $pista.UpdateLayout()
-    $clic = New-Object Windows.Input.MouseButtonEventArgs($e.MouseDevice, $e.Timestamp, [Windows.Input.MouseButton]::Left)
-    $clic.RoutedEvent = [Windows.UIElement]::MouseLeftButtonDownEvent
-    $clic.Source = $pista.Thumb
-    $pista.Thumb.RaiseEvent($clic)
-}, $true)
+
+function Enable-SliderTrackDrag {
+    # Un clic en la pista lleva la perilla ahi (IsMoveToPointEnabled, que el
+    # deslizador debe tener), pero WPF no empieza a arrastrarla: si se sigue
+    # moviendo con el boton pulsado, no pasaba nada. Este manejador, que recibe
+    # el clic aunque el deslizador ya lo diera por atendido, le entrega el clic
+    # a la perilla para que siga al raton. Lo usan el volumen y los
+    # deslizadores del panel de ajustes.
+    param([Windows.Controls.Slider]$Slider)
+
+    $Slider.AddHandler([Windows.UIElement]::PreviewMouseLeftButtonDownEvent, [Windows.Input.MouseButtonEventHandler]{
+        param($sender, $e)
+        $pista = $sender.Template.FindName('PART_Track', $sender)
+        if ($null -eq $pista -or $pista.Thumb.IsMouseOver -or $pista.Thumb.IsDragging) { return }
+        $pista.UpdateLayout()
+        $clic = New-Object Windows.Input.MouseButtonEventArgs($e.MouseDevice, $e.Timestamp, [Windows.Input.MouseButton]::Left)
+        $clic.RoutedEvent = [Windows.UIElement]::MouseLeftButtonDownEvent
+        $clic.Source = $pista.Thumb
+        $pista.Thumb.RaiseEvent($clic)
+    }, $true)
+}
+Enable-SliderTrackDrag $ui.VolumeFader
 $ui.VolumeFader.Add_PreviewMouseLeftButtonUp({ Save-PendingVolume })
 $ui.VolumeFader.Add_LostMouseCapture({ Save-PendingVolume })
 $ui.VolumeFader.Add_MouseWheel({

@@ -11,6 +11,7 @@ lectura a propósito y hay que actualizar la prueba.
 | `ReadAloud.Core.Tests.ps1` | `lib\ReadAloud.Core.ps1`: rutas, capas de ajustes, elección del motor y lectura y alargado de WAV. |
 | `SpeechPlan.Tests.ps1` | El plan completo de cada texto de `fixtures\textos` contra `fixtures\planes`, y una prueba de humo de `read_aloud.ps1 -ShowPlan`. |
 | `Codificacion.Tests.ps1` | Que cada archivo de PowerShell tenga BOM o sea ASCII: Windows PowerShell 5.1 lee como ANSI los que no tienen BOM, y una tilde escrita tal cual llega cambiada al código. |
+| `Deslizadores.Tests.ps1` | Que cada deslizador del reproductor y del panel de ajustes lleve el valor al punto del clic, que su paso grande no pase de un cuarto del recorrido y que los del panel se puedan arrastrar desde la pista. |
 
 ## Correrlas
 
