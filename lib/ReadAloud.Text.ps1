@@ -132,7 +132,72 @@ function Get-DocumentLanguage {
     return $Fallback
 }
 
+# Abreviaturas tras las que no se corta la frase aunque siga una mayuscula:
+# titulos y formas que casi nunca cierran una frase ("Sr. Lopez", "Mr. Smith",
+# "e.g. Before"). Van en minusculas y sin tildes, que es como se compara la
+# palabra ("pag" vale por la forma con tilde). Las de dos partes se comparan
+# juntas y sin el espacio: "p. ej." es "p.ej" y "EE. UU." es "ee.uu".
+#
+# Si una de estas cierra de verdad una frase, las dos frases quedan en un solo
+# fragmento y la voz lee el punto igual, con su pausa. Un corte de mas, en
+# cambio, es un audio aparte: silencio y entonacion de final en medio de la
+# frase. Por eso, ante la duda, no se corta.
+$script:RA_Abbreviations = @(
+    'sr', 'sra', 'srta', 'sres', 'sras', 'dr', 'dra', 'dres', 'lic', 'ing', 'prof', 'ud', 'uds',
+    'pag', 'num', 'aprox', 'p.ej', 'ee.uu', 'a.m', 'p.m',
+    'mr', 'mrs', 'ms', 'st', 'vs', 'e.g', 'i.e', 'u.s', 'u.k'
+)
+
+# Estas solo cuando sigue una cifra: "No. 5", "Jan. 3". Delante de una
+# mayuscula son fin de frase ("Le dije que no. Luego...", "...in Sept. We").
+$script:RA_AbbreviationsBeforeNumber = @(
+    'no', 'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'sept', 'oct', 'nov', 'dec'
+)
+
+function Test-SentenceEnd {
+    # Decide si un signo de fin seguido de espacio cierra la frase. Before es
+    # el texto hasta el signo (sin el), Punct el signo o los signos (".",
+    # "...", "?!") y After lo que sigue al espacio.
+    param([string]$Before, [string]$Punct, [string]$After)
+
+    if ($After -eq '') { return $true }
+    $next = $After[0]
+
+    # Sigue en minuscula: la frase continua ("p. m. con", "no se... y se fue").
+    if ([char]::IsLower($next)) { return $false }
+    # Una pregunta o exclamacion en espanol abre siempre frase nueva.
+    if ($next -eq [char]0x00BF -or $next -eq [char]0x00A1) { return $true }
+    # Puntos suspensivos, pregunta o exclamacion: fin de frase.
+    if ($Punct -ne '.') { return $true }
+
+    # Solo importa el final: la palabra pegada al punto y la anterior.
+    if ($Before.Length -gt 40) { $Before = $Before.Substring($Before.Length - 40) }
+    $word = ([regex]::Match($Before, '\p{L}[\p{L}.]*$')).Value
+    if ($word -eq '') { return $true }
+
+    # Iniciales sueltas ("J. K. Rowling") y siglas de letra doble ("EE. UU.").
+    if ($word -cmatch '^\p{Lu}$' -or $word -cmatch '^(\p{Lu})\1$') { return $false }
+
+    $key = (Remove-Diacritics $word).ToLowerInvariant()
+    if ($script:RA_Abbreviations -contains $key) { return $false }
+
+    $pair = [regex]::Match($Before, '(?<!\p{L})(\p{L}{1,2})\.\s(\p{L}{1,2})$')
+    if ($pair.Success) {
+        $pairKey = (Remove-Diacritics ($pair.Groups[1].Value + '.' + $pair.Groups[2].Value)).ToLowerInvariant()
+        if ($script:RA_Abbreviations -contains $pairKey) { return $false }
+    }
+
+    if ([char]::IsDigit($next) -and $script:RA_AbbreviationsBeforeNumber -contains $key) { return $false }
+
+    # "etc." y cualquier otra palabra: fin de frase.
+    return $true
+}
+
 function Split-IntoSentences {
+    # Parte en frases por punto, pregunta o exclamacion seguidos de espacio, y
+    # por salto de linea. No corta cuando sigue una minuscula ni despues de
+    # una abreviatura (ver Test-SentenceEnd). Cada frase es un trozo del texto
+    # original, sin cambios: lo que se muestra coincide con lo que se oye.
     param([string]$Text)
 
     $t = $Text -replace "`r`n", "`n"
@@ -143,10 +208,21 @@ function Split-IntoSentences {
         $trimmed = $line.Trim()
         if ($trimmed -eq '') { continue }
 
-        foreach ($piece in [regex]::Split($trimmed, '(?<=[\.\!\?])\s+')) {
-            $p = $piece.Trim()
+        $start = 0
+        foreach ($m in [regex]::Matches($trimmed, '[\.\!\?]+\s+')) {
+            $punct = $m.Value.TrimEnd()
+            $desde = [Math]::Max(0, $m.Index - 40)
+            $before = $trimmed.Substring($desde, $m.Index - $desde)
+            $after = $trimmed.Substring($m.Index + $m.Length, 1)
+            if (-not (Test-SentenceEnd -Before $before -Punct $punct -After $after)) { continue }
+
+            $p = $trimmed.Substring($start, $m.Index + $punct.Length - $start).Trim()
             if ($p -ne '') { [void]$sentences.Add($p) }
+            $start = $m.Index + $m.Length
         }
+
+        $p = $trimmed.Substring($start).Trim()
+        if ($p -ne '') { [void]$sentences.Add($p) }
     }
 
     return ,$sentences
