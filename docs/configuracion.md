@@ -83,6 +83,26 @@ mismo protocolo que Piper y que usa, de la carpeta de trabajo, el entorno
 `modelos\voz_app` (`ajuste.json`, `voz.safetensors` y `lora.safetensors`). Lo
 que pasa dentro queda en `read_aloud_piper\runtime\qwen.log`.
 
+A veces Qwen calla casi un segundo a mitad de frase, más que la pausa entre
+dos frases. Por eso cada silencio interno de más de 0,3 s se deja en 0,3 s:
+se quita el centro del silencio, sin tocar la voz ni los extremos. El tope es
+`--pausa-maxima` en `lib\servidor_qwen.py` (`0` deja el audio como sale). No
+está en el panel de ajustes: la pausa que se oye entre frases y entre
+párrafos se cambia ahí, con «Pausa entre frases» y «Pausa entre párrafos».
+
+Qwen genera las frases en grupos de hasta `QwenBatch`, y no hay audio de un
+grupo hasta que termina entero. `qwen.log` anota de cada grupo cuántas frases
+tenía, cuánto tardó, los segundos de audio que salieron y el factor (tiempo
+de generación entre segundos de audio: por encima de 1, el grupo tarda más en
+generarse que en sonar). Cuando el reproductor tiene que esperar un audio que
+aún no está listo, `daemon.log` lo anota con el fragmento, los segundos, el
+motor y el tamaño del grupo, y al terminar o detener la lectura deja un
+resumen. Para verlo por día:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\resumen_esperas.ps1 -Dias 3
+```
+
 Qwen tarda unos 20 s en cargar (hasta un minuto si Windows no tiene sus
 librerías en la cache del disco) y ocupa unos 5 GB de la tarjeta y 2.3 GB de
 RAM. Para que ninguna lectura espere esa carga, se abre con el proceso

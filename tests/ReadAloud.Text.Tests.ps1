@@ -50,6 +50,12 @@ Describe 'Get-DocumentLanguage' {
 }
 
 Describe 'Split-IntoSentences' {
+    BeforeAll {
+        # Split-IntoSentences devuelve la lista con return ,: dentro de @() quedaría
+        # anidada. Así se compara frase por frase.
+        function Get-Frases([string]$Texto) { return (Split-IntoSentences $Texto).ToArray() }
+    }
+
     It 'parte por punto, pregunta, exclamación y salto de línea' {
         $frases = Split-IntoSentences "Hola. ¿Qué tal? ¡Bien!`r`nOtra línea"
         @($frases) | Should -Be @('Hola.', '¿Qué tal?', '¡Bien!', 'Otra línea')
@@ -63,6 +69,82 @@ Describe 'Split-IntoSentences' {
     It 'ignora las líneas vacías' {
         $frases = Split-IntoSentences "Uno.`n`n   `nDos."
         $frases.Count | Should -Be 2
+    }
+
+    It 'corta solo en los finales de frase de un texto con abreviaturas' {
+        $texto = 'El Dr. García llegó a las 3.30 p. m. con el Sr. López, etc. Luego dijo: "no sé"... y se fue. ' +
+            '¿En serio?! Sí. Mide 2,5 m y pesa 1.200 kg; según EE. UU. es mucho, p. ej. en Texas. ' +
+            'The U.S. team met Mr. Smith at 5 p.m. on Jan. 3, e.g. before lunch... Really?! Yes. It costs $3.50, i.e. cheap.'
+        @(Get-Frases $texto) | Should -Be @(
+            'El Dr. García llegó a las 3.30 p. m. con el Sr. López, etc.'
+            'Luego dijo: "no sé"... y se fue.'
+            '¿En serio?!'
+            'Sí.'
+            'Mide 2,5 m y pesa 1.200 kg; según EE. UU. es mucho, p. ej. en Texas.'
+            'The U.S. team met Mr. Smith at 5 p.m. on Jan. 3, e.g. before lunch...'
+            'Really?!'
+            'Yes.'
+            'It costs $3.50, i.e. cheap.'
+        )
+    }
+
+    It 'no corta si sigue una minúscula: <Texto>' -ForEach @(
+        @{ Texto = 'Llegó a las 3 p. m. con su hermano.' }
+        @{ Texto = 'Pensé... y luego dije que sí.' }
+        @{ Texto = 'Compré pan, leche, etc. y luego volví.' }
+        @{ Texto = '¿Vienes? preguntó Ana.' }
+        @{ Texto = 'Le escribí. después me arrepentí.' }
+    ) {
+        @(Get-Frases $Texto) | Should -Be @($Texto)
+    }
+
+    It 'no corta después de una abreviatura: <Texto>' -ForEach @(
+        @{ Texto = 'Lo atendió el Dr. García con la Dra. Díaz y la Srta. Ruiz.' }
+        @{ Texto = 'Firmaron el Lic. Pérez, el Ing. Gómez y el Prof. Ruiz.' }
+        @{ Texto = 'Si Ud. quiere, Uds. pueden venir con el Sr. y la Sra. Vega.' }
+        @{ Texto = 'Ver pág. 12, núm. 3 y aprox. 30 casos más.' }
+        @{ Texto = 'Hay lenguajes libres, p. ej. Python y Go.' }
+        @{ Texto = 'Viajó a EE. UU. En marzo volvió.' }
+        @{ Texto = 'Nos vemos a las 8 a. m. Juan trae el café.' }
+        @{ Texto = 'Mr. Smith, Mrs. Jones and Ms. Lee met at St. Patrick Church.' }
+        @{ Texto = 'It was Spain vs. France, e.g. Real vs. Barcelona, i.e. Madrid.' }
+        @{ Texto = 'The U.S. Army and the U.K. Navy met at 5 p.m. Then they left.' }
+    ) {
+        @(Get-Frases $Texto) | Should -Be @($Texto)
+    }
+
+    It 'no corta después de No. o de un mes en inglés si sigue una cifra' {
+        @(Get-Frases 'Vive en la casa No. 5 de la calle.') | Should -Be @('Vive en la casa No. 5 de la calle.')
+        @(Get-Frases 'It was on Jan. 3 and Feb. 14 of 2026.') | Should -Be @('It was on Jan. 3 and Feb. 14 of 2026.')
+    }
+
+    It 'corta después de No. o de un mes si sigue una mayúscula' {
+        @(Get-Frases '¿Vienes? No. Luego te llamo.') | Should -Be @('¿Vienes?', 'No.', 'Luego te llamo.')
+        @(Get-Frases 'We met in Sept. Then we left.') | Should -Be @('We met in Sept.', 'Then we left.')
+    }
+
+    It 'no corta en iniciales sueltas' {
+        @(Get-Frases 'J. K. Ramírez lo escribió.') | Should -Be @('J. K. Ramírez lo escribió.')
+        @(Get-Frases 'Lo firmó J. R. R. Ortiz. Después lo publicaron.') |
+            Should -Be @('Lo firmó J. R. R. Ortiz.', 'Después lo publicaron.')
+    }
+
+    It 'corta ante mayúscula, ¿, ¡, comillas o cifra si no es abreviatura' {
+        @(Get-Frases 'Uno. ¿Dos? ¡Tres! "Cuatro", dijo. 5 más.') |
+            Should -Be @('Uno.', '¿Dos?', '¡Tres!', '"Cuatro", dijo.', '5 más.')
+    }
+
+    It 'corta después de etc. y de puntos suspensivos si sigue una mayúscula' {
+        @(Get-Frases 'Compré pan, leche, etc. Luego volví.') | Should -Be @('Compré pan, leche, etc.', 'Luego volví.')
+        @(Get-Frases 'Pensé... Luego dije que sí.') | Should -Be @('Pensé...', 'Luego dije que sí.')
+    }
+
+    It 'corta después de una abreviatura si sigue ¿ o ¡' {
+        @(Get-Frases 'Gracias, Sr. ¿Algo más?') | Should -Be @('Gracias, Sr.', '¿Algo más?')
+    }
+
+    It 'corta después de una unidad de una letra' {
+        @(Get-Frases 'Mide 2 m. Luego crece.') | Should -Be @('Mide 2 m.', 'Luego crece.')
     }
 }
 
@@ -400,5 +482,19 @@ Describe 'Build-SpeechPlan' {
 
     It 'no devuelve fragmentos con un texto vacío' {
         (Build-SpeechPlan -Text "`n`n   `n").Chunks.Count | Should -Be 0
+    }
+
+    It 'con abreviaturas, el panel muestra el texto entero y cada fragmento en su idioma' {
+        $texto = 'El Dr. García llegó a las 3.30 p. m. con el Sr. López, etc. Luego dijo: "no sé"... y se fue. ' +
+            'The U.S. team met Mr. Smith at 5 p.m. on Jan. 3, e.g. before lunch... Really?! Yes.'
+        $plan = Build-SpeechPlan -Text $texto -MinChunkChars 25
+        (@($plan.Chunks | ForEach-Object { $_.Display }) -join ' ') | Should -BeExactly $texto
+        @($plan.Chunks | ForEach-Object { $_.Display }) | Should -Be @(
+            'El Dr. García llegó a las 3.30 p. m. con el Sr. López, etc.'
+            'Luego dijo: "no sé"... y se fue.'
+            'The U.S. team met Mr. Smith at 5 p.m. on Jan. 3, e.g. before lunch...'
+            'Really?! Yes.'
+        )
+        @($plan.Chunks | ForEach-Object { $_.Lang }) | Should -Be @('es', 'es', 'en', 'en')
     }
 }

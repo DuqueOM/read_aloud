@@ -234,7 +234,7 @@ $xamlAjustes = @'
             </Grid.ColumnDefinitions>
             <TextBlock Style="{StaticResource Etiqueta}" Text="Opacidad en reposo"/>
             <Slider x:Name="Opacidad" AutomationProperties.Name="Opacidad en reposo" Grid.Column="1" Minimum="0.3" Maximum="1" TickFrequency="0.05"
-                    IsSnapToTickEnabled="True" VerticalAlignment="Center"/>
+                    LargeChange="0.1" IsSnapToTickEnabled="True" IsMoveToPointEnabled="True" VerticalAlignment="Center"/>
             <TextBlock x:Name="OpacidadValor" Grid.Column="2" Style="{StaticResource Valor}"/>
           </Grid>
           <TextBlock Style="{StaticResource Nota}"
@@ -255,7 +255,7 @@ $xamlAjustes = @'
             </Grid.ColumnDefinitions>
             <TextBlock Style="{StaticResource Etiqueta}" Text="Letra del texto"/>
             <Slider x:Name="Fuente" AutomationProperties.Name="Letra del texto" Grid.Column="1" Minimum="10" Maximum="22" TickFrequency="1"
-                    IsSnapToTickEnabled="True" VerticalAlignment="Center"/>
+                    LargeChange="2" IsSnapToTickEnabled="True" IsMoveToPointEnabled="True" VerticalAlignment="Center"/>
             <TextBlock x:Name="FuenteValor" Grid.Column="2" Style="{StaticResource Valor}"/>
           </Grid>
 
@@ -273,11 +273,11 @@ $xamlAjustes = @'
             <Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
             <TextBlock Style="{StaticResource Etiqueta}" Text="Alto del panel"/>
             <Slider x:Name="PanelAlto" AutomationProperties.Name="Alto del panel" Grid.Column="1" Minimum="80" Maximum="700" TickFrequency="10"
-                    IsSnapToTickEnabled="True" VerticalAlignment="Center"/>
+                    LargeChange="50" IsSnapToTickEnabled="True" IsMoveToPointEnabled="True" VerticalAlignment="Center"/>
             <TextBlock x:Name="PanelAltoValor" Grid.Column="2" Style="{StaticResource Valor}"/>
             <TextBlock Grid.Row="1" Style="{StaticResource Etiqueta}" Text="Ancho del panel"/>
             <Slider x:Name="PanelAncho" AutomationProperties.Name="Ancho del panel" Grid.Row="1" Grid.Column="1" Maximum="1400" TickFrequency="10"
-                    IsSnapToTickEnabled="True" VerticalAlignment="Center"/>
+                    LargeChange="100" IsSnapToTickEnabled="True" IsMoveToPointEnabled="True" VerticalAlignment="Center"/>
             <TextBlock x:Name="PanelAnchoValor" Grid.Row="1" Grid.Column="2" Style="{StaticResource Valor}"/>
           </Grid>
           <TextBlock Style="{StaticResource Nota}" Text="También se cambia arrastrando los bordes del reproductor."/>
@@ -351,11 +351,11 @@ $xamlAjustes = @'
             <Grid.RowDefinitions><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
             <TextBlock Style="{StaticResource Etiqueta}" Text="Pausa entre frases"/>
             <Slider x:Name="PausaFrase" AutomationProperties.Name="Pausa entre frases" Grid.Column="1" Minimum="0" Maximum="1" TickFrequency="0.02"
-                    IsSnapToTickEnabled="True" VerticalAlignment="Center"/>
+                    LargeChange="0.1" IsSnapToTickEnabled="True" IsMoveToPointEnabled="True" VerticalAlignment="Center"/>
             <TextBlock x:Name="PausaFraseValor" Grid.Column="2" Style="{StaticResource Valor}"/>
             <TextBlock Grid.Row="1" Style="{StaticResource Etiqueta}" Text="Pausa entre párrafos"/>
             <Slider x:Name="PausaParrafo" AutomationProperties.Name="Pausa entre párrafos" Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="1.5"
-                    TickFrequency="0.05" IsSnapToTickEnabled="True" VerticalAlignment="Center"/>
+                    TickFrequency="0.05" LargeChange="0.15" IsSnapToTickEnabled="True" IsMoveToPointEnabled="True" VerticalAlignment="Center"/>
             <TextBlock x:Name="PausaParrafoValor" Grid.Row="1" Grid.Column="2" Style="{StaticResource Valor}"/>
           </Grid>
           <TextBlock Style="{StaticResource Nota}"
@@ -642,7 +642,16 @@ foreach ($opcion in @(Get-OpcionesAjuste $ajustesVentana)) {
 
 # --------------------------------------------------------------------------
 # Deslizadores.
+#
+# Un clic en la pista lleva la perilla a ese punto (IsMoveToPointEnabled en el
+# XAML) y, con el botón pulsado, la perilla sigue al ratón. Antes un clic movía
+# el valor un paso grande hacia el clic (LargeChange, 1 por defecto): en una
+# pausa de 0 a 1 s lo mandaba a un extremo y el clic siguiente lo devolvía.
 # --------------------------------------------------------------------------
+foreach ($deslizador in @($aj.Opacidad, $aj.Fuente, $aj.PanelAlto, $aj.PanelAncho, $aj.PausaFrase, $aj.PausaParrafo)) {
+    Enable-SliderTrackDrag $deslizador
+}
+
 function Format-Segundos {
     param([double]$Valor)
     return ($Valor.ToString('0.00', $invariante) + ' s')

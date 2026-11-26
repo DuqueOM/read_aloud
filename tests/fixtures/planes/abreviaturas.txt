@@ -1,0 +1,25 @@
+idioma del texto: es
+[0] es, bloque 0 (parrafo), pausa 0.00 s
+    voz:     El Dr. García llegó a las 3.30 p. m. con el Sr. López, etc.
+    muestra: El Dr. García llegó a las 3.30 p. m. con el Sr. López, etc.
+[1] es, bloque 0 (parrafo), pausa 0.00 s
+    voz:     Luego dijo: "no sé"... y se fue.
+    muestra: Luego dijo: "no sé"... y se fue.
+[2] es, bloque 0 (parrafo), pausa 0.00 s
+    voz:     ¿En serio?! Sí. Mide 2,5 m y pesa 1.200 kg; según EE. UU. es mucho, p. ej. en Texas.
+    muestra: ¿En serio?! Sí. Mide 2,5 m y pesa 1.200 kg; según EE. UU. es mucho, p. ej. en Texas.
+[3] en, bloque 0 (parrafo), pausa 0.00 s
+    voz:     The U.S. team met Mr. Smith at 5 p.m. on Jan. 3, e.g. before lunch...
+    muestra: The U.S. team met Mr. Smith at 5 p.m. on Jan. 3, e.g. before lunch...
+[4] en, bloque 0 (parrafo), pausa 0.00 s
+    voz:     Really?! Yes. It costs $3.50, i.e. cheap.
+    muestra: Really?! Yes. It costs $3.50, i.e. cheap.
+[5] es, bloque 0 (parrafo), pausa 0.00 s
+    voz:     Firmaron J. K. Ramírez y el Prof. Ruiz.
+    muestra: Firmaron J. K. Ramírez y el Prof. Ruiz.
+[6] es, bloque 0 (parrafo), pausa 0.00 s
+    voz:     Ver pág. 12, núm. 3. Vive en la casa No. 5 desde hace aprox. 30 años.
+    muestra: Ver pág. 12, núm. 3. Vive en la casa No. 5 desde hace aprox. 30 años.
+[7] es, bloque 0 (parrafo), pausa 0.00 s
+    voz:     Gracias, Sr. ¿Algo más?
+    muestra: Gracias, Sr. ¿Algo más?
