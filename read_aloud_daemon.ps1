@@ -211,6 +211,21 @@ $sync.Priority = -1
 $sync.PriorityGen = 0
 $sync.Stopping = $false
 $sync.ReloadSynth = $null
+# Traduccion rapida (ADR 0016). El reproductor encola las ordenes en
+# TranslateJobs y recibe en TranslateDone lo que va saliendo (el comienzo,
+# cada parte, el final, los errores y los cambios de voz).
+$sync.TranslateJobs = New-Object 'Collections.Concurrent.ConcurrentQueue[object]'
+$sync.TranslateDone = New-Object 'Collections.Concurrent.ConcurrentQueue[object]'
+$sync.TranslateSignal = New-Object Threading.AutoResetEvent($false)
+$sync.TranslateStatus = @{}
+# QwenHold: la voz propia le cede la tarjeta al traductor y no se reabre;
+# QwenWake: se la devuelve. QwenProcess es el proceso de la voz propia (lo
+# pone el hilo de voz). Reading: hay una lectura a medias, y la voz no vuelve
+# en mitad de ella.
+$sync.QwenHold = $false
+$sync.QwenWake = $false
+$sync.QwenProcess = $null
+$sync.Reading = $false
 
 $runspaces = New-Object System.Collections.Generic.List[object]
 
@@ -318,6 +333,7 @@ $synthScript = {
             '--lote', $q.Batch
             '--marca', ('"' + $q.BusyFile + '"')
             '--listo', ('"' + $q.ReadyFile + '"')
+            '--reserva', ('"' + $q.ReserveFile + '"')
         ) -join ' '
 
         $psi = New-Object Diagnostics.ProcessStartInfo
@@ -336,8 +352,21 @@ $synthScript = {
         $process = [Diagnostics.Process]::Start($psi)
         $writer = New-Object IO.StreamWriter($process.StandardInput.BaseStream, (New-Object Text.UTF8Encoding($false)))
         $writer.AutoFlush = $true
+        # El hilo de traduccion mira si la voz propia esta abierta, para
+        # saber cuanta tarjeta ocupa y esperar a que la ceda.
+        $sync.QwenProcess = $process
 
         return @{ Process = $process; Writer = $writer }
+    }
+
+    function Close-QwenForTranslation {
+        # Con la prioridad Traduccion (ADR 0016), la voz propia le cede la
+        # tarjeta al traductor: se le cierra la entrada, termina con el codigo
+        # 0 y Restore-QwenProcess no la reabre hasta que se suelte QwenHold.
+        if (-not $processes.ContainsKey('qwen')) { return }
+        try { $processes['qwen'].Writer.Close() } catch { }
+        $processes.Remove('qwen')
+        Write-SynthLog 'La voz propia cede la tarjeta grafica al traductor: se lee con Piper hasta que vuelva.'
     }
 
     function Test-GpuBusy {
@@ -358,6 +387,9 @@ $synthScript = {
     function Get-SynthKey {
         param([string]$Lang)
         if ($cfg.Engines[$Lang] -ne 'qwen') { return $Lang }
+        # La voz propia le cede la tarjeta al traductor. Se cierra al empezar
+        # la vuelta siguiente del bucle, nunca a mitad de un grupo.
+        if ($sync.QwenHold) { return $Lang }
         # Otro paso pesado tiene la tarjeta: se lee con Piper y, si Qwen esta
         # abierto, se le cierra la entrada para que termine y la deje.
         if (Test-GpuBusy -BusyFile $cfg.Qwen.BusyFile) {
@@ -551,6 +583,9 @@ $synthScript = {
             if (-not $existing.Process.HasExited) { return $existing }
             $processes.Remove($key)
         }
+        # Si se cerro mientras le cedia la tarjeta al traductor, no se reabre:
+        # lo que quede del grupo se lee con Piper.
+        if ($key -eq 'qwen' -and $sync.QwenHold) { throw 'La voz propia le cedio la tarjeta al traductor.' }
 
         if ($key -eq 'qwen') { $created = New-QwenProcess } else { $created = New-PiperProcess -Lang $Lang }
         $processes[$key] = $created
@@ -629,6 +664,9 @@ $synthScript = {
                 return
             }
         }
+        # Cedio la tarjeta al traductor a proposito: no es un fallo y no se
+        # reabre hasta que el hilo de traduccion la devuelva.
+        if ($sync.QwenHold) { return }
         if ($qwenWatch.LastExit -eq $qwenIdleExit) { return }
         if (Test-GpuBusy -BusyFile $cfg.Qwen.BusyFile) { return }
         if ((Get-NvidiaFreeGB) -lt $cfg.Qwen.ReopenFreeGB) { return }
@@ -644,6 +682,16 @@ $synthScript = {
             $plan = $sync.ReloadSynth
             $sync.ReloadSynth = $null
             Reset-SynthProcesses -Plan $plan
+        }
+
+        # El hilo de traduccion pide la tarjeta (QwenHold) o la devuelve
+        # (QwenWake): la voz propia se cierra entre dos grupos, o se intenta
+        # abrir enseguida en vez de esperar a la revision de cada 30 s.
+        if ($sync.QwenHold) { Close-QwenForTranslation }
+        if ($sync.QwenWake) {
+            $sync.QwenWake = $false
+            $qwenWatch.LastExit = $null
+            $qwenWatch.Next = [DateTime]::UtcNow
         }
 
         if (-not $sync.SynthJobs.TryDequeue([ref]$job)) {
@@ -718,7 +766,7 @@ $synthScript = {
         # Lo que Qwen no pudo generar se lee con Piper, para no dejar huecos.
         $leftover = Invoke-SynthBatch -Key $key -Batch $batch
         if ($key -eq 'qwen' -and $leftover.Batch.Count -gt 0) {
-            if ($leftover.Error) {
+            if ($leftover.Error -and -not $sync.QwenHold) {
                 # El proceso no responde ni al reabrirlo: el resto de la sesion
                 # se lee con Piper, en vez de esperar a Qwen en cada frase.
                 foreach ($lang in @($cfg.Engines.Keys)) { $cfg.Engines[$lang] = 'piper' }
@@ -769,6 +817,9 @@ $synthConfig = @{
             Log         = $qwenVoice.Log
             BusyFile    = $qwenVoice.BusyFile
             ReadyFile   = (Join-Path (Split-Path -Parent $qwenVoice.Log) 'qwen.listo')
+            # Lo que ocupa en la tarjeta el traductor de Read Aloud: la voz no
+            # lo cuenta como otro programa (lib\servidor_qwen.py --reserva).
+            ReserveFile = (Join-Path $paths.RuntimeDir 'traductor_tarjeta')
             WaitSeconds = [double]$settings.QwenLoadWaitSeconds
             Batch       = [Math]::Max(1, [int]$settings.QwenBatch)
             BatchChars  = [int]$settings.QwenBatchChars
@@ -783,6 +834,575 @@ Start-BackgroundRunspace -Script $synthScript -Variables @{
     sync = $sync
     cfg = $synthConfig
 }
+
+# --------------------------------------------------------------------------
+# Hilo 3: traduccion rapida (ADR 0016).
+# Bergamot con translateLocally -p y los modelos de lenguaje con llama-server,
+# que se abren cuando hacen falta y se cierran tras TranslateIdleMinutes sin
+# uso. Cada traduccion elige con Select-TranslationCombo y una foto del equipo
+# en ese momento. Con la prioridad Traduccion, la voz propia le cede la
+# tarjeta y vuelve sola tras TranslateReturnMinutes sin traducir. El traductor
+# en la tarjeta la cede como la voz propia, y vuelve cuando hay sitio.
+# --------------------------------------------------------------------------
+$translateScript = {
+    . $tcfg.TextLib
+    . $tcfg.TranslateLib
+    . $tcfg.CacheLib
+    . $tcfg.TranslatorsLib
+
+    $cores = Get-PhysicalCoreCount
+    $hilos = Get-TranslatorThreads -PhysicalCores $cores
+    $memoria = New-TranslationMemory
+    $t = @{
+        Bergamot        = $null
+        BergamotLastUse = [DateTime]::Now
+        Server          = $null
+        Yielded         = $null
+        LastTranslation = [DateTime]::Now
+        Vulkan          = $null
+        NextCheck       = [DateTime]::UtcNow
+        NextRoomCheck   = [DateTime]::UtcNow
+        NextCacheClean  = [DateTime]::UtcNow.AddSeconds(60)
+    }
+
+    function Write-TranslateLog {
+        param([string]$Message)
+        try {
+            Add-Content -LiteralPath $tcfg.LogFile -Encoding UTF8 `
+                -Value ('{0}  {1}' -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message)
+        } catch { }
+    }
+
+    function Send-TranslateEvent {
+        param([hashtable]$Evento)
+        $sync.TranslateDone.Enqueue($Evento)
+        if ($sync.Dispatcher) {
+            try { [void]$sync.Dispatcher.BeginInvoke([Windows.Threading.DispatcherPriority]::Normal, $sync.WakeUi) } catch { }
+        }
+    }
+
+    function Get-WhereName {
+        param([string]$Where)
+        if ($Where -eq 'gpu') { return 'en la tarjeta' }
+        return 'en el procesador'
+    }
+
+    function Test-QwenRunning {
+        $p = $sync.QwenProcess
+        if ($null -eq $p) { return $false }
+        try { return -not $p.HasExited } catch { return $false }
+    }
+
+    function Get-VoiceSnapshot {
+        # La voz propia cuenta si esta instalada y algun idioma la usa. Solo
+        # esta cargada si ya aviso que termino de cargar: mientras carga, la
+        # regla de memoria la trata como si aun tuviera que ocupar su sitio.
+        $disponible = [bool]$tcfg.QwenReady -and (@($tcfg.Engines.Values) -contains 'qwen')
+        $cargada = $disponible -and -not $sync.QwenHold -and (Test-QwenRunning) -and [IO.File]::Exists($tcfg.QwenReadyFile)
+        return New-VoiceState -Available $disponible -Loaded $cargada
+    }
+
+    function Get-DeviceNow {
+        return Get-TranslateDeviceSnapshot -Smi $tcfg.Smi -BusyFile $tcfg.BusyFile -PhysicalCores $cores
+    }
+
+    function Read-DeviceProfile {
+        # runtime\perfil_equipo.json, que deja "Medir este equipo". Sin el se
+        # usan las cifras del ADR 0016.
+        if (-not $tcfg.ProfileFile -or -not [IO.File]::Exists($tcfg.ProfileFile)) { return $null }
+        try { return ([IO.File]::ReadAllText($tcfg.ProfileFile) | ConvertFrom-Json) } catch { return $null }
+    }
+
+    function Get-LoadedComboId {
+        # La combinacion que ya esta cargada: esa cabe sin volver a medirla.
+        if ($null -eq $t.Server) { return '' }
+        $v = 'piper'
+        if ((Get-VoiceSnapshot).QwenAvailable -and -not $sync.QwenHold) { $v = 'qwen' }
+        return Get-ComboId -Voice $v -Translator $t.Server.Id -Where $t.Server.Where
+    }
+
+    function Test-BergamotAlive {
+        return ($null -ne $t.Bergamot) -and -not $t.Bergamot.Process.HasExited
+    }
+
+    function Register-TranslatorProcess {
+        # El proceso residente los cierra al salir aunque este hilo no llegue
+        # a hacerlo.
+        param([Diagnostics.Process]$Process, [switch]$Remove)
+        try {
+            if ($Remove) { $sync.TranslatorProcesses.Remove($Process.Id) } else { $sync.TranslatorProcesses[$Process.Id] = $Process }
+        } catch { }
+    }
+
+    function Stop-TranslateServer {
+        param([string]$Why)
+        if ($null -eq $t.Server) { return }
+        $s = $t.Server
+        $t.Server = $null
+        Register-TranslatorProcess -Process $s.Process -Remove
+        Stop-TranslatorProcess -Process $s.Process -WaitMs 0
+        if ($s.Where -eq 'gpu') { Set-GpuReserveFile -Path $tcfg.ReserveFile }
+        Write-TranslateLog ('Traductor {0} ({1}) cerrado: {2}.' -f $s.Id, (Get-WhereName $s.Where), $Why)
+    }
+
+    function Open-TranslateServer {
+        param([hashtable]$Translator, [string]$Where)
+
+        $dispositivo = ''
+        if ($Where -eq 'gpu') {
+            if (-not $t.Vulkan) { $t.Vulkan = Get-VulkanNvidiaDevice -Server $Translator.Server }
+            $dispositivo = $t.Vulkan
+            if (-not $dispositivo) { throw 'llama-server no ve la tarjeta NVIDIA con Vulkan.' }
+        }
+        $antes = (Get-NvidiaMemory -Smi $tcfg.Smi).UsedMiB
+        $puerto = Get-FreeTcpPort
+        $argumentos = Get-LlamaServerArgs -Translator $Translator -Where $Where -Threads $hilos -Port $puerto -Device $dispositivo -LogFile $tcfg.LlamaLog
+        $proceso = Start-LlamaServer -Exe $Translator.Server -Arguments $argumentos
+        Register-TranslatorProcess -Process $proceso
+        try {
+            $segundos = Wait-LlamaServerReady -Process $proceso -Port $puerto -TimeoutSeconds 180 -Sync $sync
+        } catch {
+            Register-TranslatorProcess -Process $proceso -Remove
+            Stop-TranslatorProcess -Process $proceso -WaitMs 0
+            throw
+        }
+
+        $s = @{
+            Process = $proceso; Port = $puerto; Id = $Translator.Id; Where = $Where; Translator = $Translator
+            LastUse = [DateTime]::Now; Baseline = -1.0; QwenSeen = (Test-QwenRunning)
+        }
+        if ($Where -eq 'gpu') {
+            $despues = Get-NvidiaMemory -Smi $tcfg.Smi
+            $ocupa = $despues.UsedMiB - $antes
+            if ($ocupa -le 0) { $ocupa = [double]$Translator.FileMiB + [double]$Translator.CacheMiB + 400 }
+            Set-GpuReserveFile -Path $tcfg.ReserveFile -Process $proceso -MiB $ocupa
+            $s.Baseline = $despues.UsedMiB
+            Write-TranslateLog ('Traductor {0} listo en la tarjeta ({1}) en {2:N1} s; ocupa {3:N0} MiB y quedan {4:N0} libres.' -f $Translator.Id, $dispositivo, $segundos, $ocupa, $despues.FreeMiB)
+        } else {
+            Write-TranslateLog ('Traductor {0} listo en el procesador, con {1} hilos, en {2:N1} s.' -f $Translator.Id, $hilos, $segundos)
+        }
+        $t.Server = $s
+        $t.Yielded = $null
+    }
+
+    function Open-Bergamot {
+        param([hashtable]$Translator)
+        $t.Bergamot = Start-BergamotProcess -Exe $Translator.Path -Threads $hilos
+        $t.BergamotLastUse = [DateTime]::Now
+        Register-TranslatorProcess -Process $t.Bergamot.Process
+        Write-TranslateLog ('Traductor basico (Bergamot) abierto, con {0} hilos.' -f $hilos)
+    }
+
+    function Stop-Bergamot {
+        param([string]$Why)
+        if ($null -eq $t.Bergamot) { return }
+        $b = $t.Bergamot
+        $t.Bergamot = $null
+        Register-TranslatorProcess -Process $b.Process -Remove
+        Stop-TranslatorProcess -Process $b.Process -Stdin $b.In -WaitMs 3000
+        Write-TranslateLog "Traductor basico (Bergamot) cerrado: $Why."
+    }
+
+    function Request-VoiceYield {
+        # La voz propia le cede la tarjeta: el hilo de voz la cierra entre dos
+        # grupos. Se espera a que el proceso termine (hasta 30 s) para que su
+        # memoria quede libre de verdad. Devuelve $true si ya no esta.
+        $sync.QwenHold = $true
+        $t.LastTranslation = [DateTime]::Now
+        [void]$sync.SynthSignal.Set()
+        Send-TranslateEvent @{ Kind = 'voice'; State = 'yielded' }
+        if (-not (Test-QwenRunning)) {
+            Write-TranslateLog 'La voz propia queda en espera para dejarle la tarjeta al traductor.'
+            return $true
+        }
+        $reloj = [Diagnostics.Stopwatch]::StartNew()
+        while ((Test-QwenRunning) -and $reloj.Elapsed.TotalSeconds -lt 30 -and -not $sync.Stopping) { Start-Sleep -Milliseconds 200 }
+        if (Test-QwenRunning) {
+            Write-TranslateLog 'La voz propia no cedio la tarjeta en 30 s: se traduce sin ella por ahora.'
+            return $false
+        }
+        # Lo que soltaba tarda un instante en verse libre en nvidia-smi.
+        Start-Sleep -Milliseconds 500
+        Write-TranslateLog ('La voz propia cedio la tarjeta al traductor en {0:N1} s.' -f $reloj.Elapsed.TotalSeconds)
+        return $true
+    }
+
+    function Restore-Voice {
+        # Devuelve la tarjeta a la voz propia: lo que haya en ella se cierra
+        # antes, y el hilo de voz la vuelve a abrir en cuanto hay sitio.
+        param([string]$Why)
+        if (-not $sync.QwenHold) { return }
+        if ($null -ne $t.Server -and $t.Server.Where -eq 'gpu') { Stop-TranslateServer -Why 'vuelve la voz propia' }
+        $t.Yielded = $null
+        $sync.QwenHold = $false
+        $sync.QwenWake = $true
+        [void]$sync.SynthSignal.Set()
+        Write-TranslateLog "Vuelve la voz propia: $Why."
+        Send-TranslateEvent @{ Kind = 'voice'; State = 'returned'; Reason = $Why }
+    }
+
+    function Get-TranslateOptions {
+        # Los ajustes, con lo que pida la orden encima (para probar desde la
+        # tuberia: quality, priority, model, where).
+        param($Overrides)
+        $o = @{ Quality = [string]$tcfg.Quality; Priority = [string]$tcfg.Priority; Model = [string]$tcfg.Model; Where = [string]$tcfg.Where }
+        if ($Overrides) {
+            foreach ($k in @('Quality', 'Priority', 'Model', 'Where')) {
+                if ($Overrides.ContainsKey($k) -and $null -ne $Overrides[$k]) { $o[$k] = [string]$Overrides[$k] }
+            }
+        }
+        return $o
+    }
+
+    function Select-Combo {
+        param([hashtable]$Options, [object[]]$Translators)
+        $dispositivo = Get-DeviceNow
+        $voz = Get-VoiceSnapshot
+        $sel = Select-TranslationCombo -Translators $Translators -Device $dispositivo -Voice $voz -Options $Options -Perfil (Read-DeviceProfile) -Loaded (Get-LoadedComboId)
+        return @{ Selection = $sel; Device = $dispositivo; Voice = $voz }
+    }
+
+    function New-BasicCombo {
+        # Bergamot como ultimo recurso, con la voz que haya ahora.
+        param([object[]]$Translators)
+        $b = @($Translators | Where-Object { $_.Engine -eq 'bergamot' })
+        if ($b.Count -eq 0) { return $null }
+        $v = 'piper'
+        if ((Get-VoiceSnapshot).QwenAvailable -and -not $sync.QwenHold) { $v = 'qwen' }
+        return @{ Id = (Get-ComboId -Voice $v -Translator 'bergamot' -Where 'cpu'); Voice = $v; Translator = $b[0]; Where = 'cpu'; Score = 0.0; Metrics = @{ Source = 'recurso' } }
+    }
+
+    function Use-Combo {
+        # Deja abierto lo que pide la combinacion y devuelve con cual se
+        # traduce de verdad: si tras ceder la voz el modelo ya no cabe, se
+        # elige otra vez.
+        param([hashtable]$Combo, [hashtable]$Options, [object[]]$Translators, [int]$Number)
+
+        $voz = Get-VoiceSnapshot
+        $paso = Get-TranslatorTransition -Combo $Combo -Server $t.Server -BergamotRunning (Test-BergamotAlive) -VoiceHeld ([bool]$sync.QwenHold) -QwenAvailable $voz.QwenAvailable -Priority $Options.Priority
+
+        if ($paso.HoldVoice) {
+            [void](Request-VoiceYield)
+            if ($Combo.Where -eq 'gpu') {
+                $cabe = Test-TranslatorFits -Translator $Combo.Translator -Where 'gpu' -Device (Get-DeviceNow) -Voice (Get-VoiceSnapshot) -VoiceName 'piper'
+                if (-not $cabe.Fits) {
+                    Write-TranslateLog ('Traduccion {0}: tras ceder la voz, {1} no cabe ({2}); se elige otra vez.' -f $Number, $Combo.Id, $cabe.Reason)
+                    $otra = (Select-Combo -Options $Options -Translators $Translators).Selection
+                    foreach ($nota in $otra.Notes) { Write-TranslateLog ('Traduccion {0}: {1}' -f $Number, $nota) }
+                    if ($null -eq $otra.Combo) { throw 'Ningun traductor cabe en la memoria.' }
+                    $Combo = $otra.Combo
+                    $voz = Get-VoiceSnapshot
+                    $paso = Get-TranslatorTransition -Combo $Combo -Server $t.Server -BergamotRunning (Test-BergamotAlive) -VoiceHeld ([bool]$sync.QwenHold) -QwenAvailable $voz.QwenAvailable -Priority $Options.Priority
+                    $paso.HoldVoice = $false
+                }
+            }
+        }
+        if ($paso.ReleaseVoice) { Restore-Voice -Why ('se traduce con {0}' -f $Combo.Id) }
+        if ($paso.StopServer -and $null -ne $t.Server) { Stop-TranslateServer -Why ('se cambia a {0}' -f $Combo.Id) }
+        if ($paso.StartServer) { Open-TranslateServer -Translator $Combo.Translator -Where $Combo.Where }
+        if ($paso.StartBergamot) { Open-Bergamot -Translator $Combo.Translator }
+        return $Combo
+    }
+
+    function Invoke-PartTranslation {
+        # Un traductor que falla a mitad se cierra: la siguiente traduccion
+        # lo abre de nuevo en vez de usar un proceso roto.
+        param([hashtable]$Combo, [string]$Text, [string]$Source, [string]$Target)
+        if ($Combo.Translator.Engine -eq 'bergamot') {
+            try {
+                $texto = Invoke-BergamotTranslate -Client $t.Bergamot -Text $Text -Source $Source -Target $Target
+            } catch {
+                Stop-Bergamot -Why ('fallo: {0}' -f $_.Exception.Message)
+                throw
+            }
+            $t.BergamotLastUse = [DateTime]::Now
+            return $texto
+        }
+        try {
+            $r = Invoke-LlamaTranslate -Port $t.Server.Port -Family $Combo.Translator.Family -Text $Text -Source $Source -Target $Target
+        } catch {
+            Stop-TranslateServer -Why ('fallo: {0}' -f $_.Exception.Message)
+            throw
+        }
+        $t.Server.LastUse = [DateTime]::Now
+        return $r.Text
+    }
+
+    function Get-CachedParts {
+        # La traduccion guardada de cada parte, o $null donde no hay.
+        param($Parts, [string]$Model, [hashtable]$Direction)
+        $minutos = [double]$tcfg.CacheMinutes
+        $lista = New-Object System.Collections.Generic.List[object]
+        foreach ($p in $Parts) {
+            $guardada = $null
+            if ($minutos -gt 0) {
+                $clave = Get-TranslationCacheKey -Text $p.Text -Source $Direction.Source -Target $Direction.Target -Model $Model
+                $guardada = Get-CachedTranslation -Memory $memoria -Key $clave -Minutes $minutos
+            }
+            [void]$lista.Add($guardada)
+        }
+        # Con la coma la lista llega entera, aunque tenga una sola parte.
+        return ,$lista
+    }
+
+    function Invoke-TranslateJob {
+        param([hashtable]$Job)
+
+        $reloj = [Diagnostics.Stopwatch]::StartNew()
+        $n = [int]$Job.Id
+        if (-not [bool]$tcfg.Enabled) { throw 'la traduccion esta desactivada en los ajustes' }
+        $texto = [string]$Job.Text
+        if ([string]::IsNullOrWhiteSpace($texto)) { throw 'no hay texto que traducir' }
+
+        $dir = Get-TranslationDirection -Text $texto -Fallback ([string]$tcfg.Fallback)
+        $opciones = Get-TranslateOptions -Overrides $Job.Options
+        $instalados = @(Get-InstalledTranslators -TranslateDir $tcfg.TranslateDir)
+        $eleccion = Select-Combo -Options $opciones -Translators $instalados
+        $sel = $eleccion.Selection
+        $d = $eleccion.Device
+        $estadoVoz = 'no instalada'
+        if ($eleccion.Voice.QwenAvailable) {
+            $estadoVoz = $(if ($sync.QwenHold) { 'en espera' } elseif ($eleccion.Voice.QwenLoaded) { 'cargada' } else { 'sin cargar' })
+        }
+        $tarjeta = $(if ($d.GpuFreeMiB -lt 0) { 'sin NVIDIA' } else { '{0:N0} MiB libres en la tarjeta' -f $d.GpuFreeMiB })
+        Write-TranslateLog ('Traduccion {0}: {1} -> {2}, {3} caracteres. Equipo: {4}{5}, {6:N0} MiB de RAM disponibles, {7} nucleos; voz propia {8}. Calidad {9}, prioridad {10}{11}{12}.' -f
+            $n, $dir.Source, $dir.Target, $texto.Length, $tarjeta, $(if ($d.GpuBusy) { ' (ocupada)' } else { '' }),
+            $d.RamAvailableMiB, $d.PhysicalCores, $estadoVoz, $opciones.Quality, $opciones.Priority,
+            $(if ($opciones.Model) { ', modelo ' + $opciones.Model } else { '' }),
+            $(if ($opciones.Where -ne 'auto') { ', lugar ' + $opciones.Where } else { '' }))
+        foreach ($nota in $sel.Notes) { Write-TranslateLog ('Traduccion {0}: {1}' -f $n, $nota) }
+        if ($null -eq $sel.Combo) { throw 'no hay ningun traductor que se pueda usar' }
+
+        $combo = $sel.Combo
+        Write-TranslateLog ('Traduccion {0}: se elige {1} (nota {2:N2}, medidas {3}).' -f $n, $combo.Id, $combo.Score, $combo.Metrics.Source)
+
+        $partes = Split-TranslationParts -Text $texto -FirstSentence:($combo.Translator.Engine -eq 'llama')
+        $guardadas = Get-CachedParts -Parts $partes.Parts -Model $combo.Translator.Id -Direction $dir
+        $faltan = 0
+        foreach ($g in $guardadas) { if ($null -eq $g) { $faltan++ } }
+        # Si todo estaba guardado no hace falta abrir ningun traductor.
+        if ($faltan -gt 0) {
+            $antes = $combo.Translator.Id
+            try {
+                $combo = Use-Combo -Combo $combo -Options $opciones -Translators $instalados -Number $n
+            } catch {
+                $basico = New-BasicCombo -Translators $instalados
+                if ($null -eq $basico -or $combo.Translator.Engine -eq 'bergamot') { throw }
+                Write-TranslateLog ('Traduccion {0}: no se pudo usar {1} ({2}); se usa el basico.' -f $n, $combo.Id, $_.Exception.Message)
+                $combo = Use-Combo -Combo $basico -Options $opciones -Translators $instalados -Number $n
+            }
+            if ($combo.Translator.Id -ne $antes) {
+                $partes = Split-TranslationParts -Text $texto -FirstSentence:($combo.Translator.Engine -eq 'llama')
+                $guardadas = Get-CachedParts -Parts $partes.Parts -Model $combo.Translator.Id -Direction $dir
+            }
+        }
+
+        Send-TranslateEvent @{ Kind = 'start'; Id = $n; Source = $dir.Source; Target = $dir.Target; Combo = $combo.Id; Blocks = $partes.Blocks }
+
+        $porBloque = @{}
+        $primera = -1.0
+        $deGuardado = 0
+        for ($i = 0; $i -lt $partes.Parts.Count; $i++) {
+            $p = $partes.Parts[$i]
+            $traducida = $guardadas[$i]
+            $esGuardada = $null -ne $traducida
+            if ($esGuardada) {
+                $deGuardado++
+            } else {
+                try {
+                    $traducida = Invoke-PartTranslation -Combo $combo -Text $p.Text -Source $dir.Source -Target $dir.Target
+                } catch {
+                    # El modelo de lenguaje fallo a mitad: lo que falta, con el basico.
+                    $basico = New-BasicCombo -Translators $instalados
+                    if ($null -eq $basico -or $combo.Translator.Engine -eq 'bergamot') { throw }
+                    Write-TranslateLog ('Traduccion {0}: {1} fallo en la parte {2} ({3}); el resto con el basico.' -f $n, $combo.Translator.Id, ($i + 1), $_.Exception.Message)
+                    $combo = Use-Combo -Combo $basico -Options $opciones -Translators $instalados -Number $n
+                    $traducida = Invoke-PartTranslation -Combo $combo -Text $p.Text -Source $dir.Source -Target $dir.Target
+                }
+                $traducida = Format-PartTranslation -Text $traducida
+                if ([double]$tcfg.CacheMinutes -gt 0) {
+                    $clave = Get-TranslationCacheKey -Text $p.Text -Source $dir.Source -Target $dir.Target -Model $combo.Translator.Id
+                    Set-CachedTranslation -Memory $memoria -Key $clave -Text $traducida
+                }
+            }
+            if ($primera -lt 0) { $primera = $reloj.Elapsed.TotalSeconds }
+            $b = [int]$p.Block
+            if ($porBloque.ContainsKey($b)) { $porBloque[$b] = ($porBloque[$b] + ' ' + $traducida).Trim() } else { $porBloque[$b] = $traducida }
+            Send-TranslateEvent @{ Kind = 'part'; Id = $n; Index = $i; Block = $b; Text = $traducida; First = [bool]$p.First; Cached = $esGuardada }
+        }
+
+        $final = Join-TranslatedBlocks -Blocks $partes.Blocks -Translations $porBloque
+        $t.LastTranslation = [DateTime]::Now
+        $total = $reloj.Elapsed.TotalSeconds
+        Write-TranslateLog ('Traduccion {0} lista con {1}: {2} parte(s), {3} guardada(s); la primera en {4:N2} s y todo en {5:N2} s.' -f
+            $n, $combo.Id, $partes.Parts.Count, $deGuardado, $primera, $total)
+        Send-TranslateEvent @{
+            Kind = 'done'; Id = $n; Text = $final; Source = $dir.Source; Target = $dir.Target; Combo = $combo.Id
+            Parts = $partes.Parts.Count; Cached = $deGuardado; FirstSeconds = $primera; Seconds = $total; LogText = [bool]$Job.LogText
+        }
+    }
+
+    function Invoke-TranslateMaintenance {
+        $ahora = [DateTime]::Now
+
+        # La vuelta a la voz propia, nunca a mitad de una lectura.
+        $vuelta = Get-VoiceReturnState -VoiceYielded ([bool]$sync.QwenHold) -Priority ([string]$tcfg.Priority) -AutoReturn ([bool]$tcfg.AutoReturn) `
+            -Minutes ([double]$tcfg.ReturnMinutes) -LastTranslation $t.LastTranslation -Now $ahora -Reading ([bool]$sync.Reading)
+        if ($vuelta.Due) {
+            $porque = $(if ([string]$tcfg.Priority -eq 'voice') { 'la prioridad es Voz propia' } else { '{0:N0} min sin traducir' -f [double]$tcfg.ReturnMinutes })
+            Restore-Voice -Why $porque
+        }
+
+        # Lo que no se usa se cierra. El que tiene la tarjeta de la voz propia
+        # se queda hasta que la voz vuelva.
+        if ($null -ne $t.Server) {
+            if ($t.Server.Process.HasExited) {
+                $codigo = $t.Server.Process.ExitCode
+                Stop-TranslateServer -Why ('termino solo, con el codigo {0}' -f $codigo)
+            } else {
+                $queda = [bool]$sync.QwenHold -and $t.Server.Where -eq 'gpu'
+                if (Test-TranslatorIdle -LastUse $t.Server.LastUse -Now $ahora -Minutes ([double]$tcfg.IdleMinutes) -Keep $queda) {
+                    Stop-TranslateServer -Why ('{0:N0} min sin traducir' -f [double]$tcfg.IdleMinutes)
+                }
+            }
+        }
+        if ($null -ne $t.Bergamot) {
+            if ($t.Bergamot.Process.HasExited) {
+                Stop-Bergamot -Why 'termino solo'
+            } elseif (Test-TranslatorIdle -LastUse $t.BergamotLastUse -Now $ahora -Minutes ([double]$tcfg.IdleMinutes)) {
+                Stop-Bergamot -Why ('{0:N0} min sin traducir' -f [double]$tcfg.IdleMinutes)
+            }
+        }
+
+        if ($null -ne $t.Server -and $t.Server.Where -eq 'gpu') {
+            # Ceder la tarjeta: por la marca gpu_ocupada o a otro programa.
+            # Cuando la voz propia se abre o se cierra, la base se mide otra vez.
+            $s = $t.Server
+            $qwen = Test-QwenRunning
+            if ($qwen -ne $s.QwenSeen) { $s.Baseline = -1.0; $s.QwenSeen = $qwen }
+            $tolera = $(if ($qwen) { 1434.0 } else { 0.0 })
+            $gpu = Get-NvidiaMemory -Smi $tcfg.Smi
+            $usada = $(if ($gpu.FreeMiB -lt 0) { -1.0 } else { [double]$gpu.UsedMiB })
+            $c = Test-GpuServerYield -UsedMiB $usada -BaselineMiB $s.Baseline -Busy (Test-GpuBusyFile -BusyFile $tcfg.BusyFile) `
+                -QuietSeconds ($ahora - $s.LastUse).TotalSeconds -AllowanceMiB $tolera
+            $s.Baseline = $c.Baseline
+            if ($c.Yield) {
+                $t.Yielded = @{ Translator = $s.Translator }
+                Stop-TranslateServer -Why ('cede la tarjeta: {0}' -f $c.Reason)
+                Send-TranslateEvent @{ Kind = 'translator'; State = 'yielded'; Reason = $c.Reason }
+            }
+        } elseif ($null -ne $t.Yielded -and $null -eq $t.Server -and [DateTime]::UtcNow -ge $t.NextRoomCheck) {
+            # Vuelve solo cuando hay sitio, mientras se siga usando.
+            $t.NextRoomCheck = [DateTime]::UtcNow.AddSeconds(15)
+            $enUso = [bool]$sync.QwenHold -or -not (Test-TranslatorIdle -LastUse $t.LastTranslation -Now $ahora -Minutes ([double]$tcfg.IdleMinutes))
+            if (-not $enUso) {
+                $t.Yielded = $null
+            } else {
+                $d = Get-DeviceNow
+                $nombre = $(if ($sync.QwenHold) { 'piper' } else { 'qwen' })
+                $cabe = Test-TranslatorFits -Translator $t.Yielded.Translator -Where 'gpu' -Device $d -Voice (Get-VoiceSnapshot) -VoiceName $nombre
+                if (-not $d.GpuBusy -and $cabe.Fits) {
+                    Write-TranslateLog 'La tarjeta grafica quedo libre: se vuelve a cargar el traductor.'
+                    $volver = $t.Yielded.Translator
+                    try { Open-TranslateServer -Translator $volver -Where 'gpu' } catch {
+                        Write-TranslateLog ('No se pudo volver a cargar el traductor: {0}' -f $_.Exception.Message)
+                        $t.Yielded = $null
+                    }
+                }
+            }
+        }
+
+        if ([DateTime]::UtcNow -ge $t.NextCacheClean) {
+            $t.NextCacheClean = [DateTime]::UtcNow.AddSeconds(60)
+            [void](Clear-ExpiredTranslations -Memory $memoria -Minutes ([double]$tcfg.CacheMinutes))
+        }
+
+        # Para el reproductor: el aviso de la vuelta a la voz propia y el
+        # cambio a mano.
+        $sync.TranslateStatus = @{
+            VoiceHeld         = [bool]$sync.QwenHold
+            Server            = $(if ($t.Server) { '{0}@{1}' -f $t.Server.Id, $t.Server.Where } else { '' })
+            Bergamot          = (Test-BergamotAlive)
+            ReturnActive      = [bool]$vuelta.Active
+            ReturnSecondsLeft = [double]$vuelta.SecondsLeft
+        }
+    }
+
+    # Un llama-server o translateLocally de esta carpeta que quedo de un
+    # proceso residente cerrado a la fuerza ocuparia memoria sin servir.
+    Stop-OrphanTranslators -TranslateDir $tcfg.TranslateDir | ForEach-Object { Write-TranslateLog "Cerrado un traductor que habia quedado abierto: $_." }
+    Write-TranslateLog ('Traduccion lista: {0} nucleos fisicos, {1} hilos para el traductor.' -f $cores, $hilos)
+
+    while (-not $sync.Stopping) {
+        $job = $null
+        if ($sync.TranslateJobs.TryDequeue([ref]$job)) {
+            try {
+                switch ([string]$job.Kind) {
+                    'translate' { Invoke-TranslateJob -Job $job }
+                    'voice' { Restore-Voice -Why 'se pidio a mano' }
+                    'unload' {
+                        Stop-TranslateServer -Why 'se pidio a mano'
+                        Stop-Bergamot -Why 'se pidio a mano'
+                        $t.Yielded = $null
+                        Restore-Voice -Why 'se cerraron los traductores'
+                    }
+                }
+            } catch {
+                $mensaje = $_.Exception.Message
+                Write-TranslateLog ('Traduccion {0}: no se pudo ({1}).' -f $job.Id, $mensaje)
+                Send-TranslateEvent @{ Kind = 'error'; Id = $job.Id; Error = $mensaje }
+            }
+            $t.NextCheck = [DateTime]::UtcNow
+            continue
+        }
+
+        if ([DateTime]::UtcNow -ge $t.NextCheck) {
+            $t.NextCheck = [DateTime]::UtcNow.AddSeconds(5)
+            try { Invoke-TranslateMaintenance } catch { Write-TranslateLog ('Error al revisar los traductores: {0}' -f $_.Exception.Message) }
+        }
+        [void]$sync.TranslateSignal.WaitOne(5000)
+    }
+
+    Stop-TranslateServer -Why 'el lector se cierra'
+    Stop-Bergamot -Why 'el lector se cierra'
+}
+
+$sync.TranslatorProcesses = [hashtable]::Synchronized(@{})
+[void](Invoke-LogRotation -Path $paths.LlamaLog -MaxBytes 2097152)
+
+$translateConfig = [hashtable]::Synchronized(@{
+    TextLib        = (Join-Path $paths.LibDir 'ReadAloud.Text.ps1')
+    TranslateLib   = (Join-Path $paths.LibDir 'ReadAloud.Translate.ps1')
+    CacheLib       = (Join-Path $paths.LibDir 'ReadAloud.Cache.ps1')
+    TranslatorsLib = (Join-Path $paths.LibDir 'ReadAloud.Translators.ps1')
+    TranslateDir   = $paths.TranslateDir
+    LlamaLog       = $paths.LlamaLog
+    LogFile        = $paths.LogFile
+    ProfileFile    = (Join-Path $paths.RuntimeDir 'perfil_equipo.json')
+    ReserveFile    = $synthConfig.Qwen.ReserveFile
+    QwenReadyFile  = $synthConfig.Qwen.ReadyFile
+    QwenReady      = [bool]$qwenVoice.Ready
+    BusyFile       = $qwenVoice.BusyFile
+    Engines        = $engines
+    # nvidia-smi, si esta: sin el no hay tarjeta NVIDIA para la regla de memoria.
+    Smi            = [string](Get-Command 'nvidia-smi' -ErrorAction SilentlyContinue).Source
+    Fallback       = [string]$settings.FallbackLanguage
+    Enabled        = [bool]$settings.Translate
+    Quality        = [string]$settings.TranslateQuality
+    Priority       = [string]$settings.TranslatePriority
+    Model          = [string]$settings.TranslateModel
+    Where          = [string]$settings.TranslateDevice
+    AutoReturn     = [bool]$settings.TranslateAutoReturn
+    ReturnMinutes  = [double]$settings.TranslateReturnMinutes
+    IdleMinutes    = [double]$settings.TranslateIdleMinutes
+    CacheMinutes   = [double]$settings.AudioCacheMinutes
+})
+
+Start-BackgroundRunspace -Script $translateScript -Variables @{
+    sync = $sync
+    tcfg = $translateConfig
+}
+$script:translateCount = 0
 
 function Update-SynthSettings {
     # Aplica en caliente la voz, el motor, las pausas y el rendimiento que se
@@ -2550,6 +3170,20 @@ $window.Add_Closing({
 # 16 veces por segundo en vano; la tuberia lo vuelve a 60 ms en cuanto llega
 # una orden, asi que la lectura no espera ese cuarto de segundo.
 # --------------------------------------------------------------------------
+function Receive-TranslateEvent {
+    # Lo que va saliendo de una traduccion: el comienzo (con los bloques), cada
+    # parte, el final, los errores y los cambios de voz. Aqui se conectaran el
+    # panel y la lectura de la traduccion; por ahora, la orden "translate" de
+    # la tuberia deja el texto traducido en daemon.log.
+    param([hashtable]$Evento)
+
+    if ([string]$Evento.Kind -eq 'done' -and $Evento.LogText) {
+        $texto = [string]$Evento.Text
+        if ($texto.Length -gt 600) { $texto = $texto.Substring(0, 600) + '...' }
+        Write-DaemonLog ('Traduccion {0} ({1} -> {2}): {3}' -f $Evento.Id, $Evento.Source, $Evento.Target, ($texto -replace '(\r?\n)+', ' / '))
+    }
+}
+
 $pulseBusy = [timespan]::FromMilliseconds(60)
 $pulseIdle = [timespan]::FromMilliseconds(250)
 $timer = New-Object Windows.Threading.DispatcherTimer
@@ -2589,6 +3223,27 @@ $timer.Add_Tick({
             'panel'  { Set-TextPanel -Visible (-not $script:panelVisible) }
             'settings' { Show-SettingsWindow -Mostrar }
             'slower' { Set-PlaybackSpeed -Direction -1 }
+            # Traduccion rapida. "translate" traduce y anota el resultado en
+            # daemon.log; acepta quality, priority, model y where para
+            # probar una combinacion. "translate-voice" devuelve la tarjeta a
+            # la voz propia y "translate-unload" cierra los traductores.
+            'translate' {
+                $script:translateCount++
+                $opciones = @{}
+                foreach ($par in @(@{ K = 'quality'; O = 'Quality' }, @{ K = 'priority'; O = 'Priority' }, @{ K = 'model'; O = 'Model' }, @{ K = 'where'; O = 'Where' })) {
+                    if ($request.PSObject.Properties.Name -contains $par.K -and $request.($par.K)) { $opciones[$par.O] = [string]$request.($par.K) }
+                }
+                $sync.TranslateJobs.Enqueue(@{ Kind = 'translate'; Id = $script:translateCount; Text = [string]$request.text; Options = $opciones; LogText = $true })
+                [void]$sync.TranslateSignal.Set()
+            }
+            'translate-voice' {
+                $sync.TranslateJobs.Enqueue(@{ Kind = 'voice'; Id = 0 })
+                [void]$sync.TranslateSignal.Set()
+            }
+            'translate-unload' {
+                $sync.TranslateJobs.Enqueue(@{ Kind = 'unload'; Id = 0 })
+                [void]$sync.TranslateSignal.Set()
+            }
             'quit'   {
                 Stop-Playback
                 $sync.Stopping = $true
@@ -2647,6 +3302,12 @@ $timer.Add_Tick({
         [void](Update-ChunkEstimates -Chunks $state.Chunks)
         Update-Offsets
     }
+
+    # 2b. Lo que sale del hilo de traduccion. La voz propia no vuelve a mitad
+    # de una lectura: el hilo lo sabe por Reading.
+    $evento = $null
+    while ($sync.TranslateDone.TryDequeue([ref]$evento)) { Receive-TranslateEvent -Evento $evento }
+    $sync.Reading = ($state.Chunks.Count -gt 0) -and (-not $state.Finished)
 
     # 3. Arranque del audio y salto al siguiente fragmento cuando ya esta listo.
     if ($state.Chunks.Count -gt 0 -and -not $state.Finished) {
@@ -2921,8 +3582,17 @@ try {
 } finally {
     $sync.Stopping = $true
     [void]$sync.SynthSignal.Set()
+    [void]$sync.TranslateSignal.Set()
 
     Save-PlayerState
+
+    # El hilo de traduccion cierra sus traductores al salir del bucle; lo que
+    # siga abierto (si no alcanzo) se cierra aqui.
+    $limite = (Get-Date).AddSeconds(4)
+    while ((Get-Date) -lt $limite -and $sync.TranslatorProcesses.Count -gt 0) { Start-Sleep -Milliseconds 100 }
+    foreach ($p in @($sync.TranslatorProcesses.Values)) {
+        try { if (-not $p.HasExited) { $p.Kill() } } catch { }
+    }
 
     try { Unregister-ReadAloudHotkeys -Handle $hotkeyHandle -Report $script:hotkeyReport } catch { }
     try { $script:tray.Visible = $false; $script:tray.Dispose() } catch { }
