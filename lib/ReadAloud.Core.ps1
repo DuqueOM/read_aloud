@@ -32,6 +32,10 @@ function Get-ReadAloudPaths {
         RuntimeDir  = $runtimeDir
         TmpDir      = Join-Path $PiperBaseDir 'tmp'
         AudioCacheDir = Join-Path $PiperBaseDir 'tmp\cache'
+        # Los traductores (ADR 0016), fuera del repositorio: translateLocally
+        # con sus modelos, llama-server y los GGUF.
+        TranslateDir = Join-Path $PiperBaseDir 'traduccion'
+        LlamaLog    = Join-Path $runtimeDir 'llama.log'
         LogFile     = Join-Path $runtimeDir 'daemon.log'
         StateFile   = Join-Path $runtimeDir 'player.json'
         UserSettingsFile = Join-Path $runtimeDir 'ajustes.json'

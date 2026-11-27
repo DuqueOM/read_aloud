@@ -663,3 +663,241 @@ function Get-VoiceReturnState {
     $r.Due = ($quedan -le 0) -and (-not $Reading)
     return $r
 }
+
+# --------------------------------------------------------------------------
+# Los traductores en el proceso residente: los argumentos de llama-server, la
+# memoria de la tarjeta, que abrir o cerrar para cada combinacion, cuando
+# cede la tarjeta y el texto traducido entero.
+# --------------------------------------------------------------------------
+
+# El traductor en la tarjeta la cede como la voz propia (lib\servidor_qwen.py):
+# si tras un minuto sin traducir otro programa usa 1.5 GB mas que al cargar.
+$script:RA_YieldQuietSeconds = 60
+$script:RA_YieldOthersMiB = 1536
+
+function ConvertFrom-VulkanDeviceList {
+    # La salida de "llama-server --list-devices", con lineas como
+    # "  Vulkan0: NVIDIA GeForce RTX ... (8151 MiB, 7000 MiB free)". Devuelve
+    # el nombre del dispositivo de la NVIDIA, o '' si no hay. Sin fijarlo, la
+    # version Vulkan reparte las capas con los graficos integrados, que van
+    # cuatro veces mas lentos que el procesador.
+    param([string[]]$Lines)
+
+    foreach ($l in @($Lines)) {
+        $m = [regex]::Match([string]$l, '^\s*(Vulkan\d+)\s*:\s*(.*)$')
+        if ($m.Success -and $m.Groups[2].Value -match 'NVIDIA') { return $m.Groups[1].Value }
+    }
+    return ''
+}
+
+function ConvertFrom-NvidiaSmiMemory {
+    # Las lineas de "nvidia-smi --query-gpu=memory.free,memory.used,memory.total
+    # --format=csv,noheader,nounits": la tarjeta con mas memoria libre, en
+    # MiB. Sin ninguna linea valida, FreeMiB es -1 (no hay NVIDIA).
+    param([string[]]$Lines)
+
+    $invariante = [Globalization.CultureInfo]::InvariantCulture
+    $r = @{ FreeMiB = -1.0; UsedMiB = 0.0; TotalMiB = 0.0 }
+    foreach ($l in @($Lines)) {
+        $c = @(([string]$l).Split(',') | ForEach-Object { $_.Trim() })
+        if ($c.Count -lt 3) { continue }
+        $v = @(0.0, 0.0, 0.0)
+        $ok = $true
+        for ($i = 0; $i -lt 3; $i++) {
+            $n = 0.0
+            if (-not [double]::TryParse($c[$i], [Globalization.NumberStyles]::Float, $invariante, [ref]$n)) { $ok = $false; break }
+            $v[$i] = $n
+        }
+        if ($ok -and $v[0] -gt $r.FreeMiB) { $r = @{ FreeMiB = $v[0]; UsedMiB = $v[1]; TotalMiB = $v[2] } }
+    }
+    return $r
+}
+
+function Get-LlamaServerArgs {
+    # Los argumentos de llama-server para un traductor (ADR 0016):
+    #  - en el procesador, --device none y los hilos de Get-TranslatorThreads;
+    #  - en la tarjeta, todas las capas en la NVIDIA (su dispositivo Vulkan) y
+    #    sin mapear el archivo, que si no se queda tambien en la RAM;
+    #  - --fit off, porque la regla de memoria ya decidio que cabe;
+    #  - 4096 posiciones y una sola ranura;
+    #  - --cache-ram 0: la cache de prompts en la RAM llega a 8 GB por defecto;
+    #  - --jinja para Hy-MT2, que usa la plantilla del propio modelo;
+    #  - solo en 127.0.0.1 y --offline: nunca sale a internet.
+    param(
+        [hashtable]$Translator,
+        [string]$Where,
+        [int]$Threads,
+        [int]$Port,
+        [string]$Device = '',
+        [string]$LogFile = '',
+        [int]$Context = 4096
+    )
+
+    $a = New-Object System.Collections.Generic.List[string]
+    foreach ($x in @(
+        '-m', $Translator.Path, '-c', $Context, '-np', 1, '-t', $Threads, '-tb', $Threads,
+        '--host', '127.0.0.1', '--port', $Port, '--no-webui', '--offline',
+        '--fit', 'off', '--cache-ram', 0, '--log-colors', 'off'
+    )) { [void]$a.Add([string]$x) }
+
+    if ($Where -eq 'gpu') {
+        if (-not $Device) { throw 'Falta el dispositivo Vulkan de la tarjeta NVIDIA.' }
+        foreach ($x in @('-dev', $Device, '-ngl', 99, '-lm', 'none')) { [void]$a.Add([string]$x) }
+    } else {
+        foreach ($x in @('-dev', 'none', '-ngl', 0)) { [void]$a.Add([string]$x) }
+    }
+    if ($Translator.Family -eq 'hymt2') { [void]$a.Add('--jinja') }
+    if ($LogFile) { [void]$a.Add('--log-file'); [void]$a.Add($LogFile) }
+    return $a.ToArray()
+}
+
+function ConvertTo-CommandLine {
+    # Une los argumentos en una linea de ordenes de Windows, con comillas en
+    # los que tienen espacios (las rutas).
+    param([string[]]$Arguments)
+
+    $partes = foreach ($x in @($Arguments)) {
+        $s = [string]$x
+        if ($s -eq '' -or $s -match '[\s"]') { '"' + ($s -replace '"', '\"') + '"' } else { $s }
+    }
+    return (@($partes) -join ' ')
+}
+
+function Test-GpuBusyFile {
+    # La marca gpu_ocupada (BusyFile de Get-QwenVoice): un paso pesado de la
+    # voz personalizada usa la tarjeta mientras su proceso siga vivo. La marca
+    # de un proceso que ya termino no cuenta.
+    param([string]$BusyFile)
+
+    if (-not $BusyFile -or -not (Test-Path -LiteralPath $BusyFile)) { return $false }
+    try {
+        $dueno = [int]((Get-Content -LiteralPath $BusyFile -Raw -ErrorAction Stop).Trim())
+        return $null -ne (Get-Process -Id $dueno -ErrorAction SilentlyContinue)
+    } catch {
+        return $false
+    }
+}
+
+function Get-TranslatorTransition {
+    # Que abrir o cerrar para traducir con la combinacion elegida, segun lo
+    # que ya esta cargado. Server es el llama-server abierto (@{ Id; Where })
+    # o $null; VoiceHeld, si la voz propia ya le cedio la tarjeta.
+    #  - StopServer y StartServer: un llama-server con otro modelo o en otro
+    #    lugar se cierra antes de abrir el nuevo. Con Bergamot, el que corre en
+    #    el procesador se queda hasta que pase su rato sin uso.
+    #  - StartBergamot: translateLocally, si se traduce con el y no esta abierto.
+    #  - HoldVoice: la combinacion lee con Piper y hay voz propia, que tiene
+    #    que cederle la tarjeta. Hay que esperar a que se cierre antes de
+    #    cargar nada en la tarjeta.
+    #  - ReleaseVoice: la combinacion vuelve a la voz propia. Con la prioridad
+    #    Traduccion no: ahi solo vuelve con Get-VoiceReturnState. Lo que haya
+    #    en la tarjeta se cierra antes, para dejarle sitio.
+    param(
+        [hashtable]$Combo,
+        $Server = $null,
+        [bool]$BergamotRunning = $false,
+        [bool]$VoiceHeld = $false,
+        [bool]$QwenAvailable = $false,
+        [string]$Priority = 'auto'
+    )
+
+    $r = @{ StopServer = $false; StartServer = $false; StartBergamot = $false; HoldVoice = $false; ReleaseVoice = $false }
+    if ($null -eq $Combo) { return $r }
+
+    $t = $Combo.Translator
+    $mismo = ($null -ne $Server) -and ($t.Engine -eq 'llama') -and ($Server.Id -eq $t.Id) -and ($Server.Where -eq $Combo.Where)
+    if ($t.Engine -eq 'llama' -and -not $mismo) {
+        $r.StartServer = $true
+        if ($null -ne $Server) { $r.StopServer = $true }
+    }
+    if ($t.Engine -eq 'bergamot' -and -not $BergamotRunning) { $r.StartBergamot = $true }
+
+    if ($QwenAvailable) {
+        if ($Combo.Voice -eq 'piper' -and -not $VoiceHeld) { $r.HoldVoice = $true }
+        if ($Combo.Voice -eq 'qwen' -and $VoiceHeld -and $Priority -ne 'translation') {
+            $r.ReleaseVoice = $true
+            if ($null -ne $Server -and $Server.Where -eq 'gpu' -and -not $mismo) { $r.StopServer = $true }
+        }
+    }
+    return $r
+}
+
+function Test-GpuServerYield {
+    # Si el traductor en la tarjeta debe cederla, como la voz propia: un paso
+    # pesado dejo la marca gpu_ocupada, o, tras un minuto sin traducir, otro
+    # programa usa 1.5 GB mas que cuando cargo el traductor (o que lo menos
+    # que se le vio usar despues). AllowanceMiB es lo que se tolera de mas:
+    # lo que la voz propia toma al leer, si esta abierta a la vez.
+    # UsedMiB es la memoria usada de la tarjeta (nvidia-smi); BaselineMiB, la
+    # base anterior (-1 si aun no hay). Devuelve Yield, Reason y la base
+    # nueva.
+    param(
+        [double]$UsedMiB,
+        [double]$BaselineMiB = -1,
+        [bool]$Busy = $false,
+        [double]$QuietSeconds = 0,
+        [double]$AllowanceMiB = 0
+    )
+
+    $r = @{ Yield = $false; Reason = ''; Baseline = $BaselineMiB }
+    if ($Busy) {
+        $r.Yield = $true
+        $r.Reason = 'un paso pesado marco la tarjeta como ocupada'
+        return $r
+    }
+    if ($UsedMiB -lt 0) { return $r }
+    if ($BaselineMiB -lt 0 -or $UsedMiB -lt $BaselineMiB) { $r.Baseline = $UsedMiB }
+
+    $otros = $UsedMiB - $r.Baseline
+    if ($QuietSeconds -ge $script:RA_YieldQuietSeconds -and $otros -ge ($script:RA_YieldOthersMiB + $AllowanceMiB)) {
+        $r.Yield = $true
+        $r.Reason = ('otro programa usa {0:N0} MiB mas de la tarjeta' -f $otros)
+    }
+    return $r
+}
+
+function Test-TranslatorIdle {
+    # El traductor se cierra tras Minutes sin traducir (0 es nunca). Con
+    # -Keep no: el que esta en la tarjeta porque la voz propia se la cedio se
+    # queda hasta que la voz vuelva.
+    param(
+        [DateTime]$LastUse,
+        [DateTime]$Now,
+        [double]$Minutes,
+        [bool]$Keep = $false
+    )
+
+    if ($Keep -or $Minutes -le 0) { return $false }
+    return ($Now - $LastUse).TotalMinutes -ge $Minutes
+}
+
+function Format-PartTranslation {
+    # Lo que devuelve el traductor para una parte: sin espacios en los bordes
+    # y en una sola linea, porque cada parte es de un solo bloque.
+    param([string]$Text)
+    return ((([string]$Text) -replace '\s*[\r\n]+\s*', ' ').Trim())
+}
+
+function Join-TranslatedBlocks {
+    # El texto traducido entero, para leerlo: un bloque por parrafo, cada
+    # vineta con su marca y lo que no se traduce (los arboles de carpetas),
+    # tal cual. Translations lleva el texto de cada bloque por su indice; un
+    # bloque sin traduccion se deja en el original.
+    param(
+        [object[]]$Blocks,
+        [hashtable]$Translations
+    )
+
+    $salida = New-Object System.Collections.Generic.List[string]
+    foreach ($b in @($Blocks)) {
+        if ($null -eq $b) { continue }
+        $texto = [string]$b.Source
+        if ($b.Translate -and $null -ne $Translations -and $Translations.ContainsKey([int]$b.Index)) {
+            $texto = [string]$Translations[[int]$b.Index]
+        }
+        if ($b.Prefix) { $texto = $b.Prefix + ' ' + $texto }
+        $texto = $texto.Trim()
+        if ($texto -ne '') { [void]$salida.Add($texto) }
+    }
+    return ($salida -join "`n`n")
+}

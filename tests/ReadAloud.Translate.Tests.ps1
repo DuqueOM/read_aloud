@@ -492,3 +492,241 @@ Describe 'Get-VoiceReturnState' {
         $r.SecondsLeft | Should -Be 30
     }
 }
+
+Describe 'Los traductores en el proceso residente' {
+    BeforeAll {
+        function New-TestTranslator {
+            param([string]$Id, [string]$Path = 'C:\t\modelo.gguf')
+            $t = @{} + @(Get-TranslatorCatalog | Where-Object { $_.Id -eq $Id })[0]
+            $t.Path = $Path
+            $t.FileMiB = 1081
+            return $t
+        }
+        function New-TestCombo {
+            param([string]$Voice, [string]$Id, [string]$Where)
+            return @{ Voice = $Voice; Translator = (New-TestTranslator $Id); Where = $Where }
+        }
+    }
+
+    Context 'ConvertFrom-VulkanDeviceList' {
+        It 'encuentra la NVIDIA aunque no sea la primera' {
+            $lineas = @(
+                'load_backend: loaded Vulkan backend from ggml-vulkan.dll'
+                'Available devices:'
+                '  Vulkan0: Intel(R) RaptorLake-S Mobile Graphics Controller (7993 MiB, 7337 MiB free)'
+                '  Vulkan1: NVIDIA GeForce RTX 5070 Laptop GPU (7891 MiB, 7123 MiB free)'
+            )
+            ConvertFrom-VulkanDeviceList -Lines $lineas | Should -BeExactly 'Vulkan1'
+        }
+
+        It 'sin NVIDIA no devuelve nada' {
+            ConvertFrom-VulkanDeviceList -Lines @('Available devices:', '  Vulkan0: AMD Radeon(TM) Graphics (512 MiB, 400 MiB free)') | Should -BeExactly ''
+            ConvertFrom-VulkanDeviceList -Lines @() | Should -BeExactly ''
+        }
+    }
+
+    Context 'ConvertFrom-NvidiaSmiMemory' {
+        It 'lee libre, usada y total' {
+            $m = ConvertFrom-NvidiaSmiMemory -Lines @('2349, 5543, 8151')
+            $m.FreeMiB | Should -Be 2349
+            $m.UsedMiB | Should -Be 5543
+            $m.TotalMiB | Should -Be 8151
+        }
+
+        It 'con dos tarjetas se queda con la de mas memoria libre' {
+            (ConvertFrom-NvidiaSmiMemory -Lines @('1000, 7000, 8000', '11000, 1000, 12000')).FreeMiB | Should -Be 11000
+        }
+
+        It 'sin lineas validas no hay NVIDIA' {
+            (ConvertFrom-NvidiaSmiMemory -Lines @()).FreeMiB | Should -Be -1
+            (ConvertFrom-NvidiaSmiMemory -Lines @('[N/A], [N/A], [N/A]', 'NVIDIA-SMI has failed')).FreeMiB | Should -Be -1
+        }
+    }
+
+    Context 'Get-LlamaServerArgs' {
+        It 'en el procesador: --device none, sin capas en la tarjeta y los hilos pedidos' {
+            $a = Get-LlamaServerArgs -Translator (New-TestTranslator 'hymt2-1.8b') -Where 'cpu' -Threads 4 -Port 8123
+            ($a -join ' ') | Should -Match '-dev none -ngl 0'
+            ($a -join ' ') | Should -Match '-t 4 -tb 4'
+            ($a -join ' ') | Should -Match '--port 8123'
+            $a | Should -Not -Contain '-lm'
+        }
+
+        It 'en la tarjeta: todas las capas en la NVIDIA y sin mapear el archivo' {
+            $a = Get-LlamaServerArgs -Translator (New-TestTranslator 'hymt2-7b') -Where 'gpu' -Threads 4 -Port 8123 -Device 'Vulkan0'
+            ($a -join ' ') | Should -Match '-dev Vulkan0 -ngl 99 -lm none'
+        }
+
+        It 'en la tarjeta sin dispositivo es un error' {
+            { Get-LlamaServerArgs -Translator (New-TestTranslator 'hymt2-7b') -Where 'gpu' -Threads 4 -Port 8123 } | Should -Throw
+        }
+
+        It 'siempre: solo local, sin internet, sin ajuste propio de memoria y sin cache de prompts en la RAM' {
+            $a = Get-LlamaServerArgs -Translator (New-TestTranslator 'hymt2-1.8b') -Where 'cpu' -Threads 2 -Port 9000 -LogFile 'C:\r\llama.log'
+            $linea = $a -join ' '
+            $linea | Should -Match '--host 127\.0\.0\.1'
+            $linea | Should -Match '--offline'
+            $linea | Should -Match '--fit off'
+            $linea | Should -Match '--cache-ram 0'
+            $linea | Should -Match '-c 4096 -np 1'
+            $linea | Should -Match '--log-file C:\\r\\llama\.log'
+            $a[0] | Should -Be '-m'
+            $a[1] | Should -Be 'C:\t\modelo.gguf'
+        }
+
+        It '--jinja solo para Hy-MT2, que usa la plantilla del modelo' {
+            Get-LlamaServerArgs -Translator (New-TestTranslator 'hymt2-1.8b') -Where 'cpu' -Threads 4 -Port 1 | Should -Contain '--jinja'
+            Get-LlamaServerArgs -Translator (New-TestTranslator 'translategemma-4b') -Where 'cpu' -Threads 4 -Port 1 | Should -Not -Contain '--jinja'
+        }
+    }
+
+    Context 'ConvertTo-CommandLine' {
+        It 'pone comillas solo donde hay espacios' {
+            ConvertTo-CommandLine -Arguments @('-m', 'C:\Mis modelos\a.gguf', '-t', '4') | Should -BeExactly '-m "C:\Mis modelos\a.gguf" -t 4'
+        }
+
+        It 'un argumento vacio no desaparece' {
+            ConvertTo-CommandLine -Arguments @('-a', '') | Should -BeExactly '-a ""'
+        }
+    }
+
+    Context 'Test-GpuBusyFile' {
+        It 'cuenta si el proceso de la marca sigue vivo' {
+            $f = Join-Path $TestDrive 'gpu_ocupada'
+            Set-Content -LiteralPath $f -Value $PID
+            Test-GpuBusyFile -BusyFile $f | Should -BeTrue
+        }
+
+        It 'no cuenta sin marca, con una marca rota o de un proceso que ya termino' {
+            Test-GpuBusyFile -BusyFile '' | Should -BeFalse
+            Test-GpuBusyFile -BusyFile (Join-Path $TestDrive 'no_existe') | Should -BeFalse
+            $f = Join-Path $TestDrive 'rota'
+            Set-Content -LiteralPath $f -Value 'abc'
+            Test-GpuBusyFile -BusyFile $f | Should -BeFalse
+            Set-Content -LiteralPath $f -Value 999999
+            Test-GpuBusyFile -BusyFile $f | Should -BeFalse
+        }
+    }
+
+    Context 'Get-TranslatorTransition' {
+        It 'sin nada cargado abre el servidor y no toca la voz si no hay voz propia' {
+            $r = Get-TranslatorTransition -Combo (New-TestCombo 'piper' 'hymt2-1.8b' 'cpu')
+            $r.StartServer | Should -BeTrue
+            $r.StopServer | Should -BeFalse
+            $r.HoldVoice | Should -BeFalse
+        }
+
+        It 'el mismo modelo en el mismo lugar no se recarga' {
+            $r = Get-TranslatorTransition -Combo (New-TestCombo 'qwen' 'hymt2-1.8b' 'cpu') -Server @{ Id = 'hymt2-1.8b'; Where = 'cpu' } -QwenAvailable $true
+            $r.StartServer | Should -BeFalse
+            $r.StopServer | Should -BeFalse
+            $r.HoldVoice | Should -BeFalse
+            $r.ReleaseVoice | Should -BeFalse
+        }
+
+        It 'otro modelo u otro lugar cierra el servidor antes de abrir el nuevo' {
+            $r = Get-TranslatorTransition -Combo (New-TestCombo 'qwen' 'hymt2-1.8b' 'cpu') -Server @{ Id = 'hymt2-1.8b'; Where = 'gpu' }
+            $r.StopServer | Should -BeTrue
+            $r.StartServer | Should -BeTrue
+        }
+
+        It 'Bergamot se abre si no esta, y el servidor del procesador se queda' {
+            $r = Get-TranslatorTransition -Combo (New-TestCombo 'qwen' 'bergamot' 'cpu') -Server @{ Id = 'hymt2-1.8b'; Where = 'cpu' } -QwenAvailable $true
+            $r.StartBergamot | Should -BeTrue
+            $r.StopServer | Should -BeFalse
+            (Get-TranslatorTransition -Combo (New-TestCombo 'qwen' 'bergamot' 'cpu') -BergamotRunning $true).StartBergamot | Should -BeFalse
+        }
+
+        It 'una combinacion con Piper hace que la voz propia ceda la tarjeta' {
+            $r = Get-TranslatorTransition -Combo (New-TestCombo 'piper' 'hymt2-7b' 'gpu') -QwenAvailable $true
+            $r.HoldVoice | Should -BeTrue
+            $r.StartServer | Should -BeTrue
+            (Get-TranslatorTransition -Combo (New-TestCombo 'piper' 'hymt2-7b' 'gpu') -QwenAvailable $true -VoiceHeld $true).HoldVoice | Should -BeFalse
+        }
+
+        It 'volver a una combinacion con la voz propia cierra lo que hay en la tarjeta' {
+            $r = Get-TranslatorTransition -Combo (New-TestCombo 'qwen' 'bergamot' 'cpu') -Server @{ Id = 'hymt2-7b'; Where = 'gpu' } -VoiceHeld $true -QwenAvailable $true -Priority 'auto'
+            $r.ReleaseVoice | Should -BeTrue
+            $r.StopServer | Should -BeTrue
+        }
+
+        It 'con la prioridad Traduccion la voz no vuelve aunque se traduzca junto a ella' {
+            $r = Get-TranslatorTransition -Combo (New-TestCombo 'qwen' 'hymt2-1.8b' 'cpu') -Server @{ Id = 'hymt2-7b'; Where = 'gpu' } -VoiceHeld $true -QwenAvailable $true -Priority 'translation'
+            $r.ReleaseVoice | Should -BeFalse
+            $r.StartServer | Should -BeTrue
+        }
+
+        It 'sin combinacion no hace nada' {
+            $r = Get-TranslatorTransition -Combo $null -QwenAvailable $true
+            @($r.psbase.Values | Where-Object { $_ }).Count | Should -Be 0
+        }
+    }
+
+    Context 'Test-GpuServerYield' {
+        It 'cede enseguida si un paso pesado marco la tarjeta' {
+            (Test-GpuServerYield -UsedMiB 6000 -BaselineMiB 6000 -Busy $true).Yield | Should -BeTrue
+        }
+
+        It 'la primera vez toma la memoria usada como base' {
+            $r = Test-GpuServerYield -UsedMiB 6000
+            $r.Yield | Should -BeFalse
+            $r.Baseline | Should -Be 6000
+        }
+
+        It 'cede si otro programa usa 1.5 GB mas tras un minuto sin traducir' {
+            (Test-GpuServerYield -UsedMiB 7600 -BaselineMiB 6000 -QuietSeconds 61).Yield | Should -BeTrue
+            (Test-GpuServerYield -UsedMiB 7600 -BaselineMiB 6000 -QuietSeconds 30).Yield | Should -BeFalse
+            (Test-GpuServerYield -UsedMiB 7000 -BaselineMiB 6000 -QuietSeconds 120).Yield | Should -BeFalse
+        }
+
+        It 'la base baja cuando otro programa suelta memoria' {
+            $r = Test-GpuServerYield -UsedMiB 5000 -BaselineMiB 6000 -QuietSeconds 120
+            $r.Baseline | Should -Be 5000
+            (Test-GpuServerYield -UsedMiB 6600 -BaselineMiB $r.Baseline -QuietSeconds 120).Yield | Should -BeTrue
+        }
+
+        It 'lo que la voz propia toma al leer no cuenta como otro programa' {
+            (Test-GpuServerYield -UsedMiB 7500 -BaselineMiB 6000 -QuietSeconds 120 -AllowanceMiB 1434).Yield | Should -BeFalse
+            (Test-GpuServerYield -UsedMiB 9000 -BaselineMiB 6000 -QuietSeconds 120 -AllowanceMiB 1434).Yield | Should -BeTrue
+        }
+
+        It 'sin lectura de nvidia-smi no cede' {
+            (Test-GpuServerYield -UsedMiB -1 -BaselineMiB 6000 -QuietSeconds 120).Yield | Should -BeFalse
+        }
+    }
+
+    Context 'Test-TranslatorIdle' {
+        BeforeAll { $usado = [DateTime]'2026-11-27T10:00:00' }
+
+        It 'se cierra tras los minutos sin traducir' {
+            Test-TranslatorIdle -LastUse $usado -Now $usado.AddMinutes(9) -Minutes 10 | Should -BeFalse
+            Test-TranslatorIdle -LastUse $usado -Now $usado.AddMinutes(10) -Minutes 10 | Should -BeTrue
+        }
+
+        It 'con 0 minutos no se cierra nunca' {
+            Test-TranslatorIdle -LastUse $usado -Now $usado.AddDays(1) -Minutes 0 | Should -BeFalse
+        }
+
+        It 'el que tiene la tarjeta de la voz propia se queda hasta que la voz vuelva' {
+            Test-TranslatorIdle -LastUse $usado -Now $usado.AddHours(2) -Minutes 10 -Keep $true | Should -BeFalse
+        }
+    }
+
+    Context 'El texto traducido' {
+        It 'una parte queda en una sola linea y sin espacios en los bordes' {
+            Format-PartTranslation -Text "  Hola.`n`nAdios.  " | Should -BeExactly 'Hola. Adios.'
+        }
+
+        It 'une los bloques, con la marca de cada vineta y los arboles sin traducir' {
+            $arbol = '+' + [char]0x2500 + [char]0x2500 + ' src/'
+            $partes = Split-TranslationParts -Text "Title`n`nFirst paragraph here.`n`n- one item`n$arbol"
+            $traducciones = @{ 0 = 'Titulo'; 1 = 'Primer parrafo.'; 2 = 'un elemento' }
+            Join-TranslatedBlocks -Blocks $partes.Blocks -Translations $traducciones | Should -BeExactly "Titulo`n`nPrimer parrafo.`n`n- un elemento`n`n$arbol"
+        }
+
+        It 'un bloque sin traduccion se deja en el original' {
+            $partes = Split-TranslationParts -Text "One.`n`nTwo."
+            Join-TranslatedBlocks -Blocks $partes.Blocks -Translations @{ 0 = 'Uno.' } | Should -BeExactly "Uno.`n`nTwo."
+        }
+    }
+}
