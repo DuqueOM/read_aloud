@@ -98,6 +98,22 @@ Describe 'Split-LongText' {
         $piezas[1] | Should -BeExactly 'son las 3:30 en la sede de la ONU.'
     }
 
+    It 'no corta un numero con coma decimal o punto de miles: <Cifra>' -ForEach @(
+        @{ Cifra = '3,5' }
+        @{ Cifra = '1.000' }
+        @{ Cifra = '1.000.000' }
+        @{ Cifra = '2.500,75' }
+        @{ Cifra = '1,000' }
+    ) {
+        # Esto ya funcionaba: la coma entre cifras no es pausa y el punto no es
+        # punto de corte aqui. La prueba lo fija con la cifra justo antes del tope.
+        $texto = 'uno dos tres cuatro, cinco seis siete ocho son ' + $Cifra + ' nueve diez once doce trece catorce quince dieciseis'
+        $piezas = @(Split-LongText -Text $texto -Limits @(60))
+        $piezas.Count | Should -BeGreaterThan 1
+        @($piezas | Where-Object { $_.Contains($Cifra) }).Count | Should -Be 1
+        ($piezas -join ' ') | Should -BeExactly $texto
+    }
+
     It 'corta en una raya' {
         $texto = 'aaa bbb ccc ddd eee fff ' + $rayaLarga + ' ggg hhh iii jjj kkk lll mmm nnn ooo ppp qqq'
         $piezas = @(Split-LongText -Text $texto -Limits @(40))
