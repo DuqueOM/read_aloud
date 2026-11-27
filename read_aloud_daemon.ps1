@@ -2604,22 +2604,16 @@ $timer.Add_Tick({
     $changed = $false
 
     while ($sync.SynthDone.TryDequeue([ref]$done)) {
-        if ($done.Generation -ne $state.Generation) {
+        # Un audio que ya no se va a oir se borra: el de otra lectura, el del
+        # calentamiento (indices negativos) y el de una lectura detenida, que
+        # el hilo de voz termina de generar aunque ya no haya frases. Lo que
+        # valga la pena ya quedo en el audio guardado.
+        if ($done.Generation -ne $state.Generation -or $done.Index -lt 0 -or $done.Index -ge $state.Chunks.Count) {
             if ($done.Wav -and (Test-Path -LiteralPath $done.Wav)) {
                 Remove-Item -LiteralPath $done.Wav -Force -ErrorAction SilentlyContinue
             }
             continue
         }
-
-        # Los fragmentos de calentamiento usan indices negativos.
-        if ($done.Index -lt 0) {
-            if ($done.Wav -and (Test-Path -LiteralPath $done.Wav)) {
-                Remove-Item -LiteralPath $done.Wav -Force -ErrorAction SilentlyContinue
-            }
-            continue
-        }
-
-        if ($done.Index -ge $state.Chunks.Count) { continue }
 
         $chunk = $state.Chunks[$done.Index]
         $chunk.Engine = [string]$done.Engine
