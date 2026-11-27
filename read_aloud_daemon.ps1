@@ -22,6 +22,7 @@ $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Core.ps1')
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Text.ps1')
+. (Join-Path $PSScriptRoot 'lib\ReadAloud.Translate.ps1')
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Player.ps1')
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Cache.ps1')
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Hotkeys.ps1')
@@ -226,6 +227,9 @@ $sync.QwenHold = $false
 $sync.QwenWake = $false
 $sync.QwenProcess = $null
 $sync.Reading = $false
+# La traduccion que el reproductor esta leyendo (su Id), o 0. El hilo de
+# traduccion corta una que ya no se lee.
+$sync.TranslateWanted = 0
 
 $runspaces = New-Object System.Collections.Generic.List[object]
 
@@ -1197,12 +1201,24 @@ $translateScript = {
             }
         }
 
-        Send-TranslateEvent @{ Kind = 'start'; Id = $n; Source = $dir.Source; Target = $dir.Target; Combo = $combo.Id; Blocks = $partes.Blocks }
+        # PartBlocks es el bloque de cada parte: el reproductor sabe asi cual
+        # cierra su parrafo y lleva la pausa.
+        $bloquesDeParte = [int[]]@($partes.Parts | ForEach-Object { [int]$_.Block })
+        # Blocks va como arreglo: @() sobre una List creada en otro hilo falla
+        # en el hilo de la interfaz ("Argument types do not match").
+        Send-TranslateEvent @{ Kind = 'start'; Id = $n; Source = $dir.Source; Target = $dir.Target; Combo = $combo.Id; Blocks = $partes.Blocks.ToArray(); PartBlocks = $bloquesDeParte }
 
         $porBloque = @{}
         $primera = -1.0
         $deGuardado = 0
         for ($i = 0; $i -lt $partes.Parts.Count; $i++) {
+            # El reproductor paso a otra lectura: el resto ya no hace falta.
+            # Las de prueba de la tuberia (LogText) se terminan siempre.
+            if (-not $Job.LogText -and [int]$sync.TranslateWanted -ne $n) {
+                Write-TranslateLog ('Traduccion {0}: se deja en la parte {1} de {2}, porque ya no se lee.' -f $n, ($i + 1), $partes.Parts.Count)
+                $t.LastTranslation = [DateTime]::Now
+                return
+            }
             $p = $partes.Parts[$i]
             $traducida = $guardadas[$i]
             $esGuardada = $null -ne $traducida
@@ -1636,6 +1652,21 @@ $xaml = @'
       </RichTextBox>
     </Border>
     </Grid>
+    <!-- Aviso de la traduccion: la voz propia le cedio la tarjeta grafica al
+         traductor, cuando vuelve y un boton para volver ya (ADR 0016). -->
+    <Grid x:Name="VoiceNotice" Visibility="Collapsed" Margin="0,0,0,6" HorizontalAlignment="Right"
+          Width="{Binding ActualWidth, ElementName=Bar}">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="Auto"/>
+      </Grid.ColumnDefinitions>
+      <TextBlock x:Name="VoiceNoticeText" Grid.Column="0" Text="Voz propia en pausa mientras traduces"
+                 Foreground="#8A8A94" FontFamily="Segoe UI" FontSize="11" VerticalAlignment="Center"
+                 TextTrimming="CharacterEllipsis" Margin="2,0,6,0"/>
+      <Button x:Name="BtnVoiceBack" Grid.Column="1" Content="Volver ahora" FontFamily="Segoe UI" FontSize="11"
+              Foreground="#9AE6B4" Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="6,1"
+              ToolTip="Volver a la voz propia"/>
+    </Grid>
     <StackPanel x:Name="Bar" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
       <TextBlock x:Name="LangBadge" Text="ES" Foreground="#9AE6B4" FontFamily="Segoe UI"
                  FontSize="10" FontWeight="Bold" VerticalAlignment="Center" Margin="2,0,8,0"/>
@@ -1665,6 +1696,14 @@ $xaml = @'
       </Grid>
       <TextBlock x:Name="TimeLabel" Text="0:00 / 0:00" Foreground="#D8D8DC" FontFamily="Segoe UI"
                  FontSize="11" VerticalAlignment="Center" Width="86" TextAlignment="Right"/>
+      <Button x:Name="BtnTranslate" Content="&#xE8C1;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+              Width="26" Height="26" Foreground="#C8C8CC" Background="Transparent" Visibility="Collapsed"
+              BorderThickness="0" Cursor="Hand" Margin="6,0,0,0"
+              ToolTip="Traducir lo que se esta leyendo"/>
+      <Button x:Name="BtnCopyTranslation" Content="&#xE8C8;" FontFamily="Segoe MDL2 Assets" FontSize="13"
+              Width="26" Height="26" Foreground="#C8C8CC" Background="Transparent" Visibility="Collapsed"
+              BorderThickness="0" Cursor="Hand" Margin="6,0,0,0"
+              ToolTip="Copiar la traduccion"/>
       <Button x:Name="BtnText" Content="&#x2261;" FontFamily="Segoe UI" FontSize="15"
               Width="26" Height="26" Foreground="#C8C8CC" Background="Transparent"
               BorderThickness="0" Cursor="Hand" Margin="6,0,0,0"
@@ -1741,7 +1780,8 @@ Set-ThemeResources -Resources $window.Resources -Palette $script:paleta
 $ui = @{}
 foreach ($name in @('Root','LangBadge','BtnBack','BtnPlay','BtnFwd','BtnSpeed','BufferBar','Seek','TimeLabel','BtnText','BtnClose','TextPanel','TextView','Bar','Bordes',
                     'Asa','Zoom','BtnSettings','SpeedPopup','SpeedList','Escala',
-                    'BtnVolume','VolumePopup','VolumeLabel','VolumeFader')) {
+                    'BtnVolume','VolumePopup','VolumeLabel','VolumeFader',
+                    'BtnTranslate','BtnCopyTranslation','VoiceNotice','VoiceNoticeText','BtnVoiceBack')) {
     $ui[$name] = $window.FindName($name)
 }
 
@@ -2058,6 +2098,8 @@ $state = [pscustomobject]@{
     # lectura para el resumen (ver Start-AudioWait).
     AudioWait     = $null
     AudioWaits    = $null
+    # La traduccion que se esta leyendo (ver Start-TranslationRequest), o $null.
+    Translation   = $null
 }
 
 # --------------------------------------------------------------------------
@@ -2261,7 +2303,26 @@ function Stop-Playback {
     $state.HighlightIndex = -1
     $state.Total = 0.0
 
+    # Una traduccion a medias deja de interesar: el hilo de traduccion la
+    # corta en la parte siguiente.
+    $state.Translation = $null
+    $sync.TranslateWanted = 0
+    Update-TranslateButtons
+
     if (-not $KeepWindow) { Hide-PlayerWindow }
+}
+
+function Set-ChunkBadge {
+    # La etiqueta del idioma de la frase que suena. Una traduccion conserva la
+    # de los dos idiomas ("EN > ES").
+    param([string]$Lang)
+
+    $t = $state.Translation
+    if ($null -ne $t -and $t.Started) {
+        $ui.LangBadge.Text = Format-TranslationBadge -Source $t.Source -Target $t.Target
+    } else {
+        $ui.LangBadge.Text = $Lang.ToUpperInvariant()
+    }
 }
 
 function Start-Chunk {
@@ -2289,7 +2350,7 @@ function Start-Chunk {
     $state.PreloadIndex = -1
     (Get-IdlePlayer).Stop()
 
-    $ui.LangBadge.Text = $chunk.Lang.ToUpperInvariant()
+    Set-ChunkBadge -Lang $chunk.Lang
     (Get-ActivePlayer).Open([uri]$chunk.Wav)
 }
 
@@ -2327,7 +2388,7 @@ function Switch-ToPreloaded {
     $state.WaitTarget = -1
 
     $nuevo = Get-ActivePlayer
-    $ui.LangBadge.Text = $state.Chunks[$next].Lang.ToUpperInvariant()
+    Set-ChunkBadge -Lang $state.Chunks[$next].Lang
 
     try { $nuevo.Position = [timespan]::FromSeconds($Offset) } catch { }
     $nuevo.Volume = $script:volume
@@ -2433,6 +2494,47 @@ if ($savedState -and $savedState.PSObject.Properties.Name -contains 'TextPanel')
     $script:panelVisible = [bool]$savedState.TextPanel
 }
 
+function New-PanelParagraph {
+    # Un parrafo del panel con el aspecto de su tipo de bloque. First dice si
+    # es el primero del texto (un titulo arriba del todo no lleva aire).
+    param([string]$Kind, [bool]$First)
+
+    $parrafo = New-Object Windows.Documents.Paragraph
+    $parrafo.LineHeight = [Math]::Round($script:fuente * 1.46)
+
+    switch ($Kind) {
+        'titulo' {
+            $parrafo.FontWeight = [Windows.FontWeights]::SemiBold
+            $parrafo.FontSize = $script:fuente + 1
+            $arriba = 10
+            if ($First) { $arriba = 0 }
+            $parrafo.Margin = New-Object Windows.Thickness(0, $arriba, 0, 4)
+        }
+        'fila'   { $parrafo.Margin = New-Object Windows.Thickness(0, 0, 0, 2) }
+        'arbol'  {
+            # Letra de ancho fijo: las ramas del arbol quedan alineadas.
+            $parrafo.Margin = New-Object Windows.Thickness(0, 0, 0, 1)
+            $parrafo.FontFamily = New-Object Windows.Media.FontFamily('Consolas')
+        }
+        'vineta' { $parrafo.Margin = New-Object Windows.Thickness(6, 0, 0, 2) }
+        default  { $parrafo.Margin = New-Object Windows.Thickness(0, 0, 0, 8) }
+    }
+    return $parrafo
+}
+
+function Add-ChunkRun {
+    # Anade al parrafo el trozo de la frase Index, que sabe a que fragmento de
+    # audio corresponde (para resaltarlo y para el clic).
+    param($Paragraph, [int]$Index)
+
+    if ($Paragraph.Inlines.Count -gt 0) { $Paragraph.Inlines.Add([Windows.Documents.Run]::new(' ')) }
+    $trozo = [Windows.Documents.Run]::new([string]$state.Chunks[$Index].Display)
+    $trozo.Tag = $Index
+    $trozo.Foreground = $colores.Pendiente
+    $Paragraph.Inlines.Add($trozo)
+    [void]$script:runs.Add(@{ Run = $trozo })
+}
+
 function Build-TextPanel {
     # Un parrafo por bloque y, dentro, un trozo por frase. Cada trozo sabe a
     # que fragmento de audio corresponde.
@@ -2448,39 +2550,11 @@ function Build-TextPanel {
         $c = $state.Chunks[$i]
 
         if ($c.Block -ne $bloque) {
-            $parrafo = New-Object Windows.Documents.Paragraph
-            $parrafo.LineHeight = [Math]::Round($script:fuente * 1.46)
-
-            switch ($c.Kind) {
-                'titulo' {
-                    $parrafo.FontWeight = [Windows.FontWeights]::SemiBold
-                    $parrafo.FontSize = $script:fuente + 1
-                    $arriba = 0
-                    if ($i -gt 0) { $arriba = 10 }
-                    $parrafo.Margin = New-Object Windows.Thickness(0, $arriba, 0, 4)
-                }
-                'fila'   { $parrafo.Margin = New-Object Windows.Thickness(0, 0, 0, 2) }
-                'arbol'  {
-                    # Letra de ancho fijo: las ramas del arbol quedan alineadas.
-                    $parrafo.Margin = New-Object Windows.Thickness(0, 0, 0, 1)
-                    $parrafo.FontFamily = New-Object Windows.Media.FontFamily('Consolas')
-                }
-                'vineta' { $parrafo.Margin = New-Object Windows.Thickness(6, 0, 0, 2) }
-                default  { $parrafo.Margin = New-Object Windows.Thickness(0, 0, 0, 8) }
-            }
-
+            $parrafo = New-PanelParagraph -Kind $c.Kind -First ($i -eq 0)
             $documento.Blocks.Add($parrafo)
             $bloque = $c.Block
-        } else {
-            $parrafo.Inlines.Add([Windows.Documents.Run]::new(' '))
         }
-
-        $trozo = [Windows.Documents.Run]::new([string]$c.Display)
-        $trozo.Tag = $i
-        $trozo.Foreground = $colores.Pendiente
-
-        $parrafo.Inlines.Add($trozo)
-        [void]$script:runs.Add(@{ Run = $trozo })
+        Add-ChunkRun -Paragraph $parrafo -Index $i
     }
 
     $ui.TextView.ScrollToHome()
@@ -2494,9 +2568,19 @@ function Set-TextFont {
     $script:fuente = [Math]::Max(10, [Math]::Min(22, $Size))
     $ui.TextView.FontSize = $script:fuente
     foreach ($bloque in $ui.TextView.Document.Blocks) {
+        if ($bloque.Tag -eq 'secundario') {
+            # El otro texto de una traduccion, en pequeno debajo de cada parrafo.
+            $bloque.FontSize = Get-SecondaryFontSize
+            $bloque.LineHeight = [Math]::Round($bloque.FontSize * 1.4)
+            continue
+        }
         $bloque.LineHeight = [Math]::Round($script:fuente * 1.46)
         if ($bloque.FontWeight -eq [Windows.FontWeights]::SemiBold) { $bloque.FontSize = $script:fuente + 1 }
     }
+}
+
+function Get-SecondaryFontSize {
+    return [Math]::Max(9, $script:fuente - 2)
 }
 
 function Start-FromChunk {
@@ -2792,67 +2876,12 @@ function Start-Speaking {
         -FirstChunkChars $settings.FirstChunkChars -MaxChunkChars $settings.MaxChunkChars `
         -Fallback $settings.FallbackLanguage -Pauses (Get-ConfiguredPauses) -Engine $engines['es'] -EngineEn $engines['en']
 
-    $index = 0
     $pausas = 0.0
     $reutilizados = 0
-    $minutosGuardado = [double]$synthConfig.AudioCache.Minutes
 
     foreach ($item in $plan.Chunks) {
-        $wav = Join-Path $paths.TmpDir ('ra_{0}_{1:d4}.wav' -f $generation, $index)
-        $pausa = [double]$item.PauseAfter
-        $pausas += $pausa
-
-        $state.Chunks.Add([pscustomobject]@{
-            Index      = $index
-            Lang       = $item.Lang
-            Text       = $item.Text
-            Wav        = $wav
-            Duration   = (Get-EstimatedDuration -Text $item.Text) + $pausa
-            PauseAfter = $pausa
-            Display    = $item.Display
-            Block      = $item.Block
-            Kind       = $item.Kind
-            Offset     = 0.0
-            Ready      = $false
-            # Quien lo genero y en un grupo de cuantas frases.
-            Engine     = ''
-            Group      = 0
-        })
-
-        # Una frase que ya sono hace poco con la misma voz y los mismos ajustes
-        # tiene su audio guardado: se copia y no se vuelve a generar. Llega al
-        # reproductor por el mismo camino que lo recien generado, que le pega
-        # la pausa y lo marca listo.
-        $guardado = $false
-        if ($minutosGuardado -gt 0) {
-            $clave = Get-SynthAudioKey -Config $synthConfig -Engine ([string]$engines[$item.Lang]) -Lang $item.Lang -Text $item.Text
-            if ($clave) {
-                $guardado = Copy-AudioFromCache -CacheDir $paths.AudioCacheDir -Key $clave -Destination $wav -Minutes $minutosGuardado
-            }
-        }
-
-        if ($guardado) {
-            $sync.SynthDone.Enqueue(@{
-                Generation = $generation
-                Index      = $index
-                Wav        = $wav
-                Ok         = $true
-                Error      = ''
-                Engine     = 'guardado'
-                Group      = 0
-            })
-            $reutilizados++
-        } else {
-            $sync.SynthJobs.Enqueue(@{
-                Generation = $generation
-                Index      = $index
-                Lang       = $item.Lang
-                Text       = $item.Text
-                Wav        = $wav
-            })
-        }
-
-        $index++
+        $pausas += [double]$item.PauseAfter
+        if (Add-ReadingChunk -Item $item) { $reutilizados++ }
     }
     [void]$sync.SynthSignal.Set()
     if ($state.Chunks.Count -gt 0) { Start-AudioWait -Index 0 -Kind 'arranque' -Clock $relojArranque }
@@ -2860,33 +2889,428 @@ function Start-Speaking {
     Update-Offsets
     Build-TextPanel
     $ui.LangBadge.Text = $plan.DocumentLang.ToUpperInvariant()
-    # Poner la barra a 0 no es un salto del usuario: la bandera evita que
-    # ValueChanged lo tome por uno.
+    Reset-ReadingBar
+    Update-TranslateButtons
+    Show-ReadingWindow
+
+    Write-DaemonLog ("Lectura {0}: {1} fragmentos, {2:N1} s de pausas, idioma {3}, {4} con audio guardado" -f $generation, $state.Chunks.Count, $pausas, $plan.DocumentLang, $reutilizados)
+}
+
+function Add-ReadingChunk {
+    # Anade un fragmento al final de la lectura en curso y lo manda a la cola
+    # de la voz. Una frase que ya sono hace poco con la misma voz y los mismos
+    # ajustes tiene su audio guardado: se copia y no se vuelve a generar, y
+    # llega al reproductor por el mismo camino que lo recien generado, que le
+    # pega la pausa y lo marca listo. Devuelve $true si tenia audio guardado.
+    param($Item)
+
+    $generation = $state.Generation
+    $index = $state.Chunks.Count
+    $wav = Join-Path $paths.TmpDir ('ra_{0}_{1:d4}.wav' -f $generation, $index)
+    $pausa = [double]$Item.PauseAfter
+
+    $state.Chunks.Add([pscustomobject]@{
+        Index      = $index
+        Lang       = $Item.Lang
+        Text       = $Item.Text
+        Wav        = $wav
+        Duration   = (Get-EstimatedDuration -Text $Item.Text) + $pausa
+        PauseAfter = $pausa
+        Display    = $Item.Display
+        Block      = $Item.Block
+        Kind       = $Item.Kind
+        Offset     = 0.0
+        Ready      = $false
+        # Quien lo genero y en un grupo de cuantas frases.
+        Engine     = ''
+        Group      = 0
+    })
+
+    $guardado = $false
+    $minutosGuardado = [double]$synthConfig.AudioCache.Minutes
+    if ($minutosGuardado -gt 0) {
+        $clave = Get-SynthAudioKey -Config $synthConfig -Engine ([string]$engines[$Item.Lang]) -Lang $Item.Lang -Text $Item.Text
+        if ($clave) {
+            $guardado = Copy-AudioFromCache -CacheDir $paths.AudioCacheDir -Key $clave -Destination $wav -Minutes $minutosGuardado
+        }
+    }
+
+    if ($guardado) {
+        $sync.SynthDone.Enqueue(@{
+            Generation = $generation
+            Index      = $index
+            Wav        = $wav
+            Ok         = $true
+            Error      = ''
+            Engine     = 'guardado'
+            Group      = 0
+        })
+    } else {
+        $sync.SynthJobs.Enqueue(@{
+            Generation = $generation
+            Index      = $index
+            Lang       = $Item.Lang
+            Text       = $Item.Text
+            Wav        = $wav
+        })
+    }
+    return $guardado
+}
+
+function Reset-ReadingBar {
+    # Barra a 0 y reproductor en marcha para una lectura nueva. Poner la barra
+    # a 0 no es un salto del usuario: la bandera evita que ValueChanged lo
+    # tome por uno.
     $state.SyncingSlider = $true
     $ui.Seek.Value = 0
     $state.SyncingSlider = $false
     $ui.TimeLabel.Text = '0:00 / ' + (Format-Time $state.Total)
     Set-PlayIcon -Playing $true
     $state.IsPlaying = $true
+}
 
-    if ($settings.ShowPlayer) {
-        # Ajuste "Panel de texto al aparecer": como lo dejaste, o siempre
-        # abierto o cerrado. Solo al aparecer, no si ya estaba a la vista.
-        if (-not $window.IsVisible -or $script:ocultando) {
-            switch ([string]$settings.PanelOnShow) {
-                'abierto' { if (-not $script:panelVisible) { Set-TextPanel -Visible $true } }
-                'cerrado' { if ($script:panelVisible) { Set-TextPanel -Visible $false } }
-            }
+function Show-ReadingWindow {
+    # Muestra el reproductor para una lectura nueva. Con -OpenPanel (una
+    # traduccion) el panel de texto se abre siempre; si no, sigue el ajuste
+    # "Panel de texto al aparecer" (como lo dejaste, abierto o cerrado), que
+    # solo cuenta al aparecer, no si ya estaba a la vista.
+    param([switch]$OpenPanel)
+
+    if (-not $settings.ShowPlayer -and -not $OpenPanel) { return }
+
+    if ($OpenPanel) {
+        if (-not $script:panelVisible) { Set-TextPanel -Visible $true }
+    } elseif (-not $window.IsVisible -or $script:ocultando) {
+        switch ([string]$settings.PanelOnShow) {
+            'abierto' { if (-not $script:panelVisible) { Set-TextPanel -Visible $true } }
+            'cerrado' { if ($script:panelVisible) { Set-TextPanel -Visible $false } }
         }
-        Show-PlayerWindow
-        # Se coloca al mostrar, no solo al arrancar: el alto depende de si el
-        # panel esta abierto, y el monitor puede cambiar mientras el proceso
-        # residente sigue vivo.
-        $window.UpdateLayout()
-        Set-PlayerPosition
+    }
+    Show-PlayerWindow
+    # Se coloca al mostrar, no solo al arrancar: el alto depende de si el
+    # panel esta abierto, y el monitor puede cambiar mientras el proceso
+    # residente sigue vivo.
+    $window.UpdateLayout()
+    Set-PlayerPosition
+}
+
+# --------------------------------------------------------------------------
+# Lectura de una traduccion (ADR 0016). El atajo de traducir, el boton
+# Traducir del reproductor o la orden "translate-read" de la tuberia piden la
+# traduccion y abren el panel. El hilo de traduccion manda el comienzo (los
+# bloques), cada parte y el final: el panel se llena a medida que llegan, y
+# cada parte se anade a la lectura en curso con la voz del idioma de destino,
+# asi la primera frase suena mientras se traduce el resto. En el panel va lo
+# que se lee en grande y, debajo de cada parrafo, el otro texto en pequeno.
+# --------------------------------------------------------------------------
+$script:translatorsCheck = @{ At = [DateTime]::MinValue; Installed = $false }
+
+function Test-TranslatorsInstalled {
+    # Si hay algun traductor instalado. Se mira como mucho una vez por minuto.
+    $ahora = [DateTime]::UtcNow
+    if (($ahora - $script:translatorsCheck.At).TotalSeconds -gt 60) {
+        $script:translatorsCheck.At = $ahora
+        try {
+            $script:translatorsCheck.Installed = @(Get-InstalledTranslators -TranslateDir $paths.TranslateDir).Count -gt 0
+        } catch {
+            $script:translatorsCheck.Installed = $false
+        }
+    }
+    return $script:translatorsCheck.Installed
+}
+
+function Restore-PlayerCorner {
+    # La ventana se ajusta a su contenido y crece hacia la derecha y hacia
+    # abajo. Cuando una lectura cambia la barra (la etiqueta "EN > ES", un
+    # boton, el aviso de la voz), se vuelve a colocar por su esquina inferior
+    # derecha para que no se salga de la pantalla.
+    if (-not $window.IsVisible) { return }
+    $window.UpdateLayout()
+    Set-PlayerPosition
+}
+
+function Update-TranslateButtons {
+    # "Traducir" con una lectura normal; "Copiar la traduccion" mientras se
+    # lee una traduccion. Sin traductor instalado o con la traduccion
+    # desactivada, ninguno.
+    $t = $state.Translation
+    if ($null -ne $t) {
+        $ui.BtnTranslate.Visibility = 'Collapsed'
+        $ui.BtnCopyTranslation.ToolTip = (T 'Copiar la traduccion')
+        $ui.BtnCopyTranslation.Visibility = $(if ($t.Started -and -not $t.Failed) { 'Visible' } else { 'Collapsed' })
+        return
+    }
+    $ui.BtnCopyTranslation.Visibility = 'Collapsed'
+    $puede = [bool]$settings.Translate -and ($state.Chunks.Count -gt 0) -and (Test-TranslatorsInstalled)
+    $ui.BtnTranslate.Visibility = $(if ($puede) { 'Visible' } else { 'Collapsed' })
+}
+
+function New-SecondaryParagraph {
+    # El texto pequeno que va debajo de cada parrafo de una traduccion.
+    param([string]$Kind)
+
+    $p = New-Object Windows.Documents.Paragraph
+    $p.Tag = 'secundario'
+    $p.FontSize = Get-SecondaryFontSize
+    $p.LineHeight = [Math]::Round($p.FontSize * 1.4)
+    $izquierda = 0
+    if ($Kind -eq 'vineta') { $izquierda = 6 }
+    $p.Margin = New-Object Windows.Thickness($izquierda, 0, 0, 10)
+    return $p
+}
+
+function Set-SecondaryText {
+    param($Paragraph, [string]$Text)
+
+    $Paragraph.Inlines.Clear()
+    $r = [Windows.Documents.Run]::new($Text)
+    $r.Foreground = $colores.Leido
+    $Paragraph.Inlines.Add($r)
+}
+
+function Get-TranslationSpeechPlan {
+    # El plan de lectura de un trozo de una traduccion, con la voz del idioma
+    # que se lee. El primer fragmento de la lectura entera es corto para que
+    # suene pronto; los demas trozos no empiezan la lectura.
+    param([string]$Text, [string]$Requested)
+
+    $primero = Get-PartFirstChunkChars -StartsReading ($state.Chunks.Count -eq 0) `
+        -FirstChunkChars ([int]$settings.FirstChunkChars) -MaxChunkChars ([int]$settings.MaxChunkChars)
+    return Build-SpeechPlan -Text $Text -Requested $Requested `
+        -MinChunkChars $settings.MinChunkChars -FirstChunkChars $primero -MaxChunkChars $settings.MaxChunkChars `
+        -Fallback $settings.FallbackLanguage -Pauses (Get-ConfiguredPauses) -Engine $engines['es'] -EngineEn $engines['en']
+}
+
+function Add-TranslationChunks {
+    # Lee un trozo de texto al final de la lectura en curso y pone sus frases
+    # en el parrafo del panel.
+    param([string]$Text, [hashtable]$Block, $Paragraph, [bool]$ClosesBlock)
+
+    $t = $state.Translation
+    $plan = Get-TranslationSpeechPlan -Text $Text -Requested $t.Requested
+    # Sin @() alrededor de $plan.Chunks: con una List hecha con New-Object,
+    # @() falla en este Windows ("Argument types do not match"). El parametro
+    # [object[]] la convierte bien.
+    $items = @(ConvertTo-ReadingChunks -PlanChunks $plan.Chunks -Block ([int]$Block.Index) -Kind ([string]$Block.Kind) `
+        -ClosesBlock $ClosesBlock -PauseAfter ([double]$Block.PauseAfter))
+    foreach ($item in $items) {
+        if (Add-ReadingChunk -Item $item) { $t.Reused++ }
+        Add-ChunkRun -Paragraph $Paragraph -Index ($state.Chunks.Count - 1)
+    }
+    if ($items.Count -gt 0) {
+        [void]$sync.SynthSignal.Set()
+        Update-Offsets
+    }
+}
+
+function Start-TranslationRequest {
+    # Empieza la lectura de una traduccion: una lectura vacia, el panel con
+    # "Traduciendo..." y la orden al hilo de traduccion.
+    param([string]$Text)
+
+    if ([string]::IsNullOrWhiteSpace($Text)) { return }
+    if (-not [bool]$settings.Translate) {
+        Write-DaemonLog 'Traducir: la traduccion esta desactivada en los ajustes.'
+        try { $script:tray.ShowBalloonTip(5000, 'Read Aloud', (T 'La traduccion esta desactivada en los ajustes.'), [Windows.Forms.ToolTipIcon]::Info) } catch { }
+        return
     }
 
-    Write-DaemonLog ("Lectura {0}: {1} fragmentos, {2:N1} s de pausas, idioma {3}, {4} con audio guardado" -f $generation, $state.Chunks.Count, $pausas, $plan.DocumentLang, $reutilizados)
+    $reloj = [Diagnostics.Stopwatch]::StartNew()
+    Stop-Playback -KeepWindow
+
+    $sync.Generation = $sync.Generation + 1
+    $state.Generation = $sync.Generation
+    $state.Finished = $false
+    $state.AudioWaits = New-AudioWaitCounts -Generation $state.Generation
+
+    $script:translateCount++
+    $id = $script:translateCount
+    $state.Translation = @{
+        Id           = $id
+        Original     = $Text
+        Started      = $false
+        Done         = $false
+        Failed       = $false
+        Source       = ''
+        Target       = ''
+        ReadOriginal = $false
+        Requested    = ''
+        Blocks       = @()
+        PartBlocks   = [int[]]@()
+        Paragraphs   = @{}
+        ByBlock      = @{}
+        Text         = ''
+        Reused       = 0
+        Clock        = $reloj
+    }
+    $sync.TranslateWanted = $id
+    $sync.TranslateJobs.Enqueue(@{ Kind = 'translate'; Id = $id; Text = $Text; Options = @{}; LogText = $false })
+    [void]$sync.TranslateSignal.Set()
+    Start-AudioWait -Index 0 -Kind 'arranque' -Clock $reloj
+
+    $documento = $ui.TextView.Document
+    $documento.Blocks.Clear()
+    $script:runs.Clear()
+    $state.HighlightIndex = -1
+    $espera = New-PanelParagraph -Kind 'parrafo' -First $true
+    $r = [Windows.Documents.Run]::new((T 'Traduciendo...'))
+    $r.Foreground = $colores.Leido
+    $espera.Inlines.Add($r)
+    $documento.Blocks.Add($espera)
+
+    $ui.LangBadge.Text = '...'
+    Update-Offsets
+    Reset-ReadingBar
+    Update-TranslateButtons
+    Show-ReadingWindow -OpenPanel
+    Write-DaemonLog ('Traduccion {0}: pedida, {1} caracteres.' -f $id, $Text.Length)
+}
+
+function Start-TranslationPanel {
+    # Llega el comienzo de la traduccion: la direccion y los bloques. El panel
+    # pasa a tener, por bloque, lo que se lee en grande y el otro texto debajo
+    # en pequeno. En el modo practica el original en ingles se lee ya, sin
+    # esperar a la traduccion.
+    param([hashtable]$Evento)
+
+    $t = $state.Translation
+    $t.Started = $true
+    $t.Source = [string]$Evento.Source
+    $t.Target = [string]$Evento.Target
+    $bloques = $Evento.Blocks
+    if ($bloques -is [Collections.Generic.List[object]]) { $bloques = $bloques.ToArray() }
+    $t.Blocks = [object[]]$bloques
+    $t.PartBlocks = [int[]]@($Evento.PartBlocks)
+    $modo = Get-TranslationReadingMode -Source $t.Source -Target $t.Target -Practice ([bool]$settings.TranslatePractice)
+    $t.ReadOriginal = [bool]$modo.ReadOriginal
+    $t.Requested = [string]$modo.Requested
+    $ui.LangBadge.Text = Format-TranslationBadge -Source $t.Source -Target $t.Target
+
+    $documento = $ui.TextView.Document
+    $documento.Blocks.Clear()
+    $script:runs.Clear()
+    $state.HighlightIndex = -1
+    $vineta = [string][char]0x2022 + '  '
+
+    for ($i = 0; $i -lt $t.Blocks.Count; $i++) {
+        $b = $t.Blocks[$i]
+        $principal = New-PanelParagraph -Kind ([string]$b.Kind) -First ($i -eq 0)
+        $documento.Blocks.Add($principal)
+        $entrada = @{ Main = $principal; Second = $null; Placeholder = $null }
+
+        # Las vinetas llevan su marca: el punto, o el numero de una lista
+        # numerada.
+        if ($b.Kind -eq 'vineta') {
+            $marca = $vineta
+            if ([string]$b.Prefix -match '^[0-9]') { $marca = [string]$b.Prefix + ' ' }
+            $principal.Inlines.Add([Windows.Documents.Run]::new($marca))
+        }
+
+        if (-not $b.Translate) {
+            # Lo que no se traduce (un arbol de carpetas) se muestra tal cual y
+            # no se lee.
+            $r = [Windows.Documents.Run]::new([string]$b.Source)
+            $r.Foreground = $colores.Leido
+            $principal.Inlines.Add($r)
+        } else {
+            $m = $principal.Margin
+            $principal.Margin = New-Object Windows.Thickness($m.Left, $m.Top, $m.Right, 1)
+            $segundo = New-SecondaryParagraph -Kind ([string]$b.Kind)
+            $documento.Blocks.Add($segundo)
+            $entrada.Second = $segundo
+
+            $original = [string]$b.Source
+            if ($t.ReadOriginal) {
+                Set-SecondaryText -Paragraph $segundo -Text '...'
+                Add-TranslationChunks -Text $original -Block $b -Paragraph $principal -ClosesBlock $true
+            } else {
+                $ph = [Windows.Documents.Run]::new('...')
+                $ph.Foreground = $colores.Leido
+                $principal.Inlines.Add($ph)
+                $entrada.Placeholder = $ph
+                Set-SecondaryText -Paragraph $segundo -Text $original
+            }
+        }
+        $t.Paragraphs[$i] = $entrada
+    }
+
+    $ui.TextView.ScrollToHome()
+    Update-TranslateButtons
+    Restore-PlayerCorner
+}
+
+function Add-TranslationPart {
+    # Llega una parte traducida: se pone en su parrafo y, si lo que se lee es
+    # la traduccion, se anade a la lectura en curso.
+    param([hashtable]$Evento)
+
+    $t = $state.Translation
+    $b = [int]$Evento.Block
+    $texto = [string]$Evento.Text
+    if ($t.ByBlock.ContainsKey($b)) { $t.ByBlock[$b] = ($t.ByBlock[$b] + ' ' + $texto).Trim() } else { $t.ByBlock[$b] = $texto }
+
+    $entrada = $t.Paragraphs[$b]
+    if ($null -eq $entrada) { return }
+
+    if ($t.ReadOriginal) {
+        Set-SecondaryText -Paragraph $entrada.Second -Text $t.ByBlock[$b]
+        return
+    }
+
+    if ($null -ne $entrada.Placeholder) {
+        [void]$entrada.Main.Inlines.Remove($entrada.Placeholder)
+        $entrada.Placeholder = $null
+    }
+    $cierra = Test-PartClosesBlock -PartBlocks $t.PartBlocks -Index ([int]$Evento.Index)
+    Add-TranslationChunks -Text $texto -Block $t.Blocks[$b] -Paragraph $entrada.Main -ClosesBlock $cierra
+    Update-Highlight -Force
+}
+
+function Complete-TranslationReading {
+    # Llega el final de la traduccion. Si la lectura ya habia llegado al final
+    # y esperaba otra parte, termina aqui. El reproductor no se cierra solo:
+    # el panel con la traduccion y el original queda a la vista.
+    param([hashtable]$Evento)
+
+    $t = $state.Translation
+    $t.Done = $true
+    $t.Text = [string]$Evento.Text
+    Update-TranslateButtons
+    Restore-PlayerCorner
+
+    $alFinal = $state.WaitingForNext -and (($state.PlayIndex + 1) -ge $state.Chunks.Count)
+    if ($state.Chunks.Count -eq 0 -or $alFinal) {
+        $state.WaitingForNext = $false
+        $state.Finished = $true
+        $state.IsPlaying = $false
+        Set-PlayIcon -Playing $false
+        Write-AudioWaitSummary -Reason 'terminada'
+    }
+    Write-DaemonLog ('Traduccion {0}: {1} -> {2} con {3}; se lee {4}, {5} fragmentos, {6} con audio guardado.' -f
+        $t.Id, $t.Source, $t.Target, $Evento.Combo, $(if ($t.ReadOriginal) { 'el original (modo practica)' } else { 'la traduccion' }),
+        $state.Chunks.Count, $t.Reused)
+}
+
+function Show-TranslationError {
+    param([hashtable]$Evento)
+
+    $t = $state.Translation
+    $t.Done = $true
+    $t.Failed = $true
+    if (-not $t.Started) { $ui.TextView.Document.Blocks.Clear() }
+    $p = New-PanelParagraph -Kind 'parrafo' -First $false
+    $r = [Windows.Documents.Run]::new(((T 'No se pudo traducir: {0}') -f [string]$Evento.Error))
+    $r.Foreground = $colores.Leido
+    $p.Inlines.Add($r)
+    $ui.TextView.Document.Blocks.Add($p)
+    if ($state.Chunks.Count -eq 0) {
+        $state.Finished = $true
+        $state.IsPlaying = $false
+        Set-PlayIcon -Playing $false
+        Write-AudioWaitSummary -Reason 'detenida'
+    }
+    Update-TranslateButtons
+    Restore-PlayerCorner
 }
 
 # --------------------------------------------------------------------------
@@ -2925,12 +3349,22 @@ foreach ($instancia in $players) {
         $next = $state.PlayIndex + 1
 
         if ($next -ge $state.Chunks.Count) {
+            # Una traduccion que aun no termina: la lectura espera la parte
+            # siguiente, que el pulso arranca en cuanto llega.
+            $t = $state.Translation
+            if ($null -ne $t -and -not $t.Done) {
+                $state.WaitingForNext = $true
+                Start-AudioWait -Index $next -Kind 'traduccion'
+                return
+            }
+
             $state.Finished = $true
             $state.IsPlaying = $false
             Set-PlayIcon -Playing $false
             Write-AudioWaitSummary -Reason 'terminada'
 
-            if ($settings.PlayerAutoClose) {
+            # El panel de una traduccion queda a la vista para leerlo.
+            if ($settings.PlayerAutoClose -and $null -eq $t) {
                 Stop-Playback
             }
             return
@@ -3026,6 +3460,26 @@ $ui.BtnVolume.Add_MouseWheel({
 Set-PlaybackVolumeValue $script:volume
 
 $ui.BtnText.Add_Click({ Set-TextPanel -Visible (-not $script:panelVisible) })
+
+# Traduccion: traducir lo que se esta leyendo, copiar la traduccion y volver a
+# la voz propia desde el aviso.
+$ui.BtnTranslate.Add_Click({
+    if ($null -eq $state.Translation -and $state.LastText) { Start-TranslationRequest -Text $state.LastText }
+})
+$ui.BtnCopyTranslation.Add_Click({
+    $t = $state.Translation
+    if ($null -eq $t) { return }
+    $texto = [string]$t.Text
+    if (-not $t.Done -or -not $texto) { $texto = Join-TranslatedBlocks -Blocks $t.Blocks -Translations $t.ByBlock }
+    if ([string]::IsNullOrWhiteSpace($texto)) { return }
+    try {
+        [Windows.Clipboard]::SetText($texto)
+        $ui.BtnCopyTranslation.ToolTip = (T 'Traduccion copiada')
+    } catch {
+        Write-DaemonLog ('Copiar la traduccion: {0}' -f $_.Exception.Message)
+    }
+})
+$ui.BtnVoiceBack.Add_Click({ Request-VoiceReturn })
 
 $ui.BtnClose.Add_Click({
     Stop-Playback
@@ -3172,16 +3626,83 @@ $window.Add_Closing({
 # --------------------------------------------------------------------------
 function Receive-TranslateEvent {
     # Lo que va saliendo de una traduccion: el comienzo (con los bloques), cada
-    # parte, el final, los errores y los cambios de voz. Aqui se conectaran el
-    # panel y la lectura de la traduccion; por ahora, la orden "translate" de
-    # la tuberia deja el texto traducido en daemon.log.
+    # parte, el final, los errores y los cambios de voz. Lo de la traduccion
+    # que se esta leyendo va al panel y a la lectura; la orden "translate" de
+    # la tuberia, que es de prueba, deja el texto traducido en daemon.log.
     param([hashtable]$Evento)
 
-    if ([string]$Evento.Kind -eq 'done' -and $Evento.LogText) {
+    $tipo = [string]$Evento.Kind
+    if ($tipo -eq 'done' -and $Evento.LogText) {
         $texto = [string]$Evento.Text
         if ($texto.Length -gt 600) { $texto = $texto.Substring(0, 600) + '...' }
         Write-DaemonLog ('Traduccion {0} ({1} -> {2}): {3}' -f $Evento.Id, $Evento.Source, $Evento.Target, ($texto -replace '(\r?\n)+', ' / '))
     }
+
+    if ($tipo -eq 'voice') {
+        # La voz propia vuelve: el aviso lo dice unos segundos, mientras carga.
+        if ([string]$Evento.State -eq 'returned') { $script:voiceBackUntil = [DateTime]::UtcNow.AddSeconds(15) }
+        Update-VoiceNotice -Force
+        return
+    }
+
+    $t = $state.Translation
+    if ($null -eq $t -or [int]$Evento.Id -ne [int]$t.Id) { return }
+    try {
+        switch ($tipo) {
+            'start' { Start-TranslationPanel -Evento $Evento }
+            'part'  { if ($t.Started) { Add-TranslationPart -Evento $Evento } }
+            'done'  { Complete-TranslationReading -Evento $Evento }
+            'error' { Show-TranslationError -Evento $Evento }
+        }
+    } catch {
+        Write-DaemonLog ('Traduccion {0}: error al mostrarla ({1}, linea {2}): {3}' -f $t.Id, $tipo, $_.InvocationInfo.ScriptLineNumber, $_.Exception.Message)
+    }
+}
+
+$script:voiceBackUntil = [DateTime]::MinValue
+$script:voiceNoticeText = ''
+
+function Update-VoiceNotice {
+    # El aviso del reproductor cuando la voz propia le cedio la tarjeta
+    # grafica al traductor: cuando vuelve sola, con un boton para volver ya.
+    # El hilo de traduccion pone el estado cada pocos segundos.
+    param([switch]$Force)
+
+    $s = $sync.TranslateStatus
+    $texto = ''
+    $boton = $false
+    if ([DateTime]::UtcNow -lt $script:voiceBackUntil) {
+        $texto = T 'Vuelve la voz propia: tarda unos segundos en cargar'
+    } elseif ($null -ne $s) {
+        $aviso = Format-VoiceReturnNotice -VoiceHeld ([bool]$s.VoiceHeld) -ReturnActive ([bool]$s.ReturnActive) -SecondsLeft ([double]$s.ReturnSecondsLeft)
+        if ($aviso.Text) {
+            $texto = (T $aviso.Text) -f $aviso.Minutes
+            $boton = $true
+        }
+    }
+    if (-not $Force -and $texto -eq $script:voiceNoticeText) { return }
+    $script:voiceNoticeText = $texto
+
+    $antes = $ui.VoiceNotice.Visibility
+    if ($texto -eq '') {
+        $ui.VoiceNotice.Visibility = 'Collapsed'
+    } else {
+        $ui.VoiceNoticeText.Text = $texto
+        $ui.VoiceNoticeText.ToolTip = $texto
+        $ui.BtnVoiceBack.Visibility = $(if ($boton) { 'Visible' } else { 'Collapsed' })
+        $ui.VoiceNotice.Visibility = 'Visible'
+    }
+    # El aviso suma o quita una linea: la ventana no debe crecer hacia abajo.
+    if ($ui.VoiceNotice.Visibility -ne $antes) { Restore-PlayerCorner }
+}
+
+function Request-VoiceReturn {
+    # Volver a la voz propia a mano, desde el aviso del reproductor o la
+    # bandeja. El hilo de traduccion cierra el traductor de la tarjeta y la
+    # voz se vuelve a cargar.
+    $sync.TranslateJobs.Enqueue(@{ Kind = 'voice'; Id = 0 })
+    [void]$sync.TranslateSignal.Set()
+    Write-DaemonLog 'Volver a la voz propia: pedido a mano.'
 }
 
 $pulseBusy = [timespan]::FromMilliseconds(60)
@@ -3236,6 +3757,9 @@ $timer.Add_Tick({
                 $sync.TranslateJobs.Enqueue(@{ Kind = 'translate'; Id = $script:translateCount; Text = [string]$request.text; Options = $opciones; LogText = $true })
                 [void]$sync.TranslateSignal.Set()
             }
+            # La de uso: traduce, abre el panel y lee la traduccion (el atajo
+            # de traducir y read_aloud.ps1 -Translate la mandan).
+            'translate-read' { Start-TranslationRequest -Text ([string]$request.text) }
             'translate-voice' {
                 $sync.TranslateJobs.Enqueue(@{ Kind = 'voice'; Id = 0 })
                 [void]$sync.TranslateSignal.Set()
@@ -3307,7 +3831,10 @@ $timer.Add_Tick({
     # de una lectura: el hilo lo sabe por Reading.
     $evento = $null
     while ($sync.TranslateDone.TryDequeue([ref]$evento)) { Receive-TranslateEvent -Evento $evento }
-    $sync.Reading = ($state.Chunks.Count -gt 0) -and (-not $state.Finished)
+    # Una traduccion pedida cuenta como lectura aunque aun no tenga frases.
+    $sync.Reading = (($state.Chunks.Count -gt 0) -and (-not $state.Finished)) -or
+        (($null -ne $state.Translation) -and (-not $state.Translation.Done))
+    if ($window.IsVisible) { Update-VoiceNotice }
 
     # 3. Arranque del audio y salto al siguiente fragmento cuando ya esta listo.
     if ($state.Chunks.Count -gt 0 -and -not $state.Finished) {
@@ -3398,6 +3925,13 @@ $script:hotkeyDrain = {
                 } else {
                     Write-DaemonLog 'Atajo de leer: no habia texto seleccionado.'
                 }
+            } elseif ($nombre -eq 'translate') {
+                $texto = Get-SelectedText
+                if (-not [string]::IsNullOrWhiteSpace($texto)) {
+                    $sync.Requests.Enqueue((@{ cmd = 'translate-read'; text = $texto } | ConvertTo-Json -Compress))
+                } else {
+                    Write-DaemonLog 'Atajo de traducir: no habia texto seleccionado.'
+                }
             } else {
                 $sync.Requests.Enqueue((@{ cmd = $nombre } | ConvertTo-Json -Compress))
             }
@@ -3479,6 +4013,11 @@ $script:tray.Text = $(if ($readKey) { (T 'Read Aloud - {0} para leer') -f $readK
 $trayMenu = New-Object Windows.Forms.ContextMenuStrip
 $itemAjustes = $trayMenu.Items.Add((T 'Ajustes'))
 $itemAjustes.Add_Click({ Show-SettingsWindow })
+# Solo se ve mientras la voz propia le deja la tarjeta grafica al traductor.
+$itemVoz = $trayMenu.Items.Add((T 'Volver a la voz propia'))
+$itemVoz.Visible = $false
+$itemVoz.Add_Click({ Request-VoiceReturn })
+$trayMenu.Add_Opening({ $itemVoz.Visible = [bool]$sync.TranslateStatus.VoiceHeld })
 [void]$trayMenu.Items.Add('-')
 $itemSalir = $trayMenu.Items.Add((T 'Salir de Read Aloud'))
 $itemSalir.Add_Click({
