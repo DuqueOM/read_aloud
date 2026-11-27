@@ -104,6 +104,14 @@ Describe 'Split-LongText' {
         $piezas[0].EndsWith($rayaLarga) | Should -BeTrue
     }
 
+    It 'no corta en la raya de un rango entre cifras' {
+        $rango = '1990' + $rayaLarga + '2000'
+        $texto = 'aaa bbb ccc ddd eee fff los anos ' + $rango + ' ggg hhh iii jjj kkk lll mmm nnn ooo ppp qqq'
+        $piezas = @(Split-LongText -Text $texto -Limits @(40))
+        @($piezas | Where-Object { $_.EndsWith($rayaLarga) }).Count | Should -Be 0
+        @($piezas | Where-Object { $_.Contains($rango) }).Count | Should -Be 1
+    }
+
     It 'sin ninguna pausa natural no parte una frase que pasa poco del tope' {
         $texto = 'palabra ' * 11   # 88 caracteres con un tope de 70
         @(Split-LongText -Text $texto -Limits @(70)).Count | Should -Be 1
