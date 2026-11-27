@@ -150,7 +150,7 @@ una voz más plana y predecible; subirlos, más variada y a veces inestable.
 |---|---|---|
 | `MinChunkChars` | `25` | Frases más cortas que esto se juntan con la siguiente |
 | `FirstChunkChars` | `70` | Largo máximo del primer fragmento de una lectura. Corto, para que la voz empiece pronto |
-| `MaxChunkChars` | `180` | Largo máximo del resto. Una frase más larga se parte en una pausa (`;` `:` coma, raya). `0` no parte nada |
+| `MaxChunkChars` | `180` | Largo máximo del resto. Una frase más larga se parte en una pausa (`;` `:` coma, raya), nunca en un signo entre dos cifras (`3:30`, `2,5`, `1990–2000`). `0` no parte nada |
 
 El segundo fragmento usa uno y medio de `FirstChunkChars`. El tope crece porque
 un fragmento largo retrasa a los que vienen detrás: la voz propia genera por
