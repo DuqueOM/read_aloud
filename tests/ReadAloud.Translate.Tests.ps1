@@ -730,3 +730,114 @@ Describe 'Los traductores en el proceso residente' {
         }
     }
 }
+
+Describe 'La lectura de una traduccion' {
+    Context 'Get-TranslationReadingMode' {
+        It 'normalmente se lee la traduccion con la voz del destino (<Origen> -> <Destino>)' -ForEach @(
+            @{ Origen = 'en'; Destino = 'es'; Pedido = 'Spanish' }
+            @{ Origen = 'es'; Destino = 'en'; Pedido = 'English' }
+        ) {
+            $m = Get-TranslationReadingMode -Source $Origen -Target $Destino
+            $m.ReadOriginal | Should -BeFalse
+            $m.Lang | Should -Be $Destino
+            $m.Requested | Should -Be $Pedido
+        }
+
+        It 'en el modo practica se lee el original en ingles' {
+            $m = Get-TranslationReadingMode -Source 'en' -Target 'es' -Practice $true
+            $m.ReadOriginal | Should -BeTrue
+            $m.Lang | Should -Be 'en'
+            $m.Requested | Should -Be 'English'
+        }
+
+        It 'en el modo practica, un original en espanol se lee traducido al ingles' {
+            $m = Get-TranslationReadingMode -Source 'es' -Target 'en' -Practice $true
+            $m.ReadOriginal | Should -BeFalse
+            $m.Lang | Should -Be 'en'
+        }
+    }
+
+    Context 'Test-PartClosesBlock' {
+        It 'la parte <Indice> de 0,0,1,2 cierra su bloque: <Cierra>' -ForEach @(
+            @{ Indice = 0; Cierra = $false }
+            @{ Indice = 1; Cierra = $true }
+            @{ Indice = 2; Cierra = $true }
+            @{ Indice = 3; Cierra = $true }
+        ) {
+            Test-PartClosesBlock -PartBlocks @(0, 0, 1, 2) -Index $Indice | Should -Be $Cierra
+        }
+
+        It 'sin la lista, o fuera de ella, cierra' {
+            Test-PartClosesBlock -PartBlocks $null -Index 0 | Should -BeTrue
+            Test-PartClosesBlock -PartBlocks @(0) -Index 5 | Should -BeTrue
+        }
+
+        It 'coincide con las partes de Split-TranslationParts' {
+            $r = Split-TranslationParts -Text "First one. Second one.`n`nThird." -FirstSentence
+            $bloques = [int[]]@($r.Parts | ForEach-Object { $_.Block })
+            Test-PartClosesBlock -PartBlocks $bloques -Index 0 | Should -BeFalse
+            Test-PartClosesBlock -PartBlocks $bloques -Index 1 | Should -BeTrue
+        }
+    }
+
+    Context 'ConvertTo-ReadingChunks' {
+        BeforeAll {
+            $plan = (Build-SpeechPlan -Text 'La primera frase es esta. Y esta es la segunda frase del texto.' -Requested 'Spanish').Chunks
+        }
+
+        It 'todos los fragmentos van al bloque del panel, con su tipo' {
+            $c = @(ConvertTo-ReadingChunks -PlanChunks $plan -Block 3 -Kind 'vineta' -ClosesBlock $true -PauseAfter 0.35)
+            $c.Count | Should -Be $plan.Count
+            foreach ($x in $c) {
+                $x.Block | Should -Be 3
+                $x.Kind | Should -Be 'vineta'
+                $x.Lang | Should -Be 'es'
+            }
+        }
+
+        It 'solo el ultimo lleva la pausa, si el trozo cierra el bloque' {
+            $c = @(ConvertTo-ReadingChunks -PlanChunks $plan -Block 0 -ClosesBlock $true -PauseAfter 0.35)
+            $c[$c.Count - 1].PauseAfter | Should -Be 0.35
+            if ($c.Count -gt 1) { $c[0].PauseAfter | Should -Be 0.0 }
+            $sin = @(ConvertTo-ReadingChunks -PlanChunks $plan -Block 0 -ClosesBlock $false -PauseAfter 0.35)
+            $sin[$sin.Count - 1].PauseAfter | Should -Be 0.0
+        }
+
+        It 'no cambia el plan de origen' {
+            [void](ConvertTo-ReadingChunks -PlanChunks $plan -Block 9 -ClosesBlock $true -PauseAfter 1.0)
+            $plan[0].Block | Should -Be 0
+        }
+
+        It 'un plan vacio no da fragmentos' {
+            @(ConvertTo-ReadingChunks -PlanChunks @() -Block 0).Count | Should -Be 0
+        }
+    }
+
+    Context 'Get-PartFirstChunkChars' {
+        It 'solo la parte que empieza la lectura tiene el primer fragmento corto' {
+            Get-PartFirstChunkChars -StartsReading $true -FirstChunkChars 70 -MaxChunkChars 180 | Should -Be 70
+            Get-PartFirstChunkChars -StartsReading $false -FirstChunkChars 70 -MaxChunkChars 180 | Should -Be 180
+        }
+    }
+
+    Context 'Format-TranslationBadge y Format-VoiceReturnNotice' {
+        It 'la etiqueta lleva los dos idiomas' {
+            Format-TranslationBadge -Source 'en' -Target 'es' | Should -Be ('EN ' + [char]0x203A + ' ES')
+        }
+
+        It 'sin la voz en pausa no hay aviso' {
+            (Format-VoiceReturnNotice -VoiceHeld $false -ReturnActive $true -SecondsLeft 300).Text | Should -Be ''
+        }
+
+        It 'con la vuelta activada dice los minutos que faltan, redondeados hacia arriba' {
+            $a = Format-VoiceReturnNotice -VoiceHeld $true -ReturnActive $true -SecondsLeft 601
+            $a.Text | Should -Be 'Voz propia en pausa: vuelve en {0} min'
+            $a.Minutes | Should -Be 11
+            (Format-VoiceReturnNotice -VoiceHeld $true -ReturnActive $true -SecondsLeft 30).Text | Should -BeLike '*menos de un minuto'
+        }
+
+        It 'con la vuelta desactivada solo dice que esta en pausa' {
+            (Format-VoiceReturnNotice -VoiceHeld $true -ReturnActive $false).Text | Should -Be 'Voz propia en pausa mientras traduces'
+        }
+    }
+}

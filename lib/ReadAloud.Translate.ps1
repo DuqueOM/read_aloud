@@ -901,3 +901,105 @@ function Join-TranslatedBlocks {
     }
     return ($salida -join "`n`n")
 }
+
+# --------------------------------------------------------------------------
+# La lectura de una traduccion (parte 4): que se lee y como crece.
+# --------------------------------------------------------------------------
+
+function Get-TranslationReadingMode {
+    # Que se lee de una traduccion y con que voz. Normalmente, la traduccion,
+    # con la voz del idioma de destino, y el original va debajo. En el modo
+    # practica, si el original es ingles, se lee el original y la traduccion
+    # queda debajo: la voz siempre es la inglesa.
+    param(
+        [string]$Source,
+        [string]$Target,
+        [bool]$Practice = $false
+    )
+
+    if ($Practice -and $Source -eq 'en') {
+        return @{ ReadOriginal = $true; Lang = 'en'; Requested = 'English' }
+    }
+    $pedido = 'Spanish'
+    if ($Target -eq 'en') { $pedido = 'English' }
+    return @{ ReadOriginal = $false; Lang = $Target; Requested = $pedido }
+}
+
+function Test-PartClosesBlock {
+    # Si la parte Index es la ultima de su bloque: la que lleva despues la
+    # pausa de fin de parrafo. PartBlocks es el bloque de cada parte, en orden.
+    param(
+        [int[]]$PartBlocks,
+        [int]$Index
+    )
+
+    if ($null -eq $PartBlocks -or $Index -lt 0 -or $Index -ge $PartBlocks.Count) { return $true }
+    if ($Index + 1 -ge $PartBlocks.Count) { return $true }
+    return ($PartBlocks[$Index + 1] -ne $PartBlocks[$Index])
+}
+
+function ConvertTo-ReadingChunks {
+    # Los fragmentos de un trozo de texto (una parte traducida, o el bloque
+    # original en el modo practica) para anadirlos a la lectura en curso.
+    # PlanChunks sale de Build-SpeechPlan sobre ese trozo: todos pasan al
+    # bloque Block del panel, con su tipo, y solo el ultimo lleva la pausa del
+    # bloque, si el trozo lo cierra.
+    param(
+        [object[]]$PlanChunks,
+        [int]$Block,
+        [string]$Kind = 'parrafo',
+        [bool]$ClosesBlock = $true,
+        [double]$PauseAfter = 0.0
+    )
+
+    $salida = New-Object System.Collections.Generic.List[object]
+    foreach ($c in @($PlanChunks)) {
+        if ($null -eq $c) { continue }
+        $n = @{} + $c
+        $n.Block = $Block
+        $n.Kind = $Kind
+        $n.PauseAfter = 0.0
+        [void]$salida.Add($n)
+    }
+    if ($ClosesBlock -and $salida.Count -gt 0) { $salida[$salida.Count - 1].PauseAfter = $PauseAfter }
+    return $salida.ToArray()
+}
+
+function Get-PartFirstChunkChars {
+    # El primer fragmento de la lectura entera es corto, para que suene
+    # pronto. Las partes siguientes ya no empiezan la lectura: con el tope
+    # maximo desde su primer fragmento no se trocean de mas.
+    param(
+        [bool]$StartsReading,
+        [int]$FirstChunkChars = 70,
+        [int]$MaxChunkChars = 180
+    )
+    if ($StartsReading) { return $FirstChunkChars }
+    return $MaxChunkChars
+}
+
+function Format-TranslationBadge {
+    # La etiqueta del idioma en el reproductor: "EN > ES" mientras se lee una
+    # traduccion.
+    param([string]$Source, [string]$Target)
+    return ('{0} {1} {2}' -f $Source.ToUpperInvariant(), [char]0x203A, $Target.ToUpperInvariant())
+}
+
+function Format-VoiceReturnNotice {
+    # El aviso del reproductor cuando la voz propia cedio la tarjeta al
+    # traductor. Devuelve el texto en espanol (la clave de la traduccion de
+    # la interfaz) y los minutos, o '' si no hay nada que avisar.
+    param(
+        [bool]$VoiceHeld,
+        [bool]$ReturnActive,
+        [double]$SecondsLeft = -1
+    )
+
+    if (-not $VoiceHeld) { return @{ Text = ''; Minutes = 0 } }
+    if ($ReturnActive -and $SecondsLeft -ge 0) {
+        $min = [int][Math]::Ceiling($SecondsLeft / 60.0)
+        if ($min -le 1) { return @{ Text = 'Voz propia en pausa: vuelve en menos de un minuto'; Minutes = 1 } }
+        return @{ Text = 'Voz propia en pausa: vuelve en {0} min'; Minutes = $min }
+    }
+    return @{ Text = 'Voz propia en pausa mientras traduces'; Minutes = 0 }
+}
