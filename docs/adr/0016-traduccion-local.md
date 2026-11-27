@@ -139,6 +139,13 @@ tarjeta compartida: con 8 hilos va un 130 % más lenta y con 4, solo un 4 %.
     penalización por el tiempo hasta el primer sonido y por cuánto se frena la
     voz. Las notas de calidad salen de esta evaluación; los tiempos, del perfil
     del equipo. En este equipo coincide con Voz propia.
+  - **Vuelta a la voz propia:** lo que más se usa es leer con la voz propia, y
+    la traducción solo cuando se estudia. Por eso, con Traducción, o con
+    Automática si eligió una combinación sin la voz propia, se vuelve sola a
+    Voz propia tras `TranslateReturnMinutes` (15 por defecto; 0 es nunca) sin
+    traducir. Nunca a mitad de una lectura. El reproductor lo avisa, y el
+    cambio se puede hacer también a mano desde el reproductor y la bandeja.
+    Volver cuesta unos 18 s, que la voz carga en segundo plano.
 - **Medir el equipo:** una prueba opcional de 3 a 5 minutos, en Ajustes y
   como tarea desmarcada del instalador. Mide cada combinación que cabe y
   guarda el perfil en `runtime\perfil_equipo.json`. Sin perfil, se usan las
@@ -155,6 +162,19 @@ tarjeta compartida: con 8 hilos va un 130 % más lenta y con 4, solo un 4 %.
   frase, para que suene pronto, y después párrafo por párrafo. Bergamot no lo
   necesita.
 - **La voz propia suelta la caché de PyTorch tras cada grupo** de frases.
+- **Reutilizar lo ya hecho:**
+  - **El audio.** Hoy cada frase se genera en un WAV de `tmp` que se borra al
+    terminar la lectura, y repetir el mismo texto obliga a generarlo otra vez:
+    con la voz propia, 1 a 2 minutos de tarjeta para 500 palabras. Cada WAV se
+    guarda antes de pegarle la pausa del final del bloque, porque esa pausa
+    depende del lugar de la frase. La clave es el motor, la voz, el idioma, el
+    texto y los ajustes que cambian el sonido (velocidad, variación, silencio).
+    Se guarda `AudioCacheMinutes` (10 por defecto) y con un tope de espacio. Va
+    en disco y no en la RAM: copiar un archivo cuesta milisegundos, y la RAM es
+    lo que más escasea. Como va por frases, también sirve al releer solo una
+    parte de algo ya leído.
+  - **La traducción.** Se guarda con la clave del texto, la dirección y el
+    modelo, para no traducir dos veces lo mismo.
 
 ## Alternativas
 
