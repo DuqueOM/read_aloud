@@ -96,6 +96,17 @@ function Get-ReadAloudSettings {
         Performance         = 'rapido'
         SaverIdleMinutes    = 5
         PlayerScale         = 1.0
+        AudioCacheMinutes   = 10
+        AudioCacheMB        = 300
+        Translate           = $true
+        TranslateQuality    = 'auto'
+        TranslatePriority   = 'auto'
+        TranslateAutoReturn = $true
+        TranslateReturnMinutes = 15
+        TranslatePractice   = $false
+        TranslateModel      = ''
+        TranslateDevice     = 'auto'
+        TranslateIdleMinutes = 10
         TextFontSize        = 13
         PanelOnShow         = 'recordar'
     }
