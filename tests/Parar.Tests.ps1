@@ -38,6 +38,26 @@ Describe 'parar_read_aloud.ps1' {
         }
     }
 
+    It 'cierra tambien los traductores de esa carpeta, pero no con -OnlyPiper' {
+        $a = Join-Path $TestDrive 'trad'
+        $dir = Join-Path $a 'read_aloud_piper\traduccion\llama'
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        Copy-Item -LiteralPath (Join-Path $env:SystemRoot 'System32\ping.exe') -Destination (Join-Path $dir 'llama-server.exe')
+        $p = Start-Process -FilePath (Join-Path $dir 'llama-server.exe') -ArgumentList '-n', '120', '127.0.0.1' -WindowStyle Hidden -PassThru
+        try {
+            Start-Sleep -Milliseconds 400
+            @(& $script:parar -Root $a -OnlyPiper -ListOnly).Count | Should -Be 0
+            $lista = @(& $script:parar -Root $a -ListOnly)
+            $lista.Count | Should -Be 1
+            $lista[0] | Should -Match ('^{0} llama-server.exe' -f $p.Id)
+
+            & $script:parar -Root $a | Out-Null
+            $p.WaitForExit(8000) | Should -BeTrue
+        } finally {
+            if (-not $p.HasExited) { $p.Kill() }
+        }
+    }
+
     It 'sin nada que cerrar no hace nada ni falla' {
         $vacia = Join-Path $TestDrive 'vacia'
         New-Item -ItemType Directory -Path $vacia | Out-Null
