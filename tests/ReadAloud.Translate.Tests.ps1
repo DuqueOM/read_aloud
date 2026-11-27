@@ -196,3 +196,299 @@ Describe 'ConvertTo-BergamotMessage' {
         ([Text.Encoding]::UTF8.GetString($m, 4, $m.Length - 4) | ConvertFrom-Json).data.text | Should -Be $texto
     }
 }
+
+Describe 'Get-InstalledTranslators' {
+    BeforeEach {
+        $dir = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $dir | Out-Null
+    }
+
+    It 'sin la carpeta no hay traductores' {
+        @(Get-InstalledTranslators -TranslateDir (Join-Path $dir 'no_existe')).Count | Should -Be 0
+    }
+
+    It 'reconoce Bergamot y los GGUF del catalogo, con su tamano' {
+        New-Item -ItemType Directory -Path (Join-Path $dir 'translateLocally\models\en-es-base-memory') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $dir 'translateLocally\translateLocally.exe') -Value 'x'
+        New-Item -ItemType Directory -Path (Join-Path $dir 'llama') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $dir 'llama\llama-server.exe') -Value 'x'
+        New-Item -ItemType Directory -Path (Join-Path $dir 'modelos') -Force | Out-Null
+        [IO.File]::WriteAllBytes((Join-Path $dir 'modelos\Hy-MT2-1.8B-Q4_K_M.gguf'), (New-Object byte[] (3MB)))
+        Set-Content -LiteralPath (Join-Path $dir 'modelos\otro-modelo.gguf') -Value 'x'
+
+        $t = @(Get-InstalledTranslators -TranslateDir $dir)
+        $t.Count | Should -Be 2
+        $t[0].Id | Should -Be 'bergamot'
+        $t[0].Path | Should -BeLike '*translateLocally.exe'
+        $t[1].Id | Should -Be 'hymt2-1.8b'
+        $t[1].FileMiB | Should -Be 3
+        $t[1].Server | Should -BeLike '*llama-server.exe'
+    }
+
+    It 'un GGUF sin llama-server no cuenta' {
+        New-Item -ItemType Directory -Path (Join-Path $dir 'modelos') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $dir 'modelos\Hy-MT2-7B-Q4_K_M.gguf') -Value 'x'
+        @(Get-InstalledTranslators -TranslateDir $dir).Count | Should -Be 0
+    }
+
+    It 'no cambia el catalogo' {
+        New-Item -ItemType Directory -Path (Join-Path $dir 'translateLocally\models') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $dir 'translateLocally\translateLocally.exe') -Value 'x'
+        [void](Get-InstalledTranslators -TranslateDir $dir)
+        (Get-TranslatorCatalog | Where-Object { $_.Id -eq 'bergamot' }).ContainsKey('Path') | Should -BeFalse
+    }
+}
+
+Describe 'Eleccion del traductor' {
+    BeforeAll {
+        function New-TestTranslator {
+            param([string]$Id, [double]$FileMiB)
+            $t = @{} + @(Get-TranslatorCatalog | Where-Object { $_.Id -eq $Id })[0]
+            $t.FileMiB = $FileMiB
+            return $t
+        }
+
+        $bergamot = New-TestTranslator 'bergamot' 112
+        $hy18 = New-TestTranslator 'hymt2-1.8b' 1081
+        $hy7 = New-TestTranslator 'hymt2-7b' 4411
+        $todos = @($bergamot, $hy18, $hy7)
+
+        # El equipo del ADR 0016 de noche: 8 GB de tarjeta con la voz propia
+        # cargada (2.8 GB libres), 16 nucleos fisicos y unos 6 GB de RAM libre.
+        function New-AdrDevice {
+            param([double]$Ram = 6000, [double]$Gpu = 2867, [bool]$Busy = $false)
+            return @{ RamAvailableMiB = $Ram; GpuFreeMiB = $Gpu; GpuBusy = $Busy; PhysicalCores = 16 }
+        }
+        $conVoz = New-VoiceState -Available $true -Loaded $true
+    }
+
+    Context 'Get-TranslatorThreads' {
+        It '<Nucleos> nucleos fisicos usan <Hilos> hilos' -ForEach @(
+            @{ Nucleos = 16; Hilos = 4 }
+            @{ Nucleos = 8; Hilos = 4 }
+            @{ Nucleos = 6; Hilos = 3 }
+            @{ Nucleos = 4; Hilos = 2 }
+            @{ Nucleos = 2; Hilos = 1 }
+            @{ Nucleos = 1; Hilos = 1 }
+            @{ Nucleos = 0; Hilos = 1 }
+        ) {
+            Get-TranslatorThreads -PhysicalCores $Nucleos | Should -Be $Hilos
+        }
+    }
+
+    Context 'Automatica en el equipo del ADR' {
+        It 'elige la voz propia con Hy-MT2 1.8B en el procesador' {
+            $r = Select-TranslationCombo -Translators $todos -Device (New-AdrDevice) -Voice $conVoz -Options @{ Priority = 'auto' }
+            $r.Combo.Id | Should -Be 'qwen+hymt2-1.8b@cpu'
+            $r.Combo.Threads | Should -Be 4
+            [Math]::Round($r.Combo.Score, 1) | Should -Be 7.6
+        }
+
+        It 'la mejor sin la voz propia es el 7B en la tarjeta, con menos nota' {
+            $r = Select-TranslationCombo -Translators $todos -Device (New-AdrDevice) -Voice $conVoz -Options @{}
+            $siete = @($r.Candidates | Where-Object { $_.Id -eq 'piper+hymt2-7b@gpu' })[0]
+            $siete.Fits | Should -BeTrue
+            [Math]::Round($siete.Score, 1) | Should -Be 6.9
+        }
+
+        It 'ningun modelo de lenguaje cabe en la tarjeta junto a la voz' {
+            $r = Select-TranslationCombo -Translators $todos -Device (New-AdrDevice) -Voice $conVoz -Options @{}
+            @($r.Candidates | Where-Object { $_.Voice -eq 'qwen' -and $_.Where -eq 'gpu' -and $_.Fits }).Count | Should -Be 0
+        }
+    }
+
+    Context 'Prioridad, calidad y seccion avanzada' {
+        It 'Traduccion: la voz propia cede la tarjeta al 7B' {
+            $r = Select-TranslationCombo -Translators $todos -Device (New-AdrDevice) -Voice $conVoz -Options @{ Priority = 'translation' }
+            $r.Combo.Id | Should -Be 'piper+hymt2-7b@gpu'
+        }
+
+        It 'Voz propia: lo mejor que cabe a su lado' {
+            $r = Select-TranslationCombo -Translators $todos -Device (New-AdrDevice) -Voice $conVoz -Options @{ Priority = 'voice' }
+            $r.Combo.Id | Should -Be 'qwen+hymt2-1.8b@cpu'
+        }
+
+        It 'Traduccion con la tarjeta ocupada por otro programa: junto a la voz propia y con una nota' {
+            $r = Select-TranslationCombo -Translators $todos -Device (New-AdrDevice -Busy $true) -Voice $conVoz -Options @{ Priority = 'translation' }
+            $r.Combo.Id | Should -Be 'qwen+hymt2-1.8b@cpu'
+            $r.Notes -join ' ' | Should -BeLike '*ningun traductor cabe en la tarjeta*'
+        }
+
+        It 'Basica: Bergamot' {
+            $r = Select-TranslationCombo -Translators $todos -Device (New-AdrDevice) -Voice $conVoz -Options @{ Quality = 'basic' }
+            $r.Combo.Id | Should -Be 'qwen+bergamot@cpu'
+        }
+
+        It 'Alta: solo modelos de lenguaje' {
+            $r = Select-TranslationCombo -Translators $todos -Device (New-AdrDevice) -Voice $conVoz -Options @{ Quality = 'high' }
+            $r.Combo.Translator.Engine | Should -Be 'llama'
+        }
+
+        It 'un modelo elegido a mano' {
+            $r = Select-TranslationCombo -Translators $todos -Device (New-AdrDevice) -Voice $conVoz -Options @{ Priority = 'translation'; Model = 'hymt2-1.8b' }
+            $r.Combo.Id | Should -Be 'piper+hymt2-1.8b@gpu'
+        }
+
+        It 'Procesador con prioridad de traduccion: no hay nada en la tarjeta y se traduce junto a la voz' {
+            $r = Select-TranslationCombo -Translators $todos -Device (New-AdrDevice) -Voice $conVoz -Options @{ Priority = 'translation'; Where = 'cpu' }
+            $r.Combo.Id | Should -Be 'qwen+hymt2-1.8b@cpu'
+        }
+
+        It 'Tarjeta grafica con prioridad Voz propia: el modelo no cabe y queda el basico' {
+            $r = Select-TranslationCombo -Translators $todos -Device (New-AdrDevice) -Voice $conVoz -Options @{ Priority = 'voice'; Where = 'gpu'; Quality = 'high' }
+            $r.Combo.Id | Should -Be 'qwen+bergamot@cpu'
+            $r.Notes -join ' ' | Should -BeLike '*se usa el basico*'
+        }
+    }
+
+    Context 'Regla de memoria y paso a lo mas ligero' {
+        It 'con poca RAM, Bergamot, y la nota dice por que no cupo el 1.8B' {
+            $r = Select-TranslationCombo -Translators $todos -Device (New-AdrDevice -Ram 2000) -Voice $conVoz -Options @{ Priority = 'voice' }
+            $r.Combo.Id | Should -Be 'qwen+bergamot@cpu'
+            $r.Notes -join ' ' | Should -BeLike '*No cabe qwen+hymt2-1.8b@cpu: en la RAM necesita 2*888 MiB y hay 2*000*'
+        }
+
+        It 'lo que ya esta cargado cabe sin comprobarlo' {
+            $r = Select-TranslationCombo -Translators $todos -Device (New-AdrDevice -Ram 500) -Voice $conVoz -Options @{ Priority = 'voice' } -Loaded 'qwen+hymt2-1.8b@cpu'
+            $r.Combo.Id | Should -Be 'qwen+hymt2-1.8b@cpu'
+        }
+
+        It 'sin el basico y sin memoria no hay traductor' {
+            $r = Select-TranslationCombo -Translators @($hy18) -Device (New-AdrDevice -Ram 500 -Gpu -1) -Voice (New-VoiceState) -Options @{}
+            $r.Combo | Should -BeNullOrEmpty
+            $r.Notes -join ' ' | Should -BeLike '*no esta instalado el basico*'
+        }
+
+        It 'sin traductores instalados no hay combinacion' {
+            $r = Select-TranslationCombo -Translators @() -Device (New-AdrDevice) -Voice $conVoz -Options @{}
+            $r.Combo | Should -BeNullOrEmpty
+        }
+
+        It 'tarjeta: 600 MiB de margen sobre el modelo, la cache y 400 MiB, descontando lo que la voz toma al leer' {
+            # 1081 + 256 + 400 + 600 = 2337, mas 1434 de la voz al leer.
+            $justo = New-AdrDevice -Gpu (2337 + 1434)
+            (Test-TranslatorFits -Translator $hy18 -Where 'gpu' -Device $justo -Voice $conVoz -VoiceName 'qwen').Fits | Should -BeTrue
+            $falta = New-AdrDevice -Gpu (2337 + 1434 - 1)
+            (Test-TranslatorFits -Translator $hy18 -Where 'gpu' -Device $falta -Voice $conVoz -VoiceName 'qwen').Fits | Should -BeFalse
+        }
+
+        It 'tarjeta: si la voz propia cede, lo suyo cuenta como libre' {
+            $r = Test-TranslatorFits -Translator $hy7 -Where 'gpu' -Device (New-AdrDevice) -Voice $conVoz -VoiceName 'piper'
+            $r.HaveMiB | Should -Be (2867 + 5120)
+            $r.NeedMiB | Should -Be (4411 + 512 + 400 + 600)
+            $r.Fits | Should -BeTrue
+        }
+
+        It 'tarjeta: si la voz propia aun no carga pero va a leer, se descuenta todo lo suyo' {
+            $sinCargar = New-VoiceState -Available $true -Loaded $false
+            $r = Test-TranslatorFits -Translator $hy18 -Where 'gpu' -Device (New-AdrDevice -Gpu 7800) -Voice $sinCargar -VoiceName 'qwen'
+            $r.HaveMiB | Should -Be (7800 - 1434 - 5120)
+        }
+
+        It 'procesador: 1.25 veces el archivo mas 1.5 GB' {
+            $r = Test-TranslatorFits -Translator $hy18 -Where 'cpu' -Device (New-AdrDevice -Ram 2888) -Voice $conVoz -VoiceName 'qwen'
+            $r.NeedMiB | Should -Be 2888
+            $r.Fits | Should -BeTrue
+            (Test-TranslatorFits -Translator $hy18 -Where 'cpu' -Device (New-AdrDevice -Ram 2887) -Voice $conVoz -VoiceName 'qwen').Fits | Should -BeFalse
+        }
+
+        It 'sin tarjeta NVIDIA o con la tarjeta ocupada, nada va a la tarjeta' {
+            (Test-TranslatorFits -Translator $hy18 -Where 'gpu' -Device (New-AdrDevice -Gpu -1) -Voice $conVoz).Reason | Should -Be 'no hay tarjeta NVIDIA'
+            (Test-TranslatorFits -Translator $hy18 -Where 'gpu' -Device (New-AdrDevice -Busy $true) -Voice $conVoz).Fits | Should -BeFalse
+        }
+    }
+
+    Context 'Equipos sin voz propia' {
+        It 'sin NVIDIA: Hy-MT2 1.8B en el procesador, leyendo con Piper' {
+            $r = Select-TranslationCombo -Translators $todos -Device (New-AdrDevice -Gpu -1) -Voice (New-VoiceState) -Options @{}
+            $r.Combo.Id | Should -Be 'piper+hymt2-1.8b@cpu'
+        }
+
+        It 'con NVIDIA y sin voz propia: el 7B en la tarjeta' {
+            $r = Select-TranslationCombo -Translators $todos -Device (New-AdrDevice -Gpu 7600) -Voice (New-VoiceState) -Options @{ Priority = 'voice' }
+            $r.Combo.Id | Should -Be 'piper+hymt2-7b@gpu'
+        }
+
+        It 'solo con el basico instalado: Bergamot' {
+            $r = Select-TranslationCombo -Translators @($bergamot) -Device (New-AdrDevice -Gpu -1) -Voice (New-VoiceState) -Options @{}
+            $r.Combo.Id | Should -Be 'piper+bergamot@cpu'
+        }
+    }
+
+    Context 'Perfil del equipo' {
+        It 'manda sobre las cifras del ADR' {
+            $perfil = '{"combinaciones":{"qwen+hymt2-1.8b@cpu":{"primer_sonido_s":12.0,"freno_voz":0.04}}}' | ConvertFrom-Json
+            $r = Select-TranslationCombo -Translators $todos -Device (New-AdrDevice) -Voice $conVoz -Options @{ Priority = 'voice' } -Perfil $perfil
+            $r.Combo.Id | Should -Be 'qwen+bergamot@cpu'
+            (@($r.Candidates | Where-Object { $_.Id -eq 'qwen+hymt2-1.8b@cpu' })[0]).Metrics.Source | Should -Be 'perfil'
+        }
+
+        It 'sin la combinacion en el perfil, se usa el ADR y, si no se midio, una estimacion' {
+            $perfil = @{ combinaciones = @{} }
+            (Get-ComboMetrics -Voice 'qwen' -Translator $hy18 -Where 'cpu' -Perfil $perfil).Source | Should -Be 'adr'
+            $e = Get-ComboMetrics -Voice 'qwen' -Translator $hy7 -Where 'gpu' -Perfil $perfil
+            $e.Source | Should -Be 'estimado'
+            $e.FirstSound | Should -Be 3.4
+        }
+    }
+
+    Context 'Test-PriorityChoiceNeeded' {
+        It 'aparece si el mejor traductor no cabe junto a la voz propia' {
+            Test-PriorityChoiceNeeded -Translators $todos -Device (New-AdrDevice) -Voice $conVoz | Should -BeTrue
+        }
+
+        It 'no aparece si el mejor cabe a su lado' {
+            Test-PriorityChoiceNeeded -Translators @($bergamot, $hy18) -Device (New-AdrDevice) -Voice $conVoz | Should -BeFalse
+        }
+
+        It 'no aparece sin voz propia ni sin traductores' {
+            Test-PriorityChoiceNeeded -Translators $todos -Device (New-AdrDevice) -Voice (New-VoiceState) | Should -BeFalse
+            Test-PriorityChoiceNeeded -Translators @() -Device (New-AdrDevice) -Voice $conVoz | Should -BeFalse
+        }
+    }
+}
+
+Describe 'Get-VoiceReturnState' {
+    BeforeAll {
+        $ultima = [DateTime]'2026-11-27T10:00:00'
+    }
+
+    It 'si la voz propia no cedio la tarjeta no hay nada que hacer' {
+        $r = Get-VoiceReturnState -VoiceYielded $false -Priority 'translation' -LastTranslation $ultima -Now $ultima.AddHours(2)
+        $r.Due | Should -BeFalse
+        $r.Active | Should -BeFalse
+    }
+
+    It 'con <Prioridad>, cuenta los minutos desde la ultima traduccion' -ForEach @(
+        @{ Prioridad = 'translation' }
+        @{ Prioridad = 'auto' }
+    ) {
+        $r = Get-VoiceReturnState -VoiceYielded $true -Priority $Prioridad -Minutes 15 -LastTranslation $ultima -Now $ultima.AddMinutes(10)
+        $r.Active | Should -BeTrue
+        $r.Due | Should -BeFalse
+        $r.SecondsLeft | Should -Be 300
+        (Get-VoiceReturnState -VoiceYielded $true -Priority $Prioridad -Minutes 15 -LastTranslation $ultima -Now $ultima.AddMinutes(15)).Due | Should -BeTrue
+    }
+
+    It 'nunca vuelve a mitad de una lectura' {
+        $r = Get-VoiceReturnState -VoiceYielded $true -Priority 'translation' -Minutes 15 -LastTranslation $ultima -Now $ultima.AddMinutes(40) -Reading $true
+        $r.Due | Should -BeFalse
+        $r.SecondsLeft | Should -Be 0
+    }
+
+    It 'con la opcion desactivada se queda donde esta' {
+        $r = Get-VoiceReturnState -VoiceYielded $true -Priority 'translation' -AutoReturn $false -LastTranslation $ultima -Now $ultima.AddHours(5)
+        $r.Due | Should -BeFalse
+        $r.Active | Should -BeFalse
+    }
+
+    It 'con la prioridad Voz propia vuelve enseguida, aunque la opcion este desactivada' {
+        (Get-VoiceReturnState -VoiceYielded $true -Priority 'voice' -AutoReturn $false -LastTranslation $ultima -Now $ultima).Due | Should -BeTrue
+        (Get-VoiceReturnState -VoiceYielded $true -Priority 'voice' -LastTranslation $ultima -Now $ultima -Reading $true).Due | Should -BeFalse
+    }
+
+    It 'menos de un minuto cuenta como uno' {
+        $r = Get-VoiceReturnState -VoiceYielded $true -Priority 'translation' -Minutes 0 -LastTranslation $ultima -Now $ultima.AddSeconds(30)
+        $r.SecondsLeft | Should -Be 30
+    }
+}
