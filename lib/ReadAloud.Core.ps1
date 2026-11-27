@@ -98,6 +98,11 @@ function Get-ReadAloudSettings {
         PlayerScale         = 1.0
         TextFontSize        = 13
         PanelOnShow         = 'recordar'
+        # Registro de eventos (runtime\eventos_AAAA-MM.jsonl): si se escribe,
+        # si guarda las palabras de lo que se lee y cuantos meses se conservan.
+        EventLog            = $true
+        EventLogText        = $false
+        EventLogMonths      = 12
     }
 
     # settings.local.psd1, ignorado por Git, lleva lo que es de este equipo (la

@@ -1019,7 +1019,7 @@ $aj.BtnTerminoProbar.Add_Click({
     if ($texto -eq '') { Set-TerminoNota (T 'Escribe cómo se dice para poder probarlo.'); return }
     $lang = 'Spanish'; $frase = (T 'Se dice: ') + $texto + '.'
     if ($script:dicIdioma -eq 'en') { $lang = 'English'; $frase = 'It is pronounced: ' + $texto + '.' }
-    $sync.Requests.Enqueue((@{ cmd = 'speak'; lang = $lang; text = $frase } | ConvertTo-Json -Compress))
+    $sync.Requests.Enqueue((@{ cmd = 'speak'; lang = $lang; text = $frase; src = 'ajustes' } | ConvertTo-Json -Compress))
     $sync.WakeUi.Invoke()
     Set-TerminoNota ''
 })

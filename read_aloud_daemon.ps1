@@ -23,6 +23,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Core.ps1')
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Text.ps1')
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Player.ps1')
+. (Join-Path $PSScriptRoot 'lib\ReadAloud.Events.ps1')
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Hotkeys.ps1')
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Update.ps1')
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Theme.ps1')
@@ -74,6 +75,41 @@ function Write-DaemonLog {
     } catch {
         # El log nunca debe tumbar la lectura.
     }
+}
+
+# --------------------------------------------------------------------------
+# Registro de eventos (lib\ReadAloud.Events.ps1, ajustes EventLog*). Lo escribe
+# solo este hilo: Write-Event guarda el evento con su hora y el pulso los
+# escribe todos juntos despues de arrancar el audio que llego, para no
+# retrasarlo. El hilo de sintesis deja los suyos en $sync.Events.
+# --------------------------------------------------------------------------
+$script:eventLog = [bool]$settings.EventLog
+$script:eventText = [bool]$settings.EventLogText
+$script:pendingEvents = New-Object System.Collections.Generic.List[object]
+# Por donde llego la orden que se esta atendiendo: 'raton' (un boton, la
+# barra o el panel de texto), 'atajo' o 'tuberia' (read_aloud.ps1).
+$script:origenAccion = 'raton'
+
+function Write-Event {
+    param([string]$Type, [System.Collections.IDictionary]$Data)
+    if (-not $script:eventLog) { return }
+    $script:pendingEvents.Add(@{ Type = $Type; Data = $Data; Now = Get-Date })
+}
+
+function Write-PendingEventLog {
+    $evento = $null
+    while ($sync.Events.TryDequeue([ref]$evento)) { $script:pendingEvents.Add($evento) }
+    if ($script:pendingEvents.Count -eq 0) { return }
+    # Un evento que no se pueda convertir se pierde solo; los demas se escriben.
+    $lineas = foreach ($e in $script:pendingEvents) {
+        try { ConvertTo-EventLine -Type $e.Type -Data $e.Data -Now $e.Now } catch { }
+    }
+    $script:pendingEvents.Clear()
+    if ($lineas) { [void](Write-EventLine -Path (Get-EventLogPath -RuntimeDir $paths.RuntimeDir) -Line (@($lineas) -join "`n")) }
+}
+
+if ($script:eventLog) {
+    [void](Remove-OldEventLog -RuntimeDir $paths.RuntimeDir -KeepMonths ([int]$settings.EventLogMonths))
 }
 
 function Get-ConfiguredPauses {
@@ -187,6 +223,20 @@ Write-DaemonLog ('Motores: es={0}, en={1}' -f $engines['es'], $engines['en'])
 $ahorro = ([string]$settings.Performance).ToLowerInvariant() -eq 'ahorro'
 if ($ahorro) { Write-DaemonLog "Rendimiento: ahorro de recursos ($($settings.SaverIdleMinutes) min sin leer)." }
 
+Write-Event 'inicio' ([ordered]@{
+    version         = Get-ReadAloudVersion -Root $paths.Root
+    powershell      = $PSVersionTable.PSVersion.ToString()
+    motores         = [ordered]@{ es = $engines['es']; en = $engines['en'] }
+    rendimiento     = [string]$settings.Performance
+    qwen_lote       = [int]$settings.QwenBatch
+    qwen_caracteres = [int]$settings.QwenBatchChars
+    vram_gb         = ConvertTo-EventNumber $vramGB 1
+    silencio_s      = ConvertTo-EventNumber $settings.SentenceSilence 2
+    escala          = ConvertTo-EventNumber $settings.LengthScale 2
+    texto           = $script:eventText
+    energia         = Get-PowerState
+})
+
 # --------------------------------------------------------------------------
 # Estado compartido entre hilos.
 # Generation identifica la lectura actual: cuando llega una orden nueva, sube
@@ -206,6 +256,10 @@ $sync.Priority = -1
 $sync.PriorityGen = 0
 $sync.Stopping = $false
 $sync.ReloadSynth = $null
+# Eventos del hilo de sintesis para el registro (los escribe el pulso) y la
+# velocidad del reproductor, que ese hilo anota en cada grupo.
+$sync.Events = New-Object 'Collections.Concurrent.ConcurrentQueue[object]'
+$sync.Speed = 1.0
 
 $runspaces = New-Object System.Collections.Generic.List[object]
 
@@ -291,10 +345,14 @@ Start-BackgroundRunspace -Script $pipeScript -Variables @{
 # --------------------------------------------------------------------------
 $synthScript = {
     # El orden de generacion y el tope de los grupos viven en la biblioteca del
-    # reproductor, que se prueba con Pester.
+    # reproductor, que se prueba con Pester; lo del registro de eventos, en la
+    # suya.
     . $cfg.PlayerLib
+    . $cfg.EventsLib
 
     $processes = @{}
+    # Por que el ultimo fragmento pedido a Qwen se lee con Piper (Get-SynthKey).
+    $script:piperReason = ''
 
     function New-QwenProcess {
         $q = $cfg.Qwen
@@ -350,6 +408,7 @@ $synthScript = {
 
     function Get-SynthKey {
         param([string]$Lang)
+        $script:piperReason = ''
         if ($cfg.Engines[$Lang] -ne 'qwen') { return $Lang }
         # Otro paso pesado tiene la tarjeta: se lee con Piper y, si Qwen esta
         # abierto, se le cierra la entrada para que termine y la deje.
@@ -359,6 +418,7 @@ $synthScript = {
                 $processes.Remove('qwen')
                 Write-SynthLog 'La tarjeta grafica esta ocupada por otro paso: se lee con Piper mientras tanto.'
             }
+            $script:piperReason = 'tarjeta_ocupada'
             return $Lang
         }
         if (Test-QwenReady) { return 'qwen' }
@@ -378,6 +438,7 @@ $synthScript = {
         }
         if (Test-QwenReady) { return 'qwen' }
         Write-SynthLog 'La voz Qwen aun esta cargando: se lee con Piper hasta que termine.'
+        $script:piperReason = 'qwen_cargando'
         return $Lang
     }
 
@@ -445,9 +506,10 @@ $synthScript = {
     }
 
     function Send-SynthDone {
-        # Engine ('qwen' o 'piper') y Group (cuantas frases iban en el grupo)
-        # los usa el registro de esperas del reproductor.
-        param($Job, [bool]$Ok, [string]$ErrorText, [string]$Engine = '', [int]$Group = 0)
+        # Engine ('qwen' o 'piper'), Group (cuantas frases iban en el grupo) y
+        # GroupId (su nombre en el registro de eventos) los usan los registros
+        # del reproductor.
+        param($Job, [bool]$Ok, [string]$ErrorText, [string]$Engine = '', [int]$Group = 0, [string]$GroupId = '')
         $sync.SynthDone.Enqueue(@{
             Generation = $Job.Generation
             Index      = $Job.Index
@@ -456,7 +518,15 @@ $synthScript = {
             Error      = $ErrorText
             Engine     = $Engine
             Group      = $Group
+            GroupId    = $GroupId
         })
+    }
+
+    function Get-JobMilliseconds {
+        # Milisegundos desde que empezo la lectura de ese fragmento.
+        param($Job)
+        if ($null -eq $Job.Start) { return $null }
+        return [long](([Diagnostics.Stopwatch]::GetTimestamp() - [long]$Job.Start) * 1000 / [Diagnostics.Stopwatch]::Frequency)
     }
 
     function Invoke-SynthBatch {
@@ -464,7 +534,10 @@ $synthScript = {
         # Qwen, lo que falle no se da por perdido: vuelve en Batch, para que
         # se lea con Piper, y Error dice si fue el proceso entero el que fallo.
         # Con -Final, o con Piper, lo que falle se marca como fallido.
-        param([string]$Key, $Batch, [switch]$Final)
+        # Info lleva, para el registro de eventos, el motor pedido, por que se
+        # usa otro (Reason), el tope del grupo (Limit), si sigue a un salto
+        # (Jump) y cuanto se espero a que el motor estuviera listo (WaitMs).
+        param([string]$Key, $Batch, [switch]$Final, [hashtable]$Info = @{})
 
         $keep = ($Key -eq 'qwen') -and -not $Final
         $failed = New-Object System.Collections.Generic.List[object]
@@ -472,15 +545,28 @@ $synthScript = {
         $engineName = $(if ($Key -eq 'qwen') { 'qwen' } else { 'piper' })
         $group = $Batch.Count
 
+        $primero = $Batch[0]
+        $grupoId = '{0}-{1}' -f $primero.Generation, $primero.Index
+        $fragmentos = @(foreach ($b in $Batch) { [int]$b.Index })
+        $caracteres = 0
+        foreach ($b in $Batch) { $caracteres += $b.Text.Length }
+        $desdeInicio = Get-JobMilliseconds $primero
+        $reloj = [Diagnostics.Stopwatch]::StartNew()
+        $primeroMs = $null
+        $medidas = $null
+        $intentos = 0
+        $fallidos = 0
+
         # El servidor de Qwen puede haberse cerrado para dejarle la tarjeta a
         # otro programa; si paso justo al llegar esta orden, se abre de nuevo
         # y se repite una vez.
         for ($attempt = 0; $attempt -lt 2 -and $Batch.Count -gt 0; $attempt++) {
+            $intentos++
             try {
                 $engine = Get-PiperProcess -Lang $Batch[0].Lang -Key $Key
 
                 if ($Key -eq 'qwen') {
-                    $items = @(foreach ($b in $Batch) { @{ text = $b.Text; output_file = $b.Wav; lang = $b.Lang } })
+                    $items = @(foreach ($b in $Batch) { @{ text = $b.Text; output_file = $b.Wav; lang = $b.Lang; grupo = $grupoId } })
                     $payload = ConvertTo-Json -InputObject $items -Compress
                 } else {
                     $payload = @{ text = $Batch[0].Text; output_file = $Batch[0].Wav } | ConvertTo-Json -Compress
@@ -488,20 +574,24 @@ $synthScript = {
                 $engine.Writer.WriteLine($payload)
 
                 # Piper imprime la ruta del WAV cuando termina el fragmento;
-                # el servidor de Qwen, una ruta por fragmento del grupo. Los
-                # que ya llegaron salen del grupo, para no repetirlos si hay
-                # que reintentar.
+                # el servidor de Qwen, una ruta por fragmento del grupo, y en
+                # la primera, las medidas del grupo. Los que ya llegaron salen
+                # del grupo, para no repetirlos si hay que reintentar.
                 while ($Batch.Count -gt 0) {
                     $b = $Batch[0]
                     $produced = $engine.Process.StandardOutput.ReadLine()
                     if ($null -eq $produced) { throw 'El motor de voz cerro la salida sin generar audio.' }
+                    if ($null -eq $primeroMs) { $primeroMs = $reloj.ElapsedMilliseconds }
+                    $salida = ConvertFrom-SynthOutput $produced
+                    if ($null -ne $salida.Metrics) { $medidas = $salida.Metrics }
                     $ok = (-not [string]::IsNullOrWhiteSpace($produced)) -and (Test-Path -LiteralPath $b.Wav)
                     if ($ok) {
-                        Send-SynthDone -Job $b -Ok $true -ErrorText '' -Engine $engineName -Group $group
+                        Send-SynthDone -Job $b -Ok $true -ErrorText '' -Engine $engineName -Group $group -GroupId $grupoId
                     } elseif ($keep) {
                         $failed.Add($b)
                     } else {
-                        Send-SynthDone -Job $b -Ok $false -ErrorText 'El motor de voz no genero el audio.' -Engine $engineName -Group $group
+                        $fallidos++
+                        Send-SynthDone -Job $b -Ok $false -ErrorText 'El motor de voz no genero el audio.' -Engine $engineName -Group $group -GroupId $grupoId
                     }
                     $Batch.RemoveAt(0)
                 }
@@ -516,7 +606,41 @@ $synthScript = {
         }
 
         foreach ($b in @($Batch)) {
-            if ($keep) { $failed.Add($b) } else { Send-SynthDone -Job $b -Ok $false -ErrorText $errorText -Engine $engineName -Group $group }
+            if ($keep) {
+                $failed.Add($b)
+            } else {
+                $fallidos++
+                Send-SynthDone -Job $b -Ok $false -ErrorText $errorText -Engine $engineName -Group $group -GroupId $grupoId
+            }
+        }
+
+        # Los fragmentos de calentamiento (indices negativos) no son de
+        # ninguna lectura.
+        if ($cfg.EventLog -and $primero.Index -ge 0) {
+            $sync.Events.Enqueue(@{ Type = 'grupo'; Now = Get-Date; Data = [ordered]@{
+                lectura      = $primero.Generation
+                grupo        = $grupoId
+                ms           = $desdeInicio
+                motor        = $engineName
+                pedido       = $Info.Requested
+                motivo       = $(if ($Info.Reason) { $Info.Reason } else { $null })
+                fragmentos   = $fragmentos
+                tamano       = $group
+                tope         = $Info.Limit
+                salto        = [bool]$Info.Jump
+                caracteres   = $caracteres
+                velocidad    = $sync.Speed
+                espera_motor_ms = $Info.WaitMs
+                gen_ms       = $reloj.ElapsedMilliseconds
+                primero_ms   = $primeroMs
+                intentos     = $intentos
+                fallidos     = $fallidos
+                a_piper      = $failed.Count
+                error        = $(if ($errorText) { $errorText } else { $null })
+                descartado   = ($primero.Generation -ne $sync.Generation)
+                servidor     = $medidas
+                energia      = Get-PowerState
+            } })
         }
         return @{ Batch = $failed; Error = $errorText }
     }
@@ -669,7 +793,12 @@ $synthScript = {
             if ($null -eq $job) { continue }
         }
 
+        # Para el registro: el motor pedido, el que toca y por que, y cuanto
+        # se espero a que Qwen terminara de cargar.
+        $pedido = [string]$cfg.Engines[$job.Lang]
+        $relojMotor = [Diagnostics.Stopwatch]::StartNew()
         $key = Get-SynthKey -Lang $job.Lang
+        $info = @{ Requested = $pedido; Reason = $script:piperReason; Limit = 1; Jump = $esSalto; WaitMs = $relojMotor.ElapsedMilliseconds }
         $batch = New-Object System.Collections.Generic.List[object]
         $batch.Add($job)
         if ($key -eq 'qwen') {
@@ -677,6 +806,7 @@ $synthScript = {
             # el primer audio llegue pronto: un grupo corto.
             $limit = Get-BatchLimit -Index $job.Index
             if ($esSalto) { $limit = [Math]::Min(2, $cfg.Qwen.Batch) }
+            $info.Limit = $limit
             $chars = $job.Text.Length
             $next = $null
             while ($sync.SynthJobs.TryPeek([ref]$next) -and $next.Generation -eq $job.Generation -and
@@ -689,7 +819,7 @@ $synthScript = {
         }
 
         # Lo que Qwen no pudo generar se lee con Piper, para no dejar huecos.
-        $leftover = Invoke-SynthBatch -Key $key -Batch $batch
+        $leftover = Invoke-SynthBatch -Key $key -Batch $batch -Info $info
         if ($key -eq 'qwen' -and $leftover.Batch.Count -gt 0) {
             if ($leftover.Error) {
                 # El proceso no responde ni al reabrirlo: el resto de la sesion
@@ -700,7 +830,7 @@ $synthScript = {
             foreach ($b in @($leftover.Batch)) {
                 $single = New-Object System.Collections.Generic.List[object]
                 $single.Add($b)
-                [void](Invoke-SynthBatch -Key $b.Lang -Batch $single -Final)
+                [void](Invoke-SynthBatch -Key $b.Lang -Batch $single -Final -Info @{ Requested = 'qwen'; Reason = 'qwen_fallo'; Limit = 1 })
             }
         }
     }
@@ -721,6 +851,8 @@ $synthConfig = @{
         PiperDir        = $paths.PiperDir
         EspeakData      = $paths.EspeakData
         PlayerLib       = (Join-Path $paths.LibDir 'ReadAloud.Player.ps1')
+        EventsLib       = (Join-Path $paths.LibDir 'ReadAloud.Events.ps1')
+        EventLog        = $script:eventLog
         Models          = $models
         SentenceSilence = ([double]$settings.SentenceSilence).ToString($invariant)
         LengthScale     = ([double]$settings.LengthScale).ToString($invariant)
@@ -1237,7 +1369,10 @@ function Save-PlayerState {
 function Set-PlaybackSpeedValue {
     param([double]$Value)
 
+    $antes = $script:speed
     $script:speed = $Value
+    $sync.Speed = $Value
+    if ($antes -ne $Value) { Write-ActionEvent 'velocidad' ([ordered]@{ desde = $antes; valor = $Value }) }
     foreach ($p in $players) { $p.SpeedRatio = $script:speed }
     $ui.BtnSpeed.Content = Format-Speed $script:speed
     foreach ($b in $ui.SpeedList.Children) {
@@ -1405,6 +1540,35 @@ $state = [pscustomobject]@{
     # lectura para el resumen (ver Start-AudioWait).
     AudioWait     = $null
     AudioWaits    = $null
+    # Marca de Stopwatch de cuando llego la orden de esta lectura: los eventos
+    # cuentan sus milisegundos desde ahi.
+    ReadingStart  = $null
+}
+
+function Get-ReadingMs {
+    if ($null -eq $state.ReadingStart) { return $null }
+    return [long](([Diagnostics.Stopwatch]::GetTimestamp() - [long]$state.ReadingStart) * 1000 / [Diagnostics.Stopwatch]::Frequency)
+}
+
+function Write-ActionEvent {
+    # Algo que hizo el usuario: pausa, sigue, salto, velocidad o panel. Con
+    # la lectura en curso y la posicion en ese momento, y por donde llego
+    # ($script:origenAccion).
+    param([string]$Action, [System.Collections.IDictionary]$Data = $null)
+
+    if (-not $script:eventLog) { return }
+    $enCurso = $state.Chunks.Count -gt 0
+    $datos = [ordered]@{
+        accion     = $Action
+        via        = $script:origenAccion
+        lectura    = $(if ($enCurso) { $state.Generation } else { $null })
+        ms         = $(if ($enCurso) { Get-ReadingMs } else { $null })
+        posicion_s = $(if ($enCurso) { ConvertTo-EventNumber (Get-GlobalPosition) 2 } else { $null })
+    }
+    if ($null -ne $Data) {
+        foreach ($clave in @($Data.Keys)) { $datos[[string]$clave] = $Data[$clave] }
+    }
+    Write-Event 'accion' $datos
 }
 
 # --------------------------------------------------------------------------
@@ -1455,6 +1619,21 @@ function Complete-AudioWait {
         'Espera de audio: lectura {0}, fragmento {1} de {2}, {3:0.00} s ({4}), motor {5}, grupo de {6}',
         $state.Generation, ($w.Index + 1), $state.Chunks.Count, $seconds, $kind, $engine, $group))
 
+    $grupoId = $null
+    if (-not $Cut -and $w.Index -lt $state.Chunks.Count -and $state.Chunks[$w.Index].GroupId) { $grupoId = $state.Chunks[$w.Index].GroupId }
+    Write-Event 'espera' ([ordered]@{
+        lectura   = $state.Generation
+        i         = $w.Index
+        ms        = Get-ReadingMs
+        clase     = $w.Kind
+        s         = ConvertTo-EventNumber $seconds 3
+        cortada   = [bool]$Cut
+        motor     = $(if ($engine -ne '-') { $engine } else { $null })
+        grupo     = $grupoId
+        tamano    = $(if ($group -ne '-') { [int]$group } else { $null })
+        velocidad = $script:speed
+    })
+
     $cuentas = $state.AudioWaits
     if ($null -eq $cuentas) { return }
     if ($w.Kind -eq 'arranque') {
@@ -1483,8 +1662,9 @@ function New-AudioWaitCounts {
 }
 
 function Write-AudioWaitSummary {
-    # Una linea por lectura, al terminar ('terminada') o al detenerla o
-    # reemplazarla por otra ('detenida').
+    # Una linea por lectura en daemon.log y un evento 'fin', al terminar
+    # ('terminada'), al detenerla ('detenida'), al reemplazarla por otra
+    # ('reemplazada') o al cerrar Read Aloud ('salida').
     param([string]$Reason)
 
     Complete-AudioWait -Cut
@@ -1496,6 +1676,30 @@ function Write-AudioWaitSummary {
         $script:waitLog.Add([string]::Format($invariant,
             'Esperas de la lectura {0} ({1}): {2} en medio, {3:0.00} s en total, maxima {4:0.00} s; arranque {5}; {6} tras un salto, {7:0.00} s',
             $c.Generation, $Reason, $c.Waits, $c.Seconds, $c.Longest, $arranque, $c.Jumps, $c.JumpSeconds))
+
+        $actual = $state.PlayIndex
+        if ($state.WaitTarget -ge 0) { $actual = $state.WaitTarget }
+        $listos = 0
+        foreach ($chunk in $state.Chunks) { if ($chunk.Ready) { $listos++ } }
+        $posicion = $(if ($Reason -eq 'terminada') { $state.Total } else { Get-GlobalPosition })
+        Write-Event 'fin' ([ordered]@{
+            lectura      = $c.Generation
+            ms           = Get-ReadingMs
+            motivo       = $Reason
+            posicion_s   = ConvertTo-EventNumber $posicion 2
+            total_s      = ConvertTo-EventNumber $state.Total 2
+            i            = $actual
+            fragmentos   = $state.Chunks.Count
+            listos       = $listos
+            en_pausa     = (-not $state.IsPlaying) -and ($Reason -ne 'terminada')
+            esperas      = $c.Waits
+            esperas_s    = ConvertTo-EventNumber $c.Seconds 3
+            espera_max_s = ConvertTo-EventNumber $c.Longest 3
+            arranque_s   = ConvertTo-EventNumber $c.Start 3
+            saltos       = $c.Jumps
+            saltos_s     = ConvertTo-EventNumber $c.JumpSeconds 3
+            velocidad    = $script:speed
+        })
     }
     Write-PendingWaitLog
 }
@@ -1576,9 +1780,11 @@ function Show-PlayerWindow {
 }
 
 function Stop-Playback {
-    param([switch]$KeepWindow)
+    # Reason, para los registros: 'detenida', 'reemplazada' (llego otra
+    # lectura) o 'salida' (se cierra Read Aloud).
+    param([switch]$KeepWindow, [string]$Reason = 'detenida')
 
-    Write-AudioWaitSummary -Reason 'detenida'
+    Write-AudioWaitSummary -Reason $Reason
 
     foreach ($p in $players) {
         $p.Stop()
@@ -1654,7 +1860,7 @@ function Invoke-SentenceStep {
     $state.IsPlaying = $true
     Set-PlayIcon -Playing $true
     # El margen minimo asegura que el salto caiga dentro de esa frase.
-    Invoke-Seek -TargetSeconds ($state.Chunks[$i].Offset + 0.01)
+    Invoke-Seek -TargetSeconds ($state.Chunks[$i].Offset + 0.01) -Origen $(if ($Direction -lt 0) { 'frase_anterior' } else { 'frase_siguiente' })
 }
 
 function Switch-ToPreloaded {
@@ -1690,7 +1896,10 @@ function Invoke-Seek {
     # que suena o la siguiente, que ya esta precargada). Sin audio: el sonido
     # actual se detiene, ese fragmento pasa a generarse primero y suena en
     # cuanto llega.
-    param([double]$TargetSeconds)
+    # Origen, para el registro de eventos: 'atras', 'adelante', 'barra',
+    # 'texto' (un clic en el panel), 'frase_anterior', 'frase_siguiente' o
+    # 'inicio' (volver a leer desde el principio).
+    param([double]$TargetSeconds, [string]$Origen = '')
 
     if ($state.Chunks.Count -eq 0) { return }
 
@@ -1700,6 +1909,12 @@ function Invoke-Seek {
     Write-DaemonLog ('Salto a {0:N1} s de {1:N1} s, fragmento {2} de {3} (comienza en {4:N1} s){5}' -f `
         $destino.Seconds, $state.Total, ($destino.Index + 1), $state.Chunks.Count, $state.Chunks[$destino.Index].Offset,
         $(if ($destino.Ready) { '' } else { ', sin audio todavia' }))
+    Write-ActionEvent 'salto' ([ordered]@{
+        origen  = $Origen
+        hasta_s = ConvertTo-EventNumber $destino.Seconds 2
+        i       = $destino.Index
+        listo   = [bool]$destino.Ready
+    })
 
     $i = $destino.Index
 
@@ -1858,7 +2073,7 @@ function Start-FromChunk {
 
     # El margen minimo asegura que el salto caiga dentro de esa frase y no al
     # final de la anterior.
-    Invoke-Seek -TargetSeconds ($state.Chunks[$Index].Offset + 0.01)
+    Invoke-Seek -TargetSeconds ($state.Chunks[$Index].Offset + 0.01) -Origen 'texto'
 }
 
 function Show-ChunkInPanel {
@@ -1957,7 +2172,11 @@ $ui.TextView.Add_PreviewMouseLeftButtonUp({
 })
 
 function Set-TextPanel {
-    param([bool]$Visible)
+    # -Auto: lo abre o cierra el ajuste "Panel de texto al aparecer", no el
+    # usuario; no va al registro de eventos.
+    param([bool]$Visible, [switch]$Auto)
+
+    if (-not $Auto -and $Visible -ne $script:panelVisible) { Write-ActionEvent 'panel' ([ordered]@{ abierto = $Visible }) }
 
     if ($Visible) {
         $ui.TextPanel.Visibility = 'Visible'
@@ -2125,19 +2344,22 @@ function Start-Speaking {
     $state.LastTextAt = Get-Date
     # La espera del primer audio cuenta desde que llega la orden.
     $relojArranque = [Diagnostics.Stopwatch]::StartNew()
+    $inicio = [Diagnostics.Stopwatch]::GetTimestamp()
 
-    Stop-Playback -KeepWindow
+    Stop-Playback -KeepWindow -Reason 'reemplazada'
 
     $sync.Generation = $sync.Generation + 1
     $generation = $sync.Generation
     $state.Generation = $generation
     $state.Finished = $false
     $state.AudioWaits = New-AudioWaitCounts -Generation $generation
+    $state.ReadingStart = $inicio
 
     $plan = Build-SpeechPlan -Text $Text -Requested $Requested `
         -MinChunkChars $settings.MinChunkChars `
         -FirstChunkChars $settings.FirstChunkChars -MaxChunkChars $settings.MaxChunkChars `
         -Fallback $settings.FallbackLanguage -Pauses (Get-ConfiguredPauses) -Engine $engines['es'] -EngineEn $engines['en']
+    $planMs = Get-ReadingMs
 
     $index = 0
     $pausas = 0.0
@@ -2146,22 +2368,26 @@ function Start-Speaking {
         $wav = Join-Path $paths.TmpDir ('ra_{0}_{1:d4}.wav' -f $generation, $index)
         $pausa = [double]$item.PauseAfter
         $pausas += $pausa
+        $estimado = Get-EstimatedDuration -Text $item.Text
 
         $state.Chunks.Add([pscustomobject]@{
             Index      = $index
             Lang       = $item.Lang
             Text       = $item.Text
             Wav        = $wav
-            Duration   = (Get-EstimatedDuration -Text $item.Text) + $pausa
+            Duration   = $estimado + $pausa
             PauseAfter = $pausa
             Display    = $item.Display
             Block      = $item.Block
             Kind       = $item.Kind
             Offset     = 0.0
             Ready      = $false
-            # Quien lo genero y en un grupo de cuantas frases.
+            # Quien lo genero, en un grupo de cuantas frases y con que nombre
+            # en el registro de eventos; y la duracion que se estimo antes.
             Engine     = ''
             Group      = 0
+            GroupId    = ''
+            Estimate   = $estimado
         })
 
         $sync.SynthJobs.Enqueue(@{
@@ -2170,6 +2396,7 @@ function Start-Speaking {
             Lang       = $item.Lang
             Text       = $item.Text
             Wav        = $wav
+            Start      = $inicio
         })
 
         $index++
@@ -2194,8 +2421,8 @@ function Start-Speaking {
         # abierto o cerrado. Solo al aparecer, no si ya estaba a la vista.
         if (-not $window.IsVisible -or $script:ocultando) {
             switch ([string]$settings.PanelOnShow) {
-                'abierto' { if (-not $script:panelVisible) { Set-TextPanel -Visible $true } }
-                'cerrado' { if ($script:panelVisible) { Set-TextPanel -Visible $false } }
+                'abierto' { if (-not $script:panelVisible) { Set-TextPanel -Visible $true -Auto } }
+                'cerrado' { if ($script:panelVisible) { Set-TextPanel -Visible $false -Auto } }
             }
         }
         Show-PlayerWindow
@@ -2207,6 +2434,69 @@ function Start-Speaking {
     }
 
     Write-DaemonLog ("Lectura {0}: {1} fragmentos, {2:N1} s de pausas, idioma {3}" -f $generation, $state.Chunks.Count, $pausas, $plan.DocumentLang)
+
+    if ($script:eventLog) {
+        $idiomas = [ordered]@{}
+        $bloques = @{}
+        foreach ($c in $state.Chunks) {
+            if ($idiomas.Contains($c.Lang)) { $idiomas[$c.Lang]++ } else { $idiomas[$c.Lang] = 1 }
+            $bloques[[string]$c.Block] = $true
+        }
+        $datos = [ordered]@{
+            lectura    = $generation
+            via        = $script:origenAccion
+            pedido     = $Requested
+            idioma     = $plan.DocumentLang
+            idiomas    = $idiomas
+            fragmentos = $state.Chunks.Count
+            bloques    = $bloques.Count
+            estimado_s = ConvertTo-EventNumber $state.Total 2
+            pausas_s   = ConvertTo-EventNumber $pausas 2
+            plan_ms    = $planMs
+            motores    = [ordered]@{ es = $engines['es']; en = $engines['en'] }
+            qwen_listo = $(if ($engines.Values -contains 'qwen') { Test-Path -LiteralPath $synthConfig.Qwen.ReadyFile } else { $null })
+            velocidad  = $script:speed
+            panel      = $script:panelVisible
+        }
+        foreach ($p in (Get-TextTraits $Text).GetEnumerator()) { $datos[$p.Key] = $p.Value }
+        $datos.energia = Get-PowerState
+        Write-Event 'lectura' $datos
+    }
+}
+
+function Write-ChunkEvent {
+    # Un fragmento cuyo audio acaba de llegar (o fallo). margen_s: segundos de
+    # audio entre la posicion de ese momento y el comienzo del fragmento; 0 o
+    # cerca de 0 si el reproductor lo estaba esperando, negativo si quedo
+    # atras (llego despues de un salto hacia delante).
+    param($Chunk, $Done)
+
+    if (-not $script:eventLog) { return }
+    $datos = [ordered]@{
+        lectura    = $state.Generation
+        i          = $Chunk.Index
+        ms         = Get-ReadingMs
+        idioma     = $Chunk.Lang
+        forma      = $Chunk.Kind
+        bloque     = $Chunk.Block
+        motor      = $(if ($Chunk.Engine) { $Chunk.Engine } else { $null })
+        grupo      = $(if ($Chunk.GroupId) { $Chunk.GroupId } else { $null })
+        ok         = [bool]$Done.Ok
+        audio_s    = $(if ($Done.Ok) { ConvertTo-EventNumber ($Chunk.Duration - $Chunk.PauseAfter) 3 } else { $null })
+        estimado_s = ConvertTo-EventNumber $Chunk.Estimate 3
+        pausa_s    = ConvertTo-EventNumber $Chunk.PauseAfter 2
+        margen_s   = $(if ($state.PlayIndex -ge 0 -or $state.WaitTarget -ge 0) { ConvertTo-EventNumber ($Chunk.Offset - (Get-GlobalPosition)) 2 } else { ConvertTo-EventNumber $Chunk.Offset 2 })
+        cambiado   = ($Chunk.Text -ne $Chunk.Display)
+    }
+    # Los rasgos son los del texto que recibe la voz (con el diccionario ya
+    # aplicado): es el que pesa en lo que tarda en generarse.
+    foreach ($p in (Get-TextTraits $Chunk.Text).GetEnumerator()) { $datos[$p.Key] = $p.Value }
+    if (-not $Done.Ok) { $datos.error = [string]$Done.Error }
+    if ($script:eventText) {
+        $datos.texto = $Chunk.Display
+        if ($Chunk.Text -ne $Chunk.Display) { $datos.dicho = $Chunk.Text }
+    }
+    Write-Event 'fragmento' $datos
 }
 
 # --------------------------------------------------------------------------
@@ -2283,8 +2573,11 @@ function Toggle-Playback {
         (Get-ActivePlayer).Pause()
         $state.IsPlaying = $false
         Set-PlayIcon -Playing $false
+        Write-ActionEvent 'pausa'
         return
     }
+
+    Write-ActionEvent 'sigue' ([ordered]@{ terminada = [bool]$state.Finished })
 
     # Se salto a un fragmento sin audio y se estaba en pausa: al reanudar se
     # sigue esperando a ese fragmento (o suena, si ya llego), no el sonido
@@ -2301,10 +2594,10 @@ function Toggle-Playback {
     if ($state.Finished) {
         $state.Finished = $false
         $state.IsPlaying = $true
-        Invoke-Seek -TargetSeconds 0
+        Invoke-Seek -TargetSeconds 0 -Origen 'inicio'
     } elseif ($state.PlayIndex -lt 0) {
         $state.IsPlaying = $true
-        Invoke-Seek -TargetSeconds 0
+        Invoke-Seek -TargetSeconds 0 -Origen 'inicio'
     } else {
         $state.IsPlaying = $true
         (Get-ActivePlayer).Play()
@@ -2316,11 +2609,11 @@ function Toggle-Playback {
 $ui.BtnPlay.Add_Click({ Toggle-Playback })
 
 $ui.BtnBack.Add_Click({
-    Invoke-Seek -TargetSeconds ((Get-GlobalPosition) - $settings.SkipSeconds)
+    Invoke-Seek -TargetSeconds ((Get-GlobalPosition) - $settings.SkipSeconds) -Origen 'atras'
 })
 
 $ui.BtnFwd.Add_Click({
-    Invoke-Seek -TargetSeconds ((Get-GlobalPosition) + $settings.SkipSeconds)
+    Invoke-Seek -TargetSeconds ((Get-GlobalPosition) + $settings.SkipSeconds) -Origen 'adelante'
 })
 
 $ui.BtnSpeed.Add_Click({
@@ -2365,7 +2658,7 @@ function Complete-SliderSeek {
     $state.PendingSlider = $null
 
     if ($huboCambio -and $state.Total -gt 0) {
-        Invoke-Seek -TargetSeconds (($ui.Seek.Value / 100.0) * $state.Total)
+        Invoke-Seek -TargetSeconds (($ui.Seek.Value / 100.0) * $state.Total) -Origen 'barra'
     }
 }
 
@@ -2384,7 +2677,7 @@ $ui.Seek.Add_ValueChanged({
         return
     }
 
-    Invoke-Seek -TargetSeconds $destino
+    Invoke-Seek -TargetSeconds $destino -Origen 'barra'
 })
 
 # La marca se pone desde el borde de la ventana, no desde la barra: WPF mueve
@@ -2509,6 +2802,11 @@ $timer.Add_Tick({
             continue
         }
 
+        # Para el registro de eventos: los atajos marcan sus ordenes con
+        # src = 'atajo'; las que no lo traen llegaron de read_aloud.ps1.
+        $script:origenAccion = 'tuberia'
+        if ($request.PSObject.Properties.Name -contains 'src' -and $request.src) { $script:origenAccion = [string]$request.src }
+
         switch ($request.cmd) {
             'speak' {
                 $requested = 'Auto'
@@ -2519,8 +2817,8 @@ $timer.Add_Tick({
             }
             'stop'   { Stop-Playback }
             'toggle' { Toggle-Playback }
-            'back'   { Invoke-Seek -TargetSeconds ((Get-GlobalPosition) - $settings.SkipSeconds) }
-            'forward'{ Invoke-Seek -TargetSeconds ((Get-GlobalPosition) + $settings.SkipSeconds) }
+            'back'   { Invoke-Seek -TargetSeconds ((Get-GlobalPosition) - $settings.SkipSeconds) -Origen 'atras' }
+            'forward'{ Invoke-Seek -TargetSeconds ((Get-GlobalPosition) + $settings.SkipSeconds) -Origen 'adelante' }
             'prev'   { Invoke-SentenceStep -Direction -1 }
             'next'   { Invoke-SentenceStep -Direction 1 }
             'faster' { Set-PlaybackSpeed -Direction 1 }
@@ -2530,7 +2828,9 @@ $timer.Add_Tick({
             'settings' { Show-SettingsWindow -Mostrar }
             'slower' { Set-PlaybackSpeed -Direction -1 }
             'quit'   {
-                Stop-Playback
+                Stop-Playback -Reason 'salida'
+                # Ahora y no al final: el cierre puede tardar en terminar.
+                Write-PendingEventLog
                 $sync.Stopping = $true
                 $timer.Stop()
                 [Windows.Threading.Dispatcher]::CurrentDispatcher.InvokeShutdown()
@@ -2538,6 +2838,8 @@ $timer.Add_Tick({
             }
         }
     }
+    # Lo que no llega por una orden lo hizo el usuario con el raton.
+    $script:origenAccion = 'raton'
 
     # 2. Fragmentos recien sintetizados.
     $done = $null
@@ -2564,6 +2866,7 @@ $timer.Add_Tick({
         $chunk = $state.Chunks[$done.Index]
         $chunk.Engine = [string]$done.Engine
         $chunk.Group = [int]$done.Group
+        $chunk.GroupId = [string]$done.GroupId
         $esperado = ($null -ne $state.AudioWait) -and ($state.AudioWait.Index -eq $done.Index)
 
         if (-not $done.Ok) {
@@ -2571,6 +2874,7 @@ $timer.Add_Tick({
             $chunk.Duration = 0.0
             $chunk.Ready = $true
             $changed = $true
+            Write-ChunkEvent -Chunk $chunk -Done $done
             if ($esperado) { Complete-AudioWait }
             continue
         }
@@ -2584,6 +2888,7 @@ $timer.Add_Tick({
         $chunk.Duration = Get-WavDuration -Path $done.Wav
         $chunk.Ready = $true
         $changed = $true
+        Write-ChunkEvent -Chunk $chunk -Done $done
         if ($esperado) { Complete-AudioWait }
     }
 
@@ -2611,8 +2916,10 @@ $timer.Add_Tick({
             Open-NextChunk
         }
     }
-    # Las esperas que terminaron en este pulso, ya con el audio en marcha.
+    # Las esperas que terminaron en este pulso y los eventos pendientes, ya
+    # con el audio en marcha.
     Write-PendingWaitLog
+    Write-PendingEventLog
 
     # 4. Barra de progreso, reloj y frase resaltada.
     if ($window.IsVisible -and $state.Chunks.Count -gt 0) {
@@ -2663,6 +2970,7 @@ $timer.Add_Tick({
 $window.Dispatcher.add_UnhandledException({
     param($sender, $e)
     Write-DaemonLog ('Error no controlado: {0}' -f $e.Exception.ToString())
+    Write-Event 'error' ([ordered]@{ donde = 'interfaz'; mensaje = $e.Exception.Message; lectura = $state.Generation })
     $e.Handled = $true
 })
 
@@ -2679,12 +2987,12 @@ $script:hotkeyDrain = {
             if ($nombre -eq 'read') {
                 $texto = Get-SelectedText
                 if (-not [string]::IsNullOrWhiteSpace($texto)) {
-                    $sync.Requests.Enqueue((@{ cmd = 'speak'; lang = 'Auto'; text = $texto } | ConvertTo-Json -Compress))
+                    $sync.Requests.Enqueue((@{ cmd = 'speak'; lang = 'Auto'; text = $texto; src = 'atajo' } | ConvertTo-Json -Compress))
                 } else {
                     Write-DaemonLog 'Atajo de leer: no habia texto seleccionado.'
                 }
             } else {
-                $sync.Requests.Enqueue((@{ cmd = $nombre } | ConvertTo-Json -Compress))
+                $sync.Requests.Enqueue((@{ cmd = $nombre; src = 'atajo' } | ConvertTo-Json -Compress))
             }
         }
         $sync.WakeUi.Invoke()
@@ -2868,6 +3176,7 @@ try {
     $sync.Stopping = $true
     [void]$sync.SynthSignal.Set()
 
+    try { Write-PendingEventLog } catch { }
     Save-PlayerState
 
     try { Unregister-ReadAloudHotkeys -Handle $hotkeyHandle -Report $script:hotkeyReport } catch { }
