@@ -83,6 +83,7 @@ function Get-ReadAloudSettings {
         HotkeyForward       = 'Ctrl+Alt+.'
         HotkeyFaster        = 'Ctrl+Alt+R'
         HotkeySlower        = 'Ctrl+Alt+L'
+        HotkeyTranslate     = 'Ctrl+Alt+T'
         PauseParagraph      = 0.35
         PauseBeforeHeading  = 0.55
         PauseAfterHeading   = 0.30

@@ -21,6 +21,7 @@ $script:RA_HotkeyActions = [ordered]@{
     forward = @{ Setting = 'HotkeyForward'; Default = 'Ctrl+Alt+.'; Label = 'Avanzar' }
     faster  = @{ Setting = 'HotkeyFaster';  Default = 'Ctrl+Alt+R'; Label = 'Subir la velocidad' }
     slower  = @{ Setting = 'HotkeySlower';  Default = 'Ctrl+Alt+L'; Label = 'Bajar la velocidad' }
+    translate = @{ Setting = 'HotkeyTranslate'; Default = 'Ctrl+Alt+T'; Label = 'Traducir lo seleccionado' }
 }
 
 # Combinaciones que Windows o casi todos los programas ya usan: registrarlas

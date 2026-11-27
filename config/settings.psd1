@@ -122,6 +122,8 @@
     HotkeyForward = 'Ctrl+Alt+.'
     HotkeyFaster = 'Ctrl+Alt+R'
     HotkeySlower = 'Ctrl+Alt+L'
+    # Traduce lo seleccionado y lee la traduccion (docs\adr\0016).
+    HotkeyTranslate = 'Ctrl+Alt+T'
     # Tamano de todo el reproductor (0.8 a 1.6) y de la letra del panel de
     # texto (10 a 22). Panel de texto al aparecer: 'recordar' (como lo
     # dejaste), 'abierto' o 'cerrado'.
