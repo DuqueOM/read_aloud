@@ -23,13 +23,18 @@ the same text and pronounces technical terms the way you would say them, not
 the way a reader that knows no English would.
 
 ```
-Ctrl+Alt+V          read the selected text
-Ctrl+Shift+Q        stop
-Ctrl+Shift+Space    pause or resume
-Ctrl+Shift+,        back 10 seconds
-Ctrl+Shift+.        forward 10 seconds
-Ctrl+Shift+] and [  faster or slower
+Ctrl+Alt+V          read the selected text (no need to copy it first)
+Ctrl+Alt+X          stop
+Ctrl+Alt+P          pause or resume
+Ctrl+Alt+,          back 10 seconds
+Ctrl+Alt+.          forward 10 seconds
+Ctrl+Alt+R and L    faster or slower
 ```
+
+On Spanish keyboards Ctrl+Alt is the same as AltGr, so the defaults avoid the
+keys that type something with AltGr (Ctrl+Alt+Q would take away the @ on a
+Latin American keyboard). If you choose one of those, Read Aloud does not
+enable it and tells you why.
 
 Read Aloud keeps an icon in the system tray, next to the clock: it shows that
 it is running, opens the settings, and "Quit Read Aloud" closes it

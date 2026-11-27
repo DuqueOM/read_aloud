@@ -3430,6 +3430,7 @@ $script:hotkeyReport = Register-ReadAloudHotkeys -Handle $hotkeyHandle -Hotkeys 
 $hotkeyFailed = @($script:hotkeyReport | Where-Object { -not $_.Active -and $_.Reason -ne 'disabled' })
 foreach ($e in $script:hotkeyReport) {
     if ($e.Active) { Write-DaemonLog ('Atajo {0}: {1}' -f $e.Action, $e.Text) }
+    elseif ($e.Reason -eq 'altgr') { Write-DaemonLog ('Atajo {0} ({1}) no activado: con AltGr escribe {2} en este teclado.' -f $e.Action, $e.Text, $e.Writes) }
     elseif ($e.Reason -ne 'disabled') { Write-DaemonLog ('Atajo {0} ({1}) no disponible: {2}' -f $e.Action, $e.Text, $e.Reason) }
 }
 
@@ -3496,9 +3497,16 @@ $script:tray.Add_BalloonTipClicked({
 })
 $script:tray.Visible = $true
 
-if ($hotkeyFailed.Count -gt 0) {
-    $lista = ($hotkeyFailed | ForEach-Object { $_.Text }) -join ', '
+$hotkeyInUse = @($hotkeyFailed | Where-Object { $_.Reason -ne 'altgr' })
+$hotkeyAltGr = @($hotkeyFailed | Where-Object { $_.Reason -eq 'altgr' })
+if ($hotkeyInUse.Count -gt 0) {
+    $lista = ($hotkeyInUse | ForEach-Object { $_.Text }) -join ', '
     $script:tray.ShowBalloonTip(8000, 'Read Aloud', ((T 'Estos atajos no se pudieron activar porque otro programa los usa: {0}. Cambialos en los ajustes.') -f $lista), [Windows.Forms.ToolTipIcon]::Warning)
+} elseif ($hotkeyAltGr.Count -gt 0) {
+    # Ctrl+Alt es AltGr en los teclados en espanol: un atajo que escribe un
+    # caracter no se activa, para no quitarselo al usuario.
+    $lista = ($hotkeyAltGr | ForEach-Object { '{0} ({1})' -f $_.Text, $_.Writes }) -join ', '
+    $script:tray.ShowBalloonTip(8000, 'Read Aloud', ((T 'Estos atajos escriben un caracter con AltGr en tu teclado y no se activaron: {0}. Cambialos en los ajustes.') -f $lista), [Windows.Forms.ToolTipIcon]::Warning)
 }
 
 # --------------------------------------------------------------------------

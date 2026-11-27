@@ -23,13 +23,18 @@ dentro de un mismo texto y pronuncia los términos técnicos como los dirías t�
 no como los leería un lector que no sabe inglés.
 
 ```
-Ctrl+Alt+V          leer lo que esté seleccionado
-Ctrl+Shift+Q        detener
-Ctrl+Shift+Espacio  pausar o continuar
-Ctrl+Shift+,        retroceder 10 segundos
-Ctrl+Shift+.        avanzar 10 segundos
-Ctrl+Shift+] y [    subir o bajar la velocidad
+Ctrl+Alt+V          leer lo que esté seleccionado (no hace falta copiarlo)
+Ctrl+Alt+X          detener
+Ctrl+Alt+P          pausar o continuar
+Ctrl+Alt+,          retroceder 10 segundos
+Ctrl+Alt+.          avanzar 10 segundos
+Ctrl+Alt+R y L      más rápido o más lento
 ```
+
+En los teclados en español Ctrl+Alt es lo mismo que AltGr, así que los atajos
+de fábrica evitan las teclas que con AltGr escriben algo (Ctrl+Alt+Q quitaría
+la @ en el teclado latinoamericano). Si eliges una de esas, Read Aloud no la
+activa y te dice por qué.
 
 Read Aloud deja un icono en la bandeja del sistema, junto al reloj: muestra
 que está activo, abre los ajustes y "Salir de Read Aloud" lo cierra del todo.

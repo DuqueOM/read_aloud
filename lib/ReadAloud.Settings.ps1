@@ -794,6 +794,7 @@ function Update-AtajosLista {
     $acciones = Get-HotkeyActions
     $aj.AtajosFilas.Children.Clear()
     $fallidos = New-Object System.Collections.Generic.List[string]
+    $conAltGr = New-Object System.Collections.Generic.List[string]
 
     foreach ($e in $script:hotkeyReport) {
         $fila = New-Object Windows.Controls.Grid
@@ -823,6 +824,10 @@ function Update-AtajosLista {
             $boton.Content = $e.Text
         } elseif ($e.Reason -eq 'disabled') {
             $boton.Content = (T '(desactivado)')
+        } elseif ($e.Reason -eq 'altgr') {
+            $boton.Content = $e.Text + '  !'
+            $boton.ToolTip = ((T 'En tu teclado, esta combinación escribe {0} (AltGr)') -f $e.Writes)
+            $conAltGr.Add(('{0} ({1})' -f $e.Text, $e.Writes))
         } else {
             $boton.Content = $e.Text + '  !'
             $boton.ToolTip = (T 'Otro programa usa ya este atajo')
@@ -834,8 +839,15 @@ function Update-AtajosLista {
         [void]$aj.AtajosFilas.Children.Add($fila)
     }
 
+    $avisos = New-Object System.Collections.Generic.List[string]
     if ($fallidos.Count -gt 0) {
-        $aj.AtajosAviso.Text = (T 'Otro programa usa ya: ') + ($fallidos -join ', ') + (T '. Elige otra combinación para esos atajos.')
+        $avisos.Add((T 'Otro programa usa ya: ') + ($fallidos -join ', ') + (T '. Elige otra combinación para esos atajos.'))
+    }
+    if ($conAltGr.Count -gt 0) {
+        $avisos.Add((T 'En tu teclado escriben un carácter (AltGr): ') + ($conAltGr -join ', ') + (T '. Elige otra combinación para esos atajos.'))
+    }
+    if ($avisos.Count -gt 0) {
+        $aj.AtajosAviso.Text = ($avisos -join ' ')
         $aj.AtajosAviso.Visibility = 'Visible'
     } else {
         $aj.AtajosAviso.Visibility = 'Collapsed'
@@ -881,7 +893,11 @@ function Set-HotkeyFromRecording {
     $mio = $informe | Where-Object { $_.Action -eq $accion }
     Unregister-ReadAloudHotkeys -Handle $hotkeyHandle -Report $informe
     if ($Texto -ne '' -and -not $mio.Active) {
-        Stop-HotkeyRecording ((T 'Otro programa ya usa {0}: elige otra combinación.') -f $Texto)
+        if ($mio.Reason -eq 'altgr') {
+            Stop-HotkeyRecording ((T 'En tu teclado, {0} escribe {1} (AltGr): elige otra combinación.') -f $Texto, $mio.Writes)
+        } else {
+            Stop-HotkeyRecording ((T 'Otro programa ya usa {0}: elige otra combinación.') -f $Texto)
+        }
         return
     }
 

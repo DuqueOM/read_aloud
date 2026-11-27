@@ -6,14 +6,21 @@
 #
 # Solo ASCII: el archivo se carga tambien desde Windows PowerShell 5.1.
 
+# Todos los atajos de fabrica son Ctrl+Alt y una tecla, para que sean faciles
+# de recordar. En los teclados en espanol Ctrl+Alt es AltGr, asi que se
+# evitan las teclas que con AltGr escriben algo: Q (la @ del teclado
+# latinoamericano), +, las cifras y la E (en el de Espana). Los corchetes
+# piden Mayus en esos teclados, y Ctrl+Alt+Space y Ctrl+Alt+M suelen tenerlos
+# otros programas. Por eso: X detener, P pausa, coma y punto para moverse, y
+# R (rapido) y L (lento) para la velocidad. Ctrl+Alt+T queda para traducir.
 $script:RA_HotkeyActions = [ordered]@{
-    read    = @{ Setting = 'HotkeyRead';    Default = 'Ctrl+Alt+V';       Label = 'Leer lo seleccionado' }
-    stop    = @{ Setting = 'HotkeyStop';    Default = 'Ctrl+Shift+Q';     Label = 'Detener' }
-    toggle  = @{ Setting = 'HotkeyToggle';  Default = 'Ctrl+Shift+Space'; Label = 'Pausar o continuar' }
-    back    = @{ Setting = 'HotkeyBack';    Default = 'Ctrl+Shift+,';     Label = 'Retroceder' }
-    forward = @{ Setting = 'HotkeyForward'; Default = 'Ctrl+Shift+.';     Label = 'Avanzar' }
-    faster  = @{ Setting = 'HotkeyFaster';  Default = 'Ctrl+Shift+]';     Label = 'Subir la velocidad' }
-    slower  = @{ Setting = 'HotkeySlower';  Default = 'Ctrl+Shift+[';     Label = 'Bajar la velocidad' }
+    read    = @{ Setting = 'HotkeyRead';    Default = 'Ctrl+Alt+V'; Label = 'Leer lo seleccionado' }
+    stop    = @{ Setting = 'HotkeyStop';    Default = 'Ctrl+Alt+X'; Label = 'Detener' }
+    toggle  = @{ Setting = 'HotkeyToggle';  Default = 'Ctrl+Alt+P'; Label = 'Pausar o continuar' }
+    back    = @{ Setting = 'HotkeyBack';    Default = 'Ctrl+Alt+,'; Label = 'Retroceder' }
+    forward = @{ Setting = 'HotkeyForward'; Default = 'Ctrl+Alt+.'; Label = 'Avanzar' }
+    faster  = @{ Setting = 'HotkeyFaster';  Default = 'Ctrl+Alt+R'; Label = 'Subir la velocidad' }
+    slower  = @{ Setting = 'HotkeySlower';  Default = 'Ctrl+Alt+L'; Label = 'Bajar la velocidad' }
 }
 
 # Combinaciones que Windows o casi todos los programas ya usan: registrarlas
@@ -227,7 +234,58 @@ public static extern short GetAsyncKeyState(int vKey);
 public static extern uint MapVirtualKey(uint uCode, uint uMapType);
 [System.Runtime.InteropServices.DllImport("user32.dll")]
 public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, System.UIntPtr dwExtraInfo);
+[System.Runtime.InteropServices.DllImport("user32.dll")]
+public static extern int GetKeyboardLayoutList(int nBuff, System.IntPtr[] lpList);
+[System.Runtime.InteropServices.DllImport("user32.dll")]
+public static extern uint MapVirtualKeyEx(uint uCode, uint uMapType, System.IntPtr dwhkl);
+[System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+public static extern int ToUnicodeEx(uint wVirtKey, uint wScanCode, byte[] lpKeyState, System.Text.StringBuilder pwszBuff, int cchBuff, uint wFlags, System.IntPtr dwhkl);
 '@
+}
+
+function Test-AltGrCombination {
+    # Ctrl+Alt (con o sin Mayus, sin Win) es lo mismo que AltGr en los
+    # teclados que lo tienen, como los de espanol.
+    param([int]$Modifiers)
+    return (($Modifiers -band 3) -eq 3) -and (($Modifiers -band 8) -eq 0)
+}
+
+function Get-KeyboardLayoutHandles {
+    # Las distribuciones de teclado instaladas (HKL). La palabra alta es la
+    # distribucion: 0x080A la latinoamericana, 0x040A la de Espana.
+    Initialize-HotkeyNative
+    $lista = New-Object System.IntPtr[] 32
+    $n = [ReadAloud.NativeKeys]::GetKeyboardLayoutList(32, $lista)
+    if ($n -le 0) { return @() }
+    return $lista[0..($n - 1)]
+}
+
+function Get-AltGrCharacter {
+    # Lo que escribe AltGr (Ctrl+Alt, y Mayus si se pide) con esa tecla en
+    # alguna de las distribuciones de teclado instaladas, o '' si en ninguna
+    # escribe nada. Un atajo Ctrl+Alt con esa tecla le quitaria ese caracter al
+    # usuario en todos los programas: en el teclado latinoamericano,
+    # Ctrl+Alt+Q dejaria sin la @. Una tecla muerta (un acento) tambien cuenta.
+    param([int]$Vk, [bool]$Shift = $false)
+
+    Initialize-HotkeyNative
+    $estado = New-Object byte[] 256
+    foreach ($k in 0x11, 0xA2, 0x12, 0xA5) { $estado[$k] = 0x80 }
+    if ($Shift) { foreach ($k in 0x10, 0xA0) { $estado[$k] = 0x80 } }
+
+    foreach ($hkl in (Get-KeyboardLayoutHandles)) {
+        $buffer = New-Object Text.StringBuilder 8
+        $scan = [ReadAloud.NativeKeys]::MapVirtualKeyEx([uint32]$Vk, 0, $hkl)
+        # 4: no cambia el estado de las teclas muertas del teclado.
+        $n = [ReadAloud.NativeKeys]::ToUnicodeEx([uint32]$Vk, $scan, $estado, $buffer, 8, 4, $hkl)
+        if ($n -eq 0) { continue }
+        $texto = $buffer.ToString()
+        if ($n -gt 0 -and $texto.Length -ge $n) { $texto = $texto.Substring(0, $n) }
+        # Los caracteres de control (Ctrl+letra en un teclado sin AltGr) no
+        # se escriben.
+        if ($texto -ne '' -and [int][char]$texto[0] -ge 0x20) { return $texto }
+    }
+    return ''
 }
 
 function ConvertFrom-VkKeyScan {
@@ -248,7 +306,8 @@ function ConvertFrom-VkKeyScan {
 
 function Register-ReadAloudHotkeys {
     # Registra cada atajo en la ventana. Devuelve, por accion, si quedo activo y
-    # el motivo si no: 1409 es que otro programa ya lo tiene.
+    # el motivo si no: 1409 es que otro programa ya lo tiene; 'altgr', que en
+    # el teclado esa combinacion escribe un caracter (Writes).
     param([IntPtr]$Handle, $Hotkeys)
 
     Initialize-HotkeyNative
@@ -259,7 +318,7 @@ function Register-ReadAloudHotkeys {
     $id = 1
     foreach ($name in $Hotkeys.Keys) {
         $check = $checks[$name]
-        $entry = [pscustomobject]@{ Action = $name; Text = $check.Text; Id = $id; Active = $false; Reason = '' }
+        $entry = [pscustomobject]@{ Action = $name; Text = $check.Text; Id = $id; Active = $false; Reason = ''; Writes = '' }
 
         if ($check.Text.Trim() -eq '') {
             $entry.Reason = 'disabled'
@@ -277,8 +336,16 @@ function Register-ReadAloudHotkeys {
                     $mods = $mods -bor $layout.Modifiers
                 }
             }
-            # 0x4000: MOD_NOREPEAT, para que mantener pulsado no repita la orden.
-            if ([ReadAloud.NativeKeys]::RegisterHotKey($Handle, $id, ([uint32]($mods -bor 0x4000)), [uint32]$vk)) {
+            # Un Ctrl+Alt que con AltGr escribe un caracter no se registra:
+            # el usuario dejaria de poder escribirlo en todos los programas.
+            # 0x4000 es MOD_NOREPEAT, para que mantener pulsado no repita la
+            # orden.
+            $escribe = ''
+            if (Test-AltGrCombination -Modifiers $mods) { $escribe = Get-AltGrCharacter -Vk $vk -Shift (($mods -band 4) -ne 0) }
+            if ($escribe -ne '') {
+                $entry.Reason = 'altgr'
+                $entry.Writes = $escribe
+            } elseif ([ReadAloud.NativeKeys]::RegisterHotKey($Handle, $id, ([uint32]($mods -bor 0x4000)), [uint32]$vk)) {
                 $entry.Active = $true
             } else {
                 $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()

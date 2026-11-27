@@ -258,7 +258,7 @@ El botón verde junto a `+10` muestra la velocidad actual. Un clic despliega
 encima, en fila, todas las velocidades: 0.5x, 0.75x, 0.9x, 1x, 1.1x, 1.25x,
 1.5x, 1.75x y 2x, con la actual marcada; un clic en una la elige y cierra la
 fila. La rueda del ratón sobre el botón la sube o la baja un paso, igual que
-`Ctrl+Shift+]` y `Ctrl+Shift+[`.
+`Ctrl+Alt+R` y `Ctrl+Alt+L`.
 
 El cambio es inmediato porque acelera la reproducción del audio ya generado,
 sin volver a sintetizar nada. La velocidad elegida se recuerda para las
@@ -325,12 +325,23 @@ en `config/settings.psd1` o `settings.local.psd1`:
 | Ajuste | Por defecto | Acción |
 |---|---|---|
 | `HotkeyRead` | `Ctrl+Alt+V` | Leer lo seleccionado |
-| `HotkeyStop` | `Ctrl+Shift+Q` | Detener |
-| `HotkeyToggle` | `Ctrl+Shift+Space` | Pausar o continuar |
-| `HotkeyBack` | `Ctrl+Shift+,` | Retroceder `SkipSeconds` |
-| `HotkeyForward` | `Ctrl+Shift+.` | Avanzar `SkipSeconds` |
-| `HotkeyFaster` | `Ctrl+Shift+]` | Subir la velocidad |
-| `HotkeySlower` | `Ctrl+Shift+[` | Bajar la velocidad |
+| `HotkeyStop` | `Ctrl+Alt+X` | Detener |
+| `HotkeyToggle` | `Ctrl+Alt+P` | Pausar o continuar |
+| `HotkeyBack` | `Ctrl+Alt+,` | Retroceder `SkipSeconds` |
+| `HotkeyForward` | `Ctrl+Alt+.` | Avanzar `SkipSeconds` |
+| `HotkeyFaster` | `Ctrl+Alt+R` | Subir la velocidad (rápido) |
+| `HotkeySlower` | `Ctrl+Alt+L` | Bajar la velocidad (lento) |
+
+Todos son `Ctrl+Alt` y una tecla. En los teclados en español `Ctrl+Alt` es
+`AltGr`: un atajo `Ctrl+Alt` que con `AltGr` escribe un carácter en alguna de
+las distribuciones de teclado instaladas (`Q` es la `@` del teclado
+latinoamericano; las cifras y la `E`, símbolos en el de España) no se activa,
+para no quitarte ese carácter en todos los programas. Los ajustes lo marcan
+con `!` y dicen qué carácter escribe.
+
+Para leer no hace falta copiar: el atajo copia lo seleccionado por su cuenta
+(espera a que sueltes las teclas, manda `Ctrl+C` y deja el portapapeles como
+estaba).
 
 El formato son los modificadores y la tecla unidos con `+`: `Ctrl+Alt+R`,
 `Win+Shift+F9`. Modificadores: `Ctrl`, `Alt`, `Shift`, `Win`. Teclas: letras,

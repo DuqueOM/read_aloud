@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Every default shortcut is now `Ctrl+Alt` and a key: `Ctrl+Alt+X` stops,
+  `Ctrl+Alt+P` pauses or resumes, `Ctrl+Alt+,` and `.` skip back and forward,
+  and `Ctrl+Alt+R` and `L` make it faster or slower (`Ctrl+Alt+V` still
+  reads). Shortcuts you changed in Settings stay as they are.
+- On Spanish keyboards `Ctrl+Alt` is `AltGr`. A `Ctrl+Alt` shortcut that types
+  a character with `AltGr` on any installed keyboard layout (`Ctrl+Alt+Q` is
+  the `@` on a Latin American keyboard) is no longer enabled, so it cannot
+  take that character away in every program. Settings and the tray say which
+  character it types.
+
 ## [1.3.5] - 2026-11-26
 
 Fewer long pauses between sentences, and sliders in the settings panel that go

@@ -111,13 +111,17 @@
     # PageUp, PageDown, coma, punto, [ ], y las multimedia (MediaPlayPause,
     # MediaNext, MediaPrevious, MediaStop). Vacio ('') desactiva el atajo.
     # Ctrl+Shift+V se evita: muchos programas lo usan para pegar sin formato.
+    # Todos son Ctrl+Alt, sin las teclas que con AltGr escriben algo en los
+    # teclados en espanol (Q es la @ del latinoamericano): un atajo asi no se
+    # activa, para no quitar ese caracter. R sube la velocidad (rapido) y L la
+    # baja (lento).
     HotkeyRead = 'Ctrl+Alt+V'
-    HotkeyStop = 'Ctrl+Shift+Q'
-    HotkeyToggle = 'Ctrl+Shift+Space'
-    HotkeyBack = 'Ctrl+Shift+,'
-    HotkeyForward = 'Ctrl+Shift+.'
-    HotkeyFaster = 'Ctrl+Shift+]'
-    HotkeySlower = 'Ctrl+Shift+['
+    HotkeyStop = 'Ctrl+Alt+X'
+    HotkeyToggle = 'Ctrl+Alt+P'
+    HotkeyBack = 'Ctrl+Alt+,'
+    HotkeyForward = 'Ctrl+Alt+.'
+    HotkeyFaster = 'Ctrl+Alt+R'
+    HotkeySlower = 'Ctrl+Alt+L'
     # Tamano de todo el reproductor (0.8 a 1.6) y de la letra del panel de
     # texto (10 a 22). Panel de texto al aparecer: 'recordar' (como lo
     # dejaste), 'abierto' o 'cerrado'.
