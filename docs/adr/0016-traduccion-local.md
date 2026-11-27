@@ -142,10 +142,13 @@ tarjeta compartida: con 8 hilos va un 130 % más lenta y con 4, solo un 4 %.
   - **Vuelta a la voz propia:** lo que más se usa es leer con la voz propia, y
     la traducción solo cuando se estudia. Por eso, con Traducción, o con
     Automática si eligió una combinación sin la voz propia, se vuelve sola a
-    Voz propia tras `TranslateReturnMinutes` (15 por defecto; 0 es nunca) sin
-    traducir. Nunca a mitad de una lectura. El reproductor lo avisa, y el
-    cambio se puede hacer también a mano desde el reproductor y la bandeja.
-    Volver cuesta unos 18 s, que la voz carga en segundo plano.
+    Voz propia tras unos minutos sin traducir. Es una opción propia en
+    Ajustes, «Volver sola a la voz propia» (`TranslateAutoReturn`, activada por
+    defecto), con los minutos aparte (`TranslateReturnMinutes`, 15), que solo se
+    pueden cambiar con la opción activada. Quien la desactiva deja la prioridad
+    fija donde la puso. Nunca vuelve a mitad de una lectura. El reproductor
+    lo avisa, y el cambio se puede hacer también a mano desde el reproductor
+    y la bandeja. Volver cuesta unos 18 s, que la voz carga en segundo plano.
 - **Medir el equipo:** una prueba opcional de 3 a 5 minutos, en Ajustes y
   como tarea desmarcada del instalador. Mide cada combinación que cabe y
   guarda el perfil en `runtime\perfil_equipo.json`. Sin perfil, se usan las
