@@ -126,14 +126,23 @@ function Save-AudioToCache {
         [DateTime]$Now = (Get-Date)
     )
 
-    if (-not $Wav -or -not (Test-Path -LiteralPath $Wav)) { return $false }
+    # Con las clases de .NET y no con los cmdlets: al empezar una lectura se
+    # consulta una vez por frase, y cada cmdlet cuesta milisegundos.
+    if (-not $Wav -or -not $Key -or -not [IO.File]::Exists($Wav)) { return $false }
+    $parcial = $null
     try {
-        if (-not (Test-Path -LiteralPath $CacheDir)) { New-Item -ItemType Directory -Path $CacheDir -Force | Out-Null }
+        [void][IO.Directory]::CreateDirectory($CacheDir)
         $destino = Get-AudioCachePath -CacheDir $CacheDir -Key $Key
-        Copy-Item -LiteralPath $Wav -Destination $destino -Force -ErrorAction Stop
-        (Get-Item -LiteralPath $destino).LastWriteTime = $Now
+        # Se copia con otro nombre y se renombra: quien lo lea a la vez nunca
+        # ve un WAV a medias.
+        $parcial = $destino + '.part'
+        [IO.File]::Copy($Wav, $parcial, $true)
+        [IO.File]::SetLastWriteTime($parcial, $Now)
+        if ([IO.File]::Exists($destino)) { [IO.File]::Delete($destino) }
+        [IO.File]::Move($parcial, $destino)
         return $true
     } catch {
+        if ($parcial) { try { [IO.File]::Delete($parcial) } catch { } }
         return $false
     }
 }
@@ -149,18 +158,48 @@ function Copy-AudioFromCache {
         [DateTime]$Now = (Get-Date)
     )
 
-    if ($Minutes -le 0) { return $false }
+    if ($Minutes -le 0 -or -not $Key) { return $false }
     $origen = Get-AudioCachePath -CacheDir $CacheDir -Key $Key
     try {
-        if (-not (Test-Path -LiteralPath $origen)) { return $false }
-        $item = Get-Item -LiteralPath $origen
-        if (-not (Test-CacheFresh -LastUsed $item.LastWriteTime -Now $Now -Minutes $Minutes)) { return $false }
-        Copy-Item -LiteralPath $origen -Destination $Destination -Force -ErrorAction Stop
-        $item.LastWriteTime = $Now
+        if (-not [IO.File]::Exists($origen)) { return $false }
+        if (-not (Test-CacheFresh -LastUsed ([IO.File]::GetLastWriteTime($origen)) -Now $Now -Minutes $Minutes)) { return $false }
+        [IO.File]::Copy($origen, $Destination, $true)
+        [IO.File]::SetLastWriteTime($origen, $Now)
         return $true
     } catch {
         return $false
     }
+}
+
+function Get-SynthAudioKey {
+    # La clave del audio de un fragmento segun la configuracion de la sintesis
+    # del proceso residente ($synthConfig, la misma tabla que lee el hilo de
+    # voz). Piper suena distinto con su modelo, la velocidad, la variacion y
+    # el silencio final; la voz propia, con su carpeta y el silencio final.
+    # Devuelve '' si no hay voz para ese idioma.
+    param(
+        [hashtable]$Config,
+        [string]$Engine,
+        [string]$Lang,
+        [string]$Text
+    )
+
+    if ($Engine -eq 'qwen') {
+        $voz = [string]$Config.Qwen.VoiceDir
+        $sonido = @{ SentenceSilence = [string]$Config.SentenceSilence }
+    } else {
+        $modelo = [string]$Config.Models[$Lang]
+        if (-not $modelo) { return '' }
+        $voz = [IO.Path]::GetFileNameWithoutExtension($modelo)
+        $sonido = @{
+            LengthScale     = [string]$Config.LengthScale
+            NoiseScale      = [string]$Config.NoiseScale
+            NoiseW          = [string]$Config.NoiseW
+            SentenceSilence = [string]$Config.SentenceSilence
+        }
+    }
+    if (-not $voz) { return '' }
+    return Get-AudioCacheKey -Engine $Engine -Voice $voz -Lang $Lang -Text $Text -Sound $sonido
 }
 
 function Clear-AudioCache {

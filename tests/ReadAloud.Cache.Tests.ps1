@@ -192,3 +192,78 @@ Describe 'Traducciones en memoria' {
         Get-CachedTranslation -Memory (New-TranslationMemory) -Key 'k' -Minutes 10 | Should -BeNullOrEmpty
     }
 }
+
+Describe 'Get-SynthAudioKey' {
+    BeforeAll {
+        # Como $synthConfig del proceso residente: los numeros ya van en texto.
+        function New-TestSynthConfig {
+            param([string]$Carpeta = 'C:\a\voices', [string]$Velocidad = '1.06', [string]$Silencio = '0.36')
+            return @{
+                Models          = @{ es = "$Carpeta\es_MX-claude-high.onnx"; en = "$Carpeta\en_US-lessac-high.onnx" }
+                LengthScale     = $Velocidad
+                NoiseScale      = '0.667'
+                NoiseW          = '0.8'
+                SentenceSilence = $Silencio
+                Qwen            = @{ VoiceDir = 'C:\voz\modelos\voz_app' }
+            }
+        }
+    }
+
+    It 'Piper: la voz es el nombre del modelo, no su carpeta' {
+        $a = Get-SynthAudioKey -Config (New-TestSynthConfig) -Engine 'piper' -Lang 'es' -Text 'Hola.'
+        $b = Get-SynthAudioKey -Config (New-TestSynthConfig -Carpeta 'D:\otra\voices') -Engine 'piper' -Lang 'es' -Text 'Hola.'
+        $b | Should -Be $a
+        $a | Should -Be (Get-AudioCacheKey -Engine 'piper' -Voice 'es_MX-claude-high' -Lang 'es' -Text 'Hola.' -Sound @{
+            LengthScale = '1.06'; NoiseScale = '0.667'; NoiseW = '0.8'; SentenceSilence = '0.36' })
+    }
+
+    It 'Piper: cada idioma usa su modelo' {
+        $c = New-TestSynthConfig
+        Get-SynthAudioKey -Config $c -Engine 'piper' -Lang 'en' -Text 'Hi.' | Should -Not -Be (Get-SynthAudioKey -Config $c -Engine 'piper' -Lang 'es' -Text 'Hi.')
+    }
+
+    It 'la voz propia no cambia con la velocidad de Piper, pero si con el silencio final' {
+        $a = Get-SynthAudioKey -Config (New-TestSynthConfig) -Engine 'qwen' -Lang 'es' -Text 'Hola.'
+        Get-SynthAudioKey -Config (New-TestSynthConfig -Velocidad '1.2') -Engine 'qwen' -Lang 'es' -Text 'Hola.' | Should -Be $a
+        Get-SynthAudioKey -Config (New-TestSynthConfig -Silencio '0.5') -Engine 'qwen' -Lang 'es' -Text 'Hola.' | Should -Not -Be $a
+    }
+
+    It 'el audio de la voz propia y el de Piper no se confunden' {
+        $c = New-TestSynthConfig
+        Get-SynthAudioKey -Config $c -Engine 'qwen' -Lang 'es' -Text 'Hola.' | Should -Not -Be (Get-SynthAudioKey -Config $c -Engine 'piper' -Lang 'es' -Text 'Hola.')
+    }
+
+    It 'sin voz para ese idioma no hay clave' {
+        $c = New-TestSynthConfig
+        $c.Models = @{ es = $c.Models.es }
+        Get-SynthAudioKey -Config $c -Engine 'piper' -Lang 'en' -Text 'Hi.' | Should -Be ''
+        $c.Qwen.VoiceDir = ''
+        Get-SynthAudioKey -Config $c -Engine 'qwen' -Lang 'es' -Text 'Hola.' | Should -Be ''
+    }
+}
+
+Describe 'read_aloud_daemon.ps1 y el audio guardado' {
+    BeforeAll {
+        $ruta = Join-Path $PSScriptRoot '..\read_aloud_daemon.ps1'
+        $errores = $null
+        $arbol = [Management.Automation.Language.Parser]::ParseFile((Resolve-Path $ruta).Path, [ref]$null, [ref]$errores)
+        $texto = Get-Content -LiteralPath $ruta -Raw
+    }
+
+    It 'se puede leer sin errores de sintaxis' {
+        $errores | Should -BeNullOrEmpty
+        $arbol | Should -Not -BeNullOrEmpty
+    }
+
+    It 'el hilo de voz carga la biblioteca y guarda antes de avisar al reproductor' {
+        $texto | Should -Match '\. \$cfg\.CacheLib'
+        $envio = [regex]::Match($texto, '(?s)function Send-SynthDone \{.*?\n    \}').Value
+        $envio.IndexOf('Save-AudioToCache') | Should -BeGreaterThan 0
+        $envio.IndexOf('Save-AudioToCache') | Should -BeLessThan $envio.IndexOf('SynthDone.Enqueue')
+    }
+
+    It 'la pausa del bloque se pega despues, en el reproductor, no en lo guardado' {
+        $texto | Should -Match 'Add-WavSilence -Path \$done\.Wav'
+        $texto | Should -Not -Match 'Add-WavSilence -Path [^\r\n]*AudioCache'
+    }
+}

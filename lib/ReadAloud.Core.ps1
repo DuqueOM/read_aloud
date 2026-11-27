@@ -31,6 +31,7 @@ function Get-ReadAloudPaths {
         VoicesDir   = $voicesDir
         RuntimeDir  = $runtimeDir
         TmpDir      = Join-Path $PiperBaseDir 'tmp'
+        AudioCacheDir = Join-Path $PiperBaseDir 'tmp\cache'
         LogFile     = Join-Path $runtimeDir 'daemon.log'
         StateFile   = Join-Path $runtimeDir 'player.json'
         UserSettingsFile = Join-Path $runtimeDir 'ajustes.json'

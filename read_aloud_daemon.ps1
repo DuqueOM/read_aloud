@@ -23,6 +23,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Core.ps1')
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Text.ps1')
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Player.ps1')
+. (Join-Path $PSScriptRoot 'lib\ReadAloud.Cache.ps1')
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Hotkeys.ps1')
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Update.ps1')
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Theme.ps1')
@@ -96,7 +97,11 @@ function Get-ConfiguredPauses {
 }
 
 $purged = Clear-OldTempAudio -TmpDir $paths.TmpDir -MaxAgeHours $settings.MaxTmpAgeHours
-Write-DaemonLog "Inicio. Temporales eliminados: $purged"
+# El audio guardado de cada frase (ADR 0016) vive en tmp\cache, que la
+# limpieza de arriba no toca: caduca por minutos sin usarse y tiene un tope.
+$audioCacheBytes = [long]([double]$settings.AudioCacheMB * 1MB)
+$purgedCache = Clear-AudioCache -CacheDir $paths.AudioCacheDir -Minutes ([double]$settings.AudioCacheMinutes) -MaxBytes $audioCacheBytes
+Write-DaemonLog "Inicio. Temporales eliminados: $purged; audio guardado caducado: $purgedCache"
 
 function Update-SpeechDictionary {
     Initialize-SpeechTerms -Paths $paths
@@ -291,10 +296,12 @@ Start-BackgroundRunspace -Script $pipeScript -Variables @{
 # --------------------------------------------------------------------------
 $synthScript = {
     # El orden de generacion y el tope de los grupos viven en la biblioteca del
-    # reproductor, que se prueba con Pester.
+    # reproductor, que se prueba con Pester. El audio guardado, en la suya.
     . $cfg.PlayerLib
+    . $cfg.CacheLib
 
     $processes = @{}
+    $cacheWatch = @{ Next = [DateTime]::UtcNow.AddSeconds(60) }
 
     function New-QwenProcess {
         $q = $cfg.Qwen
@@ -448,6 +455,19 @@ $synthScript = {
         # Engine ('qwen' o 'piper') y Group (cuantas frases iban en el grupo)
         # los usa el registro de esperas del reproductor.
         param($Job, [bool]$Ok, [string]$ErrorText, [string]$Engine = '', [int]$Group = 0)
+
+        # El audio se guarda antes de avisar: despues el reproductor le pega
+        # la pausa del final del bloque, que depende del lugar de la frase.
+        # Va con el motor que de verdad lo genero (Qwen puede ceder a Piper).
+        # Los de calentamiento (indices negativos) no se guardan.
+        $c = $cfg.AudioCache
+        if ($Ok -and $Job.Index -ge 0 -and [double]$c.Minutes -gt 0) {
+            try {
+                $clave = Get-SynthAudioKey -Config $cfg -Engine $Engine -Lang $Job.Lang -Text $Job.Text
+                if ($clave) { [void](Save-AudioToCache -Wav $Job.Wav -CacheDir $c.Dir -Key $clave) }
+            } catch { }
+        }
+
         $sync.SynthDone.Enqueue(@{
             Generation = $Job.Generation
             Index      = $Job.Index
@@ -631,6 +651,13 @@ $synthScript = {
                 $qwenWatch.Next = [DateTime]::UtcNow.AddSeconds(30)
                 Restore-QwenProcess
             }
+            # Sin nada que generar, el audio guardado caducado se borra.
+            if ([DateTime]::UtcNow -ge $cacheWatch.Next) {
+                $cacheWatch.Next = [DateTime]::UtcNow.AddSeconds(60)
+                try {
+                    [void](Clear-AudioCache -CacheDir $cfg.AudioCache.Dir -Minutes ([double]$cfg.AudioCache.Minutes) -MaxBytes ([long]$cfg.AudioCache.MaxBytes))
+                } catch { }
+            }
             [void]$sync.SynthSignal.WaitOne(5000)
             continue
         }
@@ -721,6 +748,12 @@ $synthConfig = @{
         PiperDir        = $paths.PiperDir
         EspeakData      = $paths.EspeakData
         PlayerLib       = (Join-Path $paths.LibDir 'ReadAloud.Player.ps1')
+        CacheLib        = (Join-Path $paths.LibDir 'ReadAloud.Cache.ps1')
+        AudioCache      = @{
+            Dir      = $paths.AudioCacheDir
+            Minutes  = [double]$settings.AudioCacheMinutes
+            MaxBytes = $audioCacheBytes
+        }
         Models          = $models
         SentenceSilence = ([double]$settings.SentenceSilence).ToString($invariant)
         LengthScale     = ([double]$settings.LengthScale).ToString($invariant)
@@ -2141,6 +2174,8 @@ function Start-Speaking {
 
     $index = 0
     $pausas = 0.0
+    $reutilizados = 0
+    $minutosGuardado = [double]$synthConfig.AudioCache.Minutes
 
     foreach ($item in $plan.Chunks) {
         $wav = Join-Path $paths.TmpDir ('ra_{0}_{1:d4}.wav' -f $generation, $index)
@@ -2164,13 +2199,38 @@ function Start-Speaking {
             Group      = 0
         })
 
-        $sync.SynthJobs.Enqueue(@{
-            Generation = $generation
-            Index      = $index
-            Lang       = $item.Lang
-            Text       = $item.Text
-            Wav        = $wav
-        })
+        # Una frase que ya sono hace poco con la misma voz y los mismos ajustes
+        # tiene su audio guardado: se copia y no se vuelve a generar. Llega al
+        # reproductor por el mismo camino que lo recien generado, que le pega
+        # la pausa y lo marca listo.
+        $guardado = $false
+        if ($minutosGuardado -gt 0) {
+            $clave = Get-SynthAudioKey -Config $synthConfig -Engine ([string]$engines[$item.Lang]) -Lang $item.Lang -Text $item.Text
+            if ($clave) {
+                $guardado = Copy-AudioFromCache -CacheDir $paths.AudioCacheDir -Key $clave -Destination $wav -Minutes $minutosGuardado
+            }
+        }
+
+        if ($guardado) {
+            $sync.SynthDone.Enqueue(@{
+                Generation = $generation
+                Index      = $index
+                Wav        = $wav
+                Ok         = $true
+                Error      = ''
+                Engine     = 'guardado'
+                Group      = 0
+            })
+            $reutilizados++
+        } else {
+            $sync.SynthJobs.Enqueue(@{
+                Generation = $generation
+                Index      = $index
+                Lang       = $item.Lang
+                Text       = $item.Text
+                Wav        = $wav
+            })
+        }
 
         $index++
     }
@@ -2206,7 +2266,7 @@ function Start-Speaking {
         Set-PlayerPosition
     }
 
-    Write-DaemonLog ("Lectura {0}: {1} fragmentos, {2:N1} s de pausas, idioma {3}" -f $generation, $state.Chunks.Count, $pausas, $plan.DocumentLang)
+    Write-DaemonLog ("Lectura {0}: {1} fragmentos, {2:N1} s de pausas, idioma {3}, {4} con audio guardado" -f $generation, $state.Chunks.Count, $pausas, $plan.DocumentLang, $reutilizados)
 }
 
 # --------------------------------------------------------------------------
