@@ -55,6 +55,11 @@ argumentos.add_argument("--marca", default="", help="archivo que otro paso deja 
 argumentos.add_argument(
     "--listo", default="", help="archivo que se crea cuando el modelo ya esta cargado y se borra al terminar"
 )
+argumentos.add_argument(
+    "--reserva",
+    default="",
+    help="archivo donde Read Aloud anota 'pid MiB' de su traductor en la tarjeta, que no cuenta como otro programa",
+)
 opciones = argumentos.parse_args()
 
 registro = open(opciones.registro, "a", encoding="utf-8", buffering=1)
@@ -117,16 +122,7 @@ SALIDA_MARCA = 4
 SALIDA_OTRO_PROGRAMA = 5
 
 
-def tarjeta_pedida() -> bool:
-    """Si un paso pesado de la carpeta de trabajo dejo su marca (scripts/gpu.py)
-    y ese proceso sigue vivo. Entonces Read Aloud lee con Piper y este proceso
-    termina para dejarle la tarjeta entera."""
-    if not opciones.marca or not os.path.exists(opciones.marca):
-        return False
-    try:
-        pid = int(Path(opciones.marca).read_text(encoding="ascii").strip())
-    except (OSError, ValueError):
-        return False
+def proceso_vivo(pid: int) -> bool:
     import ctypes
 
     proceso = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
@@ -138,9 +134,37 @@ def tarjeta_pedida() -> bool:
     return codigo.value == 259  # STILL_ACTIVE
 
 
+def tarjeta_pedida() -> bool:
+    """Si un paso pesado de la carpeta de trabajo dejo su marca (scripts/gpu.py)
+    y ese proceso sigue vivo. Entonces Read Aloud lee con Piper y este proceso
+    termina para dejarle la tarjeta entera."""
+    if not opciones.marca or not os.path.exists(opciones.marca):
+        return False
+    try:
+        pid = int(Path(opciones.marca).read_text(encoding="ascii").strip())
+    except (OSError, ValueError):
+        return False
+    return proceso_vivo(pid)
+
+
+def memoria_del_traductor_gb() -> float:
+    """Lo que ocupa en la tarjeta el traductor de Read Aloud (ADR 0016), si
+    esta abierto a la vez: no es otro programa, y sin descontarlo la voz
+    cederia la tarjeta por error."""
+    if not opciones.reserva or not os.path.exists(opciones.reserva):
+        return 0.0
+    try:
+        pid, mib = Path(opciones.reserva).read_text(encoding="ascii").split()
+        if not proceso_vivo(int(pid)):
+            return 0.0
+        return float(mib) * 2**20 / 1e9
+    except (OSError, ValueError):
+        return 0.0
+
+
 def memoria_de_otros_gb() -> float:
     libre, total = torch.cuda.mem_get_info()
-    return (total - libre - torch.cuda.memory_reserved()) / 1e9
+    return (total - libre - torch.cuda.memory_reserved()) / 1e9 - memoria_del_traductor_gb()
 
 
 def log(mensaje: str) -> None:
