@@ -885,9 +885,11 @@ function Split-LongText {
     # Parte un texto largo en trozos que no pasen de los limites dados (el
     # primer trozo usa el primer limite, el segundo el segundo, y asi hasta el
     # ultimo, que sirve para todos los que quedan). Corta donde una persona
-    # haria una pausa: antes en ; o :, despues en una coma (no la de 2,5) y, si
+    # haria una pausa: antes en ; o :, despues en una coma o una raya y, si
     # no hay ninguna a una distancia razonable, en un espacio. El signo queda
-    # con el trozo de la izquierda.
+    # con el trozo de la izquierda. Un signo entre dos cifras es parte del
+    # numero y no se corta ahi (3:30, 1:2, 2,5): partir "3:30" deja
+    # "3:" con tono de final en un trozo y "30" en el siguiente.
     param([string]$Text, [int[]]$Limits = @(180))
 
     $out = New-Object System.Collections.Generic.List[string]
@@ -906,11 +908,13 @@ function Split-LongText {
 
         for ($i = $max - 1; $i -ge $minimo; $i--) {
             $c = $rest[$i]
+            $entreCifras = ($i + 1 -lt $rest.Length) -and [char]::IsDigit($rest[$i - 1]) -and [char]::IsDigit($rest[$i + 1])
             if ($c -eq ';' -or $c -eq ':') {
-                $fuerte = $i
-                break
+                if (-not $entreCifras) {
+                    $fuerte = $i
+                    break
+                }
             } elseif ($c -eq ',') {
-                $entreCifras = ($i + 1 -lt $rest.Length) -and [char]::IsDigit($rest[$i - 1]) -and [char]::IsDigit($rest[$i + 1])
                 if ((-not $entreCifras) -and $coma -lt 0) { $coma = $i }
             } elseif ($c -eq [char]0x2014 -or $c -eq [char]0x2013) {
                 if ($coma -lt 0) { $coma = $i }
