@@ -6,7 +6,13 @@ ruta del WAV cuando termina. Una linea puede traer tambien una lista de
 ordenes; entonces se generan juntas, que en la tarjeta grafica cuesta casi lo
 mismo que una sola, y se escribe una ruta por orden, en el mismo orden.
 
-    {"text": "Hola.", "output_file": "C:\\...\\ra_1_0000.wav", "lang": "es"}
+    {"text": "Hola.", "output_file": "C:\\...\\ra_1_0000.wav", "lang": "es", "grupo": "1-0"}
+
+"grupo" es opcional: el nombre con que Read Aloud anota ese grupo en su
+registro de eventos. A la primera ruta de cada grupo se le agregan, tras un
+tabulador, las medidas del grupo en JSON (cuanto tardo, el audio que salio, la
+carga del procesador y de la tarjeta). Piper no las da; Read Aloud acepta las
+dos formas.
 
 La voz es una carpeta con lo que deja el entrenamiento (ajuste.json,
 voz.safetensors y las capas LoRA de la epoca elegida, en lora.safetensors).
@@ -24,9 +30,12 @@ Todo lo que no es el protocolo (avisos de las librerias, errores) va a
 
 import argparse
 import atexit
+import ctypes
 import json
 import os
 import queue
+import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -127,8 +136,6 @@ def tarjeta_pedida() -> bool:
         pid = int(Path(opciones.marca).read_text(encoding="ascii").strip())
     except (OSError, ValueError):
         return False
-    import ctypes
-
     proceso = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
     if not proceso:
         return False
@@ -141,6 +148,101 @@ def tarjeta_pedida() -> bool:
 def memoria_de_otros_gb() -> float:
     libre, total = torch.cuda.mem_get_info()
     return (total - libre - torch.cuda.memory_reserved()) / 1e9
+
+
+# Medidas de cada grupo para el registro de eventos de Read Aloud: con ellas se
+# ve despues si un grupo lento coincidio con el procesador ocupado, con otro
+# programa en la tarjeta o con la tarjeta a pocos MHz (un portatil con bateria
+# o en modo de ahorro).
+
+
+class _Filetime(ctypes.Structure):
+    _fields_ = [("bajo", ctypes.c_uint32), ("alto", ctypes.c_uint32)]
+
+
+def tiempos_cpu() -> tuple[int, int] | None:
+    """(inactivo, total) del procesador desde que arranco Windows, sumando
+    todos los nucleos, en unidades de 100 ns."""
+    inactivo, nucleo, usuario = _Filetime(), _Filetime(), _Filetime()
+    if not ctypes.windll.kernel32.GetSystemTimes(ctypes.byref(inactivo), ctypes.byref(nucleo), ctypes.byref(usuario)):
+        return None
+
+    def valor(f: _Filetime) -> int:
+        return (f.alto << 32) | f.bajo
+
+    # El tiempo del nucleo ya incluye el inactivo.
+    return valor(inactivo), valor(nucleo) + valor(usuario)
+
+
+def uso_cpu(antes: tuple[int, int] | None, despues: tuple[int, int] | None) -> float | None:
+    """Porcentaje del procesador ocupado entre dos lecturas de tiempos_cpu."""
+    if not antes or not despues:
+        return None
+    total = despues[1] - antes[1]
+    if total <= 0:
+        return None
+    return round(100 * (1 - (despues[0] - antes[0]) / total), 1)
+
+
+NVIDIA_SMI = shutil.which("nvidia-smi")
+CAMPOS_TARJETA = ["uso_pct", "temp_c", "mhz", "w", "pstate"]
+
+
+def leer_tarjeta() -> dict | None:
+    """Uso, temperatura, reloj, consumo y estado de energia de la tarjeta, de
+    nvidia-smi. Tarda unos 100 ms: se llama desde otro hilo."""
+    if not NVIDIA_SMI:
+        return None
+    try:
+        salida = subprocess.run(
+            [
+                NVIDIA_SMI,
+                "--query-gpu=utilization.gpu,temperature.gpu,clocks.sm,power.draw,pstate",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    lineas = salida.strip().splitlines()
+    if not lineas:
+        return None
+    datos = {}
+    for campo, valor in zip(CAMPOS_TARJETA, (v.strip() for v in lineas[0].split(","))):
+        if campo == "pstate":
+            datos[campo] = valor
+            continue
+        try:
+            datos[campo] = float(valor)
+        except ValueError:
+            datos[campo] = None
+    return datos
+
+
+class MuestraTarjeta:
+    """Lee la tarjeta una vez, un poco despues de empezar el grupo, cuando ya
+    esta generando; sin frenar la generacion."""
+
+    RETRASO_S = 0.8
+
+    def __init__(self) -> None:
+        self.datos: dict | None = None
+        self._hilo = threading.Thread(target=self._medir, daemon=True)
+        self._listo = threading.Event()
+        self._hilo.start()
+
+    def _medir(self) -> None:
+        if not self._listo.wait(self.RETRASO_S):
+            self.datos = leer_tarjeta()
+
+    def terminar(self) -> dict | None:
+        # Un grupo que termino antes de la muestra no espera por ella.
+        self._listo.set()
+        self._hilo.join(timeout=0.3)
+        return self.datos
 
 
 def log(mensaje: str) -> None:
@@ -225,25 +327,29 @@ def acortar_pausas(audio: np.ndarray, niveles: np.ndarray, tasa: int, tope: floa
     return np.concatenate(partes)
 
 
-def pulir(audio: np.ndarray, tasa: int) -> np.ndarray:
+def pulir(audio: np.ndarray, tasa: int) -> tuple[np.ndarray, float]:
     """Quita el silencio de los extremos, acorta los internos largos (con
-    --pausa-maxima), iguala el volumen y agrega la pausa final."""
+    --pausa-maxima), iguala el volumen y agrega la pausa final. Devuelve el
+    audio y los segundos que se quitaron de los silencios internos."""
     audio = np.asarray(audio, dtype=np.float32)
     cuadro = int(0.01 * tasa)
     niveles = 20 * np.log10(np.sqrt(np.convolve(audio**2, np.ones(cuadro) / cuadro, mode="same")) + 1e-9)
     con_voz = np.where(niveles > UMBRAL_SILENCIO_DB)[0]
+    recortado = 0.0
     if con_voz.size:
         margen = int(MARGEN_S * tasa)
         desde, hasta = max(0, con_voz[0] - margen), con_voz[-1] + margen
         audio, niveles = audio[desde:hasta], niveles[desde:hasta]
         if opciones.pausa_maxima > 0:
+            antes = len(audio)
             audio = acortar_pausas(audio, niveles, tasa, opciones.pausa_maxima)
+            recortado = (antes - len(audio)) / tasa
         habla = audio[np.abs(audio) > 10 ** (UMBRAL_SILENCIO_DB / 20)]
         audio = audio * (10 ** (NIVEL_DB / 20) / (np.sqrt(np.mean(habla**2)) + 1e-9))
         pico = np.max(np.abs(audio))
         if pico > 10 ** (PICO_DB / 20):
             audio = audio * (10 ** (PICO_DB / 20) / pico)
-    return np.concatenate([audio, np.zeros(int(opciones.silencio * tasa), dtype=np.float32)])
+    return np.concatenate([audio, np.zeros(int(opciones.silencio * tasa), dtype=np.float32)]), recortado
 
 
 def razonable(texto: str, segundos: float) -> bool:
@@ -251,14 +357,17 @@ def razonable(texto: str, segundos: float) -> bool:
     return 0.35 * esperado <= segundos <= 2.5 * esperado + 1.0
 
 
-def generar(qwen, ordenes: list[dict]) -> float:
+def generar(qwen, ordenes: list[dict]) -> dict:
     """Genera el grupo y escribe un WAV por orden. Devuelve los segundos de audio
-    escritos: lo que dura al sonar, con la pausa final incluida."""
+    escritos (lo que dura al sonar, con la pausa final incluida), cuantas
+    frases hubo que repetir y los segundos quitados de los silencios internos."""
     textos = [o["text"] for o in ordenes]
     idiomas = [IDIOMAS.get(o.get("lang", "es"), "Spanish") for o in ordenes]
     tope = int(CODIGOS_POR_SEGUNDO * (2.5 * max(len(t) for t in textos) * SEGUNDOS_POR_LETRA + 3))
     pendientes = list(range(len(ordenes)))
     segundos = 0.0
+    repetidas = 0
+    recortado = 0.0
     for intento in range(2):
         wavs, tasa = qwen.generate_custom_voice(
             text=[textos[i] for i in pendientes],
@@ -273,13 +382,60 @@ def generar(qwen, ordenes: list[dict]) -> float:
                 log(f"duracion rara ({len(wav) / tasa:.1f} s), se repite: {textos[i]!r}")
                 repetir.append(i)
                 continue
-            pulido = pulir(wav, tasa)
+            pulido, quitado = pulir(wav, tasa)
             sf.write(ordenes[i]["output_file"], pulido, tasa, subtype="PCM_16")
             segundos += len(pulido) / tasa
+            recortado += quitado
+        repetidas += len(repetir)
         pendientes = repetir
         if not pendientes:
             break
-    return segundos
+    return {"audio": segundos, "repetidas": repetidas, "recortado": recortado}
+
+
+def medir_grupo(qwen, ordenes: list[dict]) -> dict:
+    """Genera el grupo, lo anota en el registro y devuelve sus medidas."""
+    grupo = ordenes[0].get("grupo") if ordenes else None
+    otros_antes = memoria_de_otros_gb()
+    cpu_antes = tiempos_cpu()
+    muestra = MuestraTarjeta()
+    inicio = time.perf_counter()
+    try:
+        hecho = generar(qwen, ordenes)
+    finally:
+        gasto = time.perf_counter() - inicio
+        tarjeta = muestra.terminar()
+    cpu = uso_cpu(cpu_antes, tiempos_cpu())
+    otros = memoria_de_otros_gb()
+    audio = hecho["audio"]
+    # Factor: segundos de generacion por segundo de audio. Por encima de 1, el
+    # grupo tarda mas en generarse que en sonar.
+    factor = gasto / audio if audio > 0 else None
+
+    # La primera parte de la linea no cambia: la lee tools\resumen_esperas.ps1.
+    texto_factor = f"{factor:.2f}" if factor else "-"
+    partes = [f"{len(ordenes)} frase(s) en {gasto:.1f} s, {audio:.1f} s de audio, factor {texto_factor}"]
+    if grupo:
+        partes.append(f"grupo {grupo}")
+    if cpu is not None:
+        partes.append(f"procesador {cpu:.0f} %")
+    partes.append(f"tarjeta de otros {otros:.1f} GB")
+    if tarjeta and tarjeta.get("uso_pct") is not None:
+        partes.append(f"tarjeta {tarjeta['uso_pct']:.0f} % a {tarjeta.get('mhz') or 0:.0f} MHz")
+    log(", ".join(partes))
+
+    return {
+        "grupo": grupo,
+        "s": round(gasto, 3),
+        "audio_s": round(audio, 3),
+        "factor": round(factor, 3) if factor else None,
+        "repetidas": hecho["repetidas"],
+        "recorte_s": round(hecho["recortado"], 3),
+        "cpu_pct": cpu,
+        "otros_gb": round(otros_antes, 2),
+        "otros_gb_despues": round(otros, 2),
+        "tarjeta": tarjeta,
+    }
 
 
 def leer_entrada(cola: queue.Queue) -> None:
@@ -344,24 +500,23 @@ def main() -> int:
             return SALIDA_ENTRADA_CERRADA
         ultima = time.monotonic()
         ordenes = []
+        medidas: dict = {}
         try:
             # Con la consola de Windows en UTF-8, quien escribe en la entrada
             # puede anteponer una marca BOM a la primera linea.
             datos = json.loads(linea.lstrip("﻿"))
             ordenes = datos if isinstance(datos, list) else [datos]
-            inicio = time.perf_counter()
-            audio = generar(qwen, ordenes)
-            gasto = time.perf_counter() - inicio
-            # Factor: segundos de generacion por segundo de audio. Por encima
-            # de 1, el grupo tarda mas en generarse que en sonar.
-            factor = f"{gasto / audio:.2f}" if audio > 0 else "-"
-            log(f"{len(ordenes)} frase(s) en {gasto:.1f} s, {audio:.1f} s de audio, factor {factor}")
+            medidas = medir_grupo(qwen, ordenes)
         except Exception as error:  # una orden mala no debe tumbar el proceso
             log(f"error: {error!r}")
+            medidas["error"] = repr(error)
         # Una ruta por orden, como Piper, aunque haya fallado: Read Aloud
-        # comprueba que el WAV exista.
-        for orden in ordenes:
-            protocolo.write(orden.get("output_file", "") + "\n")
+        # comprueba que el WAV exista. La primera lleva las medidas del grupo.
+        for n, orden in enumerate(ordenes):
+            ruta = orden.get("output_file", "")
+            if n == 0 and medidas:
+                ruta += "\t" + json.dumps(medidas, ensure_ascii=True)
+            protocolo.write(ruta + "\n")
         protocolo.flush()
 
 
