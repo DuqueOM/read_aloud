@@ -103,6 +103,10 @@ resumen. Para verlo por día:
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\resumen_esperas.ps1 -Dias 3
 ```
 
+Con más detalle (cada espera unida al grupo que la causó, la carga del
+procesador y de la tarjeta, la batería), en el [registro de
+eventos](#registro-de-eventos).
+
 Qwen tarda unos 20 s en cargar (hasta un minuto si Windows no tiene sus
 librerías en la cache del disco) y ocupa unos 5 GB de la tarjeta y 2.3 GB de
 RAM. Para que ninguna lectura espere esa carga, se abre con el proceso
@@ -310,6 +314,70 @@ fragmento en curso termina y los siguientes salen con la voz nueva; lo demás
 
 El borrado ocurre al arrancar el proceso residente, es decir, normalmente una
 vez al día cuando inicias sesión.
+
+## Registro de eventos
+
+| Valor | Por defecto | Qué hace |
+|---|---|---|
+| `EventLog` | `$true` | Escribir el registro de eventos |
+| `EventLogText` | `$false` | Guardar también las palabras de cada frase |
+| `EventLogMonths` | `12` | Meses que se conservan; `0`, todos |
+
+El proceso residente anota lo que pasa en cada lectura en
+`read_aloud_piper\runtime\eventos_AAAA-MM.jsonl`, un archivo por mes con una
+línea JSON por evento. Sirve para ver, con datos y no de memoria, dónde y por
+qué hay pausas, cómo rinde cada voz y qué controles se usan. No sale de tu
+equipo: Read Aloud no lo manda a ningún sitio. Un mes de uso diario ocupa unos
+pocos MB.
+
+De cada frase se guardan sus rasgos (caracteres, palabras, cifras, siglas y
+comas), no sus palabras: lo que lees puede ser privado. Con `EventLogText =
+$true` se guarda también el texto (`texto`, y en `dicho` lo que recibe la voz
+si el diccionario lo cambió). Enciéndelo unos días cuando quieras ver qué frase
+exacta causó una espera o sonó mal, y apágalo después.
+
+Cada línea empieza por la hora (`t`, con milisegundos y zona) y el tipo
+(`tipo`). `ms` son los milisegundos desde que llegó la orden de esa lectura.
+Las lecturas se numeran desde 1 cada vez que arranca el lector, y cada
+arranque escribe un `inicio`: para unir eventos, cuenta los `inicio` que van.
+
+| Tipo | Cuándo | Campos principales |
+|---|---|---|
+| `inicio` | Al arrancar el lector | `version`, `motores`, `rendimiento`, `qwen_lote`, `energia` |
+| `lectura` | Al empezar una lectura | `lectura`, `via` (`atajo`, `tuberia` o `ajustes`), `idioma`, `idiomas`, `fragmentos`, `estimado_s`, `plan_ms`, `qwen_listo`, `velocidad`, rasgos del texto, `energia` |
+| `fragmento` | Al llegar el audio de una frase | `i`, `motor`, `grupo`, `audio_s` frente a `estimado_s`, `margen_s` (audio que quedaba antes de necesitarla; 0 si se la esperaba, negativo si quedó atrás tras un salto), `cambiado`, rasgos del texto |
+| `grupo` | Al terminar de generar un grupo | `grupo`, `ms` (cuándo se mandó), `motor` y `pedido`, `motivo` (por qué Piper en vez de Qwen: `qwen_cargando`, `tarjeta_ocupada`, `qwen_fallo`), `tamano`, `tope`, `salto`, `espera_motor_ms`, `gen_ms`, `descartado` (su lectura ya se había reemplazado), `servidor`, `energia` |
+| `espera` | Al llegar el audio que se esperaba, o al cortarse la espera | `i`, `clase` (`arranque`, `frase` o `salto`), `s`, `cortada`, `motor`, `grupo`, `tamano` |
+| `accion` | Pausa, sigue, salto, velocidad, panel | `accion`, `via` (`raton`, `atajo`, `tuberia`), `posicion_s`; en un salto, `origen` (`atras`, `adelante`, `barra`, `texto`, `frase_anterior`, `frase_siguiente`, `inicio`), `hasta_s` y `listo` |
+| `fin` | Al terminar, detener, reemplazar o cerrar | `motivo`, `posicion_s`, `total_s`, `listos`, `esperas`, `espera_max_s`, `arranque_s`, `saltos`, `velocidad` |
+| `error` | Un error no controlado de la ventana | `donde`, `mensaje` |
+
+`energia` dice si el equipo estaba enchufado (`ac`) o con batería, el
+porcentaje de la batería y el modo de energía de Windows (`eficiencia`,
+`equilibrado` o `rendimiento`). `servidor` son las medidas que devuelve el
+servidor de Qwen de cada grupo: `s` (lo que tardó), `audio_s`, `factor`,
+`repetidas` (frases que hubo que generar otra vez), `recorte_s` (silencio
+quitado con `--pausa-maxima`), `cpu_pct` (procesador ocupado mientras
+generaba), `otros_gb` (memoria de la tarjeta que usaban otros programas) y
+`tarjeta`: una muestra de `nvidia-smi` con el uso, la temperatura, el reloj
+(`mhz`), el consumo y el estado de energía. Un grupo lento con la tarjeta a
+pocos MHz apunta a la energía del portátil; con `otros_gb` alto, a otro
+programa en la tarjeta; con el procesador lleno, a otra cosa que corría a la
+vez.
+
+Para el resumen por día, cada espera con su grupo y lo que dice la regla de
+las esperas (PR #8):
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\resumen_eventos.ps1 -Dias 3 -Esperas
+```
+
+Y para trabajar con los eventos en PowerShell:
+
+```powershell
+$eventos = Get-Content read_aloud_piper\runtime\eventos_2026-11.jsonl -Encoding UTF8 | ConvertFrom-Json
+$eventos | Where-Object tipo -eq 'espera' | Format-Table t, lectura, i, clase, s, motor, grupo
+```
 
 ## Atajos de teclado
 

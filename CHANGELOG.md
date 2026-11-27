@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- An event log, `read_aloud_piper\runtime\eventos_YYYY-MM.jsonl`, one JSON
+  line per event and one file per month, kept for `EventLogMonths` (12). It
+  records each reading (how it arrived, language, length, voices, speed,
+  whether the laptop was on battery and the Windows power mode), each
+  sentence's audio (engine, group, real against estimated length, how much
+  margin it had), each group the voice generated (when it was sent, how long
+  it took, whether its reading had already been replaced, why Piper read it
+  instead of the own voice), each wait, each control used (pause, jumps and
+  where from, speed, text panel) and how each reading ended. Sentences are
+  stored as traits (characters, words, digits, acronyms, commas), not words;
+  `EventLogText = $true` stores the text too. `EventLog = $false` turns it
+  off.
+- `lib/servidor_qwen.py` returns, with the first path of each group, the
+  group's measurements: time, audio, factor, repeated sentences, trimmed
+  silence, CPU load, GPU memory used by other programs and an `nvidia-smi`
+  sample (utilization, temperature, clock, power, performance state).
+  `qwen.log` adds the group name, the CPU load and the GPU clock to each line.
+- `tools/resumen_eventos.ps1` summarizes the event log by day, lists each
+  wait with the group that caused it (`-Esperas`) and applies the rule from
+  pull request #8 for smaller groups or falling back to Piper.
+
 ## [1.3.5] - 2026-11-26
 
 Fewer long pauses between sentences, and sliders in the settings panel that go
