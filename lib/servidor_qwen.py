@@ -363,6 +363,12 @@ def main() -> int:
         for orden in ordenes:
             protocolo.write(orden.get("output_file", "") + "\n")
         protocolo.flush()
+        # PyTorch se queda con la memoria que reservo para el grupo. Soltarla
+        # deja la voz en 5,0 GB de la tarjeta despues de leer, en vez de 7,0,
+        # a la misma velocidad (ADR 0016): es el sitio que el traductor o
+        # otro programa necesitan. Va despues de avisar, para no retrasar el
+        # audio.
+        torch.cuda.empty_cache()
 
 
 if __name__ == "__main__":
