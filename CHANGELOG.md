@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-11-28
+
+An event log to see where and why a reading waits for its audio, and a
+fix for long sentences that were split inside a time such as "3:30".
+
 ### Added
 
 - An event log, `read_aloud_piper\runtime\eventos_YYYY-MM.jsonl`, one JSON
@@ -458,7 +463,8 @@ First public version.
 - GitHub Actions running Pester, PSScriptAnalyzer, ruff and gitleaks over the
   whole history, with every action pinned to a commit.
 
-[Unreleased]: https://github.com/DuqueOM/read_aloud/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/DuqueOM/read_aloud/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.4.1
 [1.4.0]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.4.0
 [1.3.5]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.3.5
 [1.3.4]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.3.4
