@@ -17,10 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   margin it had), each group the voice generated (when it was sent, how long
   it took, whether its reading had already been replaced, why Piper read it
   instead of the own voice), each wait, each control used (pause, jumps and
-  where from, speed, text panel) and how each reading ended. Sentences are
-  stored as traits (characters, words, digits, acronyms, commas), not words;
-  `EventLogText = $true` stores the text too. `EventLog = $false` turns it
-  off.
+  where from, speed, text panel), each translation (direction, translator,
+  sentences) and how each reading ended. Sentences are stored as traits
+  (characters, words, digits, acronyms, commas), not words;
+  `EventLogText = $true` stores the text too, except for translations, whose
+  text is never written to disk. `EventLog = $false` turns it off.
 - `lib/servidor_qwen.py` returns, with the first path of each group, the
   group's measurements: time, audio, factor, repeated sentences, trimmed
   silence, CPU load, GPU memory used by other programs and an `nvidia-smi`
@@ -39,6 +40,101 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   semicolon, comma or dash between two digits is no longer a place to split
   (3:30, 10:45, 1:2, 2,5, 1990–2000); decimal commas and thousands dots
   (3,5, 1.000) were already kept whole and now have tests.
+
+## [1.4.0] - 2026-11-28
+
+Quick offline translation between English and Spanish, read aloud with the
+voice of the other language, and audio that is kept for a few minutes so
+reading the same text again does not generate it again.
+
+### Added
+
+- `Ctrl+Alt+T` translates the selected text without a connection and reads
+  the translation aloud with the voice of the other language. The direction
+  comes from the language detection the app already had. The player has a
+  "Translate what is being read" button, and `read_aloud.ps1 -Translate`
+  translates the clipboard from the console.
+- Two levels of translation, opened by the resident process only when they
+  are needed and closed after `TranslateIdleMinutes` (10):
+  - Basic: Bergamot through `translateLocally`, about 112 MB, installed by
+    default. A sentence takes about 0.01 s.
+  - High: Hy-MT2 1.8B on the processor (1.17 GB), or Hy-MT2 7B on an NVIDIA
+    card with 8 GB or more (4.6 GB), through the Vulkan build of llama.cpp.
+    More natural, one or two seconds slower.
+- With the language models, the first sentence is translated alone and the
+  rest paragraph by paragraph, so the reading starts while the panel is still
+  filling in. On an RTX 5070 Laptop with an i7-14650HX, the first sound came
+  3.1 s after the shortcut, including loading the model. The panel shows the
+  translation large and the original small below it; clicking a sentence
+  reads from there. "Copy the translation" and an "EN › ES" label. Practice
+  mode reads the English original and shows the translation below.
+- "Automatic" quality picks the combination of voice, translator and place
+  (processor or card) with the best score among those that fit: translation
+  quality, voice quality (own voice 5, Piper 2.5), minus 0.3 per second of
+  first sound above 1 s and 2 per voice slowdown. Before loading a model it
+  checks the memory: on the card, the free memory minus what the own voice
+  takes while reading must cover the model, its cache, 400 MiB and a 600 MiB
+  margin; on the processor, 1.25 times the file plus 1.5 GB. If it does not
+  fit, the next lighter one is used and `daemon.log` says why.
+- Graphics card priority (Automatic, Own voice, Translator). With Translator,
+  the own voice gives up the card between two groups and Piper reads; it comes
+  back by itself after 15 minutes without translating (this can be turned
+  off), never in the middle of a reading. The player shows "Back now", and the
+  tray has "Back to my own voice".
+- A TRANSLATION section in Settings: on or off, quality, priority, going back
+  to the own voice and after how long, practice mode and, in the advanced
+  settings, the model and where it runs. It shows only what this computer can
+  use. "Measure this computer" times each translator that fits and saves
+  `runtime\perfil_equipo.json`.
+- Audio is kept: the WAV of every sentence is saved in `tmp\cache` for
+  `AudioCacheMinutes` (10), up to `AudioCacheMB` (300), keyed by the engine
+  that really generated it, the voice, the language, the text and the settings
+  that change the sound. Reading the same text again copies it instead of
+  generating it: the start went from 0.35-0.40 s to 0.05 s. Translations are
+  kept only in the memory of the resident process, so their text is never
+  written to disk.
+- `setup.ps1` installs the basic translation by default; `-TranslationHigh`
+  and `-Translation7B` add the others, `-SkipTranslation` and
+  `-OnlyTranslation` leave it out or install only it, and `-LocalSource`
+  installs from a folder without a connection. Every file is downloaded from
+  its origin and checked against a fixed SHA-256 before it is placed; a file
+  that does not match is not installed. If the translation fails, reading
+  still works and setup exits with code 2. Without parameters it also repairs
+  what was already installed.
+- The installer shows each part with its size and license: the basic level
+  checked; the high level checked with 12 GB of RAM and AVX2, or unchecked
+  with the reason; the 7B model offered with an NVIDIA card of 8 GB or more;
+  and "Measure this computer" unchecked. Uninstalling removes the models,
+  `HKCU\Software\translateLocally` and `%APPDATA%\translateLocally`.
+- `docs/traduccion.md`, including how to add TranslateGemma by hand, and
+  ADR 0016 with the measurements behind these choices.
+
+### Changed
+
+- The own voice (Qwen) releases the card memory PyTorch keeps after each group
+  (`torch.cuda.empty_cache()`): it went from 5.0 GB at rest to 7.0 GB after
+  reading, which is the room a translator or another program needs. The
+  speed factor is the same.
+- With `--reserva`, `lib/servidor_qwen.py` does not count Read Aloud's own
+  translator on the card as another program, so the own voice does not give
+  up the card because of it.
+- `parar_read_aloud.ps1` also closes the translators of its folder.
+- Every default shortcut is now `Ctrl+Alt` and a key: `Ctrl+Alt+X` stops,
+  `Ctrl+Alt+P` pauses or resumes, `Ctrl+Alt+,` and `.` skip back and forward,
+  and `Ctrl+Alt+R` and `L` make it faster or slower (`Ctrl+Alt+V` still
+  reads). Shortcuts you changed in Settings stay as they are.
+- On Spanish keyboards `Ctrl+Alt` is `AltGr`. A `Ctrl+Alt` shortcut that types
+  a character with `AltGr` on any installed keyboard layout (`Ctrl+Alt+Q` is
+  the `@` on a Latin American keyboard) is no longer enabled, so it cannot
+  take that character away in every program. Settings and the tray say which
+  character it types.
+
+### Fixed
+
+- After a reading was stopped, the voice thread still finished the sentences
+  left in its queue, and those WAV files stayed in `tmp` until the clean-up
+  at start-up (6 hours). They are now deleted at once; their audio is already
+  kept in `tmp\cache`.
 
 ## [1.3.5] - 2026-11-26
 
@@ -362,7 +458,8 @@ First public version.
 - GitHub Actions running Pester, PSScriptAnalyzer, ruff and gitleaks over the
   whole history, with every action pinned to a commit.
 
-[Unreleased]: https://github.com/DuqueOM/read_aloud/compare/v1.3.5...HEAD
+[Unreleased]: https://github.com/DuqueOM/read_aloud/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.4.0
 [1.3.5]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.3.5
 [1.3.4]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.3.4
 [1.3.3]: https://github.com/DuqueOM/read_aloud/releases/tag/v1.3.3

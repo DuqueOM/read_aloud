@@ -3,7 +3,15 @@
 # La logica de los atajos (lib\ReadAloud.Hotkeys.ps1) sin registrar nada en
 # Windows: leer "Ctrl+Alt+V", validar una lista y los valores por defecto.
 
+BeforeDiscovery {
+    . (Join-Path $PSScriptRoot '..\lib\ReadAloud.Hotkeys.ps1')
+    # La prueba de la @ solo corre si el teclado latinoamericano (0x080A en la
+    # palabra alta del HKL) esta instalado.
+    $conLatino = @(Get-KeyboardLayoutHandles | Where-Object { (($_.ToInt64() -shr 16) -band 0xFFFF) -eq 0x080A }).Count -gt 0
+}
+
 BeforeAll {
+    . (Join-Path $PSScriptRoot '..\lib\ReadAloud.Core.ps1')
     . (Join-Path $PSScriptRoot '..\lib\ReadAloud.Hotkeys.ps1')
 }
 
@@ -66,7 +74,50 @@ Describe 'Get-ConfiguredHotkeys' {
         $h = Get-ConfiguredHotkeys @{ HotkeyRead = 'Ctrl+Alt+R'; HotkeyStop = '' }
         $h['read'] | Should -BeExactly 'Ctrl+Alt+R'
         $h['stop'] | Should -BeExactly ''
-        $h['toggle'] | Should -BeExactly 'Ctrl+Shift+Space'
+        $h['toggle'] | Should -BeExactly 'Ctrl+Alt+P'
+    }
+
+    It 'todos los de fabrica son Ctrl+Alt y una tecla, sin repetirse' {
+        $fabrica = Get-DefaultHotkeys
+        foreach ($nombre in $fabrica.Keys) {
+            (ConvertFrom-HotkeySpec $fabrica[$nombre]).Modifiers | Should -Be 3 -Because "$nombre es $($fabrica[$nombre])"
+        }
+        @(Test-HotkeySet $fabrica | Where-Object { $_.Problem -ne '' }).Count | Should -Be 0
+    }
+
+    It 'los de fabrica son los mismos en los ajustes por defecto y en config\settings.psd1' {
+        $psd = Read-PowerShellDataFile -Path (Join-Path $PSScriptRoot '..\config\settings.psd1')
+        foreach ($a in (Get-HotkeyActions).Values) {
+            $psd[$a.Setting] | Should -BeExactly $a.Default
+        }
+    }
+}
+
+Describe 'AltGr' {
+    It 'Ctrl+Alt es AltGr, con o sin Mayus, pero no con Win' {
+        Test-AltGrCombination -Modifiers 3 | Should -BeTrue
+        Test-AltGrCombination -Modifiers 7 | Should -BeTrue
+        Test-AltGrCombination -Modifiers 6 | Should -BeFalse
+        Test-AltGrCombination -Modifiers 11 | Should -BeFalse
+    }
+
+    It 'ningun atajo de fabrica escribe algo con AltGr en los teclados de este equipo' {
+        Initialize-HotkeyNative
+        foreach ($spec in (Get-DefaultHotkeys).Values) {
+            $p = ConvertFrom-HotkeySpec $spec
+            $vk = $p.Vk
+            $mods = $p.Modifiers
+            if ($p.Char -ne '') {
+                $l = ConvertFrom-VkKeyScan -Scan ([ReadAloud.NativeKeys]::VkKeyScan([char]$p.Char))
+                $vk = $l.Vk
+                $mods = $mods -bor $l.Modifiers
+            }
+            Get-AltGrCharacter -Vk $vk -Shift (($mods -band 4) -ne 0) | Should -BeExactly '' -Because $spec
+        }
+    }
+
+    It 'con el teclado latinoamericano, Ctrl+Alt+Q escribe la @' -Skip:(-not $conLatino) {
+        Get-AltGrCharacter -Vk 0x51 | Should -BeExactly '@'
     }
 }
 

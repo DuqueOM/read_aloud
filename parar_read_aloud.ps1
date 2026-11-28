@@ -2,7 +2,8 @@
 # parar_read_aloud.ps1
 # Cierra los procesos de ESTA copia de Read Aloud que tienen archivos abiertos:
 # los piper.exe (cargan las DLL de bin\piper) y, salvo con -OnlyPiper, el proceso
-# residente y el servidor de la voz propia. Solo toca los de la carpeta -Root:
+# residente, el servidor de la voz propia y los traductores (llama-server.exe y
+# translateLocally.exe). Solo toca los de la carpeta -Root:
 # otro Read Aloud en otra carpeta, o cualquier otro programa que use Piper, no
 # se ve afectado.
 #
@@ -48,6 +49,10 @@ foreach ($p in @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)) {
 
     $match = $false
     if ($p.Name -eq 'piper.exe') {
+        $match = ($p.ExecutablePath -and $p.ExecutablePath.StartsWith($prefix, $comparison))
+    } elseif (-not $OnlyPiper -and ($p.Name -eq 'llama-server.exe' -or $p.Name -eq 'translateLocally.exe')) {
+        # Los traductores (read_aloud_piper\traduccion): si se cierra el
+        # proceso residente a la fuerza, quedarian abiertos con sus DLL.
         $match = ($p.ExecutablePath -and $p.ExecutablePath.StartsWith($prefix, $comparison))
     } elseif (-not $OnlyPiper -and $p.CommandLine) {
         if ($p.Name -eq 'powershell.exe' -or $p.Name -eq 'pwsh.exe') {

@@ -71,6 +71,12 @@ Describe 'Get-ReadAloudPaths' {
         $p.VoicesDir | Should -Be 'C:\otro\voices'
         $p.TermsFile | Should -Be (Join-Path $p.Root 'config\terms_es.tsv')
     }
+
+    It 'los traductores van en read_aloud_piper\traduccion, fuera del repositorio' {
+        $p = Get-ReadAloudPaths -PiperBaseDir 'C:\otro'
+        $p.TranslateDir | Should -Be 'C:\otro\traduccion'
+        $p.LlamaLog | Should -Be 'C:\otro\runtime\llama.log'
+    }
 }
 
 Describe 'Read-PowerShellDataFile' {

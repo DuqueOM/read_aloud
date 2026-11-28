@@ -111,13 +111,19 @@
     # PageUp, PageDown, coma, punto, [ ], y las multimedia (MediaPlayPause,
     # MediaNext, MediaPrevious, MediaStop). Vacio ('') desactiva el atajo.
     # Ctrl+Shift+V se evita: muchos programas lo usan para pegar sin formato.
+    # Todos son Ctrl+Alt, sin las teclas que con AltGr escriben algo en los
+    # teclados en espanol (Q es la @ del latinoamericano): un atajo asi no se
+    # activa, para no quitar ese caracter. R sube la velocidad (rapido) y L la
+    # baja (lento).
     HotkeyRead = 'Ctrl+Alt+V'
-    HotkeyStop = 'Ctrl+Shift+Q'
-    HotkeyToggle = 'Ctrl+Shift+Space'
-    HotkeyBack = 'Ctrl+Shift+,'
-    HotkeyForward = 'Ctrl+Shift+.'
-    HotkeyFaster = 'Ctrl+Shift+]'
-    HotkeySlower = 'Ctrl+Shift+['
+    HotkeyStop = 'Ctrl+Alt+X'
+    HotkeyToggle = 'Ctrl+Alt+P'
+    HotkeyBack = 'Ctrl+Alt+,'
+    HotkeyForward = 'Ctrl+Alt+.'
+    HotkeyFaster = 'Ctrl+Alt+R'
+    HotkeySlower = 'Ctrl+Alt+L'
+    # Traduce lo seleccionado y lee la traduccion (docs\adr\0016).
+    HotkeyTranslate = 'Ctrl+Alt+T'
     # Tamano de todo el reproductor (0.8 a 1.6) y de la letra del panel de
     # texto (10 a 22). Panel de texto al aparecer: 'recordar' (como lo
     # dejaste), 'abierto' o 'cerrado'.
@@ -135,6 +141,39 @@
 
     # Horas que se conservan los WAV temporales antes de borrarlos.
     MaxTmpAgeHours = 6
+
+    # Audio ya generado: cada frase se guarda estos minutos desde su ultimo
+    # uso, para que releer el mismo texto, o una parte, no lo genere otra vez.
+    # Va en read_aloud_piper\tmp\cache, con un tope de AudioCacheMB. Las
+    # traducciones se guardan los mismos minutos, en memoria. 0 lo desactiva.
+    AudioCacheMinutes = 10
+    AudioCacheMB = 300
+
+    # Traduccion rapida (docs\adr\0016-traduccion-local.md): traduce lo
+    # seleccionado entre ingles y espanol, sin conexion, y lo lee con la voz
+    # del otro idioma. Tambien se cambia desde el panel de ajustes.
+    Translate = $true
+    # Calidad: 'auto' (la mejor que el equipo puede usar), 'basic' (Bergamot)
+    # o 'high' (un modelo de lenguaje).
+    TranslateQuality = 'auto'
+    # Prioridad de la tarjeta grafica, cuando la voz propia y el mejor
+    # traductor no caben juntos: 'auto', 'voice' (la voz propia se queda) o
+    # 'translation' (la voz propia cede la tarjeta y se lee con Piper).
+    TranslatePriority = 'auto'
+    # Volver sola a la voz propia tras estos minutos sin traducir, cuando
+    # cedio la tarjeta. Nunca a mitad de una lectura.
+    TranslateAutoReturn = $true
+    TranslateReturnMinutes = 15
+    # Modo practica: lee el original en ingles y muestra la traduccion debajo.
+    TranslatePractice = $false
+    # Seccion avanzada. El modelo: '' (automatico), 'hymt2-1.8b', 'hymt2-7b'
+    # o 'translategemma-4b', si esta instalado. Donde corre: 'auto', 'gpu' o
+    # 'cpu'.
+    TranslateModel = ''
+    TranslateDevice = 'auto'
+    # Minutos sin traducir tras los que el traductor alto se cierra y deja la
+    # memoria. Con la prioridad de traduccion se queda hasta volver a la voz.
+    TranslateIdleMinutes = 10
 
     # Registro de eventos: una linea por lectura, frase, grupo de la voz,
     # espera y control que usas, en read_aloud_piper\runtime\eventos_AAAA-MM.jsonl
