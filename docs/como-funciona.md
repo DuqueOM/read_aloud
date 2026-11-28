@@ -33,11 +33,13 @@ en su entrada estándar. Piper acepta líneas JSON con `--json-input`, y por
 cada línea escribe un WAV y responde con su ruta. Eso es lo que permite
 reutilizar el proceso en vez de reiniciarlo.
 
-Dentro del residente hay tres hilos:
+Dentro del residente hay cuatro hilos:
 
 - **Tubería.** Escucha `\\.\pipe\read_aloud_pipe` y encola lo que llega.
 - **Síntesis.** Toma fragmentos de la cola y se los pasa al Piper del idioma
   que corresponda.
+- **Traducción.** Abre los traductores cuando hacen falta, traduce por partes
+  y avisa de cada una (ver [La traducción](#la-traducción)).
 - **Interfaz.** El hilo principal, con la ventana del reproductor y un pulso
   cada 60 ms que atiende órdenes, recoge audio terminado y refresca la barra.
 
@@ -185,6 +187,52 @@ quedaban ahí para siempre: en esta máquina se habían acumulado 814 archivos y
 
 Ahora el residente borra al arrancar todo WAV con más de seis horas. El plazo
 se cambia con `MaxTmpAgeHours` en los ajustes.
+
+Antes de pegarle la pausa del final del bloque, el hilo de síntesis guarda una
+copia de cada WAV en `tmp\cache`, con una clave hecha del motor que de verdad lo
+generó, la voz, el idioma, el texto y los ajustes que cambian el sonido. La
+pausa no va en la copia porque depende del lugar de la frase. Al empezar una
+lectura, cada frase con copia vigente se copia a su WAV y llega al reproductor
+por el mismo camino que lo recién generado, sin pasar por la cola de la voz.
+Copiar un archivo cuesta milisegundos y no ocupa RAM, que es lo que más escasea
+con la voz propia cargada. Lo guardado caduca a los `AudioCacheMinutes` sin
+usarse y tiene un tope de `AudioCacheMB`.
+
+## La traducción
+
+El atajo de traducir copia lo seleccionado igual que el de leer y se lo pasa al
+hilo de traducción, que hace todo lo lento: elegir el traductor, abrirlo y
+traducir. El hilo de la interfaz solo recibe lo que va saliendo.
+
+**La elección.** Cada traducción toma una foto del equipo: la memoria libre de
+la tarjeta (nvidia-smi), la RAM disponible, los núcleos y si la voz propia está
+cargada. Con ella, `Select-TranslationCombo` puntúa cada combinación de voz,
+traductor y lugar que cabe en la memoria: la calidad de la traducción y la de la
+voz, menos lo que tarda el primer sonido y lo que se frena la voz. Las reglas de
+memoria, las cifras y el porqué están en el
+[ADR 0016](adr/0016-traduccion-local.md).
+
+**Los procesos.** Bergamot corre en `translateLocally.exe -p`, que recibe
+mensajes JSON con su largo en cuatro bytes delante y deja el modelo cargado,
+como Piper. Los modelos de lenguaje corren en `llama-server.exe`, que escucha
+solo en 127.0.0.1 y responde en streaming. Los dos se abren con la primera
+traducción y se cierran tras `TranslateIdleMinutes` sin uso. Si la voz propia
+tiene que ceder la tarjeta, el hilo de síntesis la cierra entre dos grupos y lee
+con Piper hasta que vuelva; la voz propia sabe, por un archivo de reserva, que
+la memoria que toma el traductor es de Read Aloud y no de otro programa, y no
+cede por error.
+
+**Por partes.** Con los modelos de lenguaje la primera frase se traduce sola y
+después, párrafo por párrafo. Cada parte que llega se añade a la lectura en
+curso: se planifica con la voz del idioma de destino, sus frases entran al final
+de la lista de fragmentos y a la cola de la voz, y su párrafo aparece en el
+panel. Por eso la primera frase suena mientras se traduce el resto. Si la
+lectura llega al final antes que la traducción, espera la parte siguiente. El
+panel se arma con el comienzo de la traducción: un párrafo por bloque con el
+original en pequeño debajo, que se llena a medida que llegan las partes.
+
+Pasar a otra lectura corta la traducción en la parte siguiente: el hilo de
+traducción mira, antes de cada parte, si el reproductor todavía la quiere.
 
 ## Por qué el diccionario y no el cambio de voz
 

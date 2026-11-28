@@ -116,8 +116,8 @@ if (Start-ReadAloudDaemon -Paths $paths) {
 Write-Host ''
 Write-Host 'Atajos disponibles:' -ForegroundColor White
 Write-Host '  Ctrl+Alt+V          leer lo seleccionado'
-Write-Host '  Ctrl+Shift+Q        detener'
-Write-Host '  Ctrl+Shift+Espacio  pausar o continuar'
-Write-Host '  Ctrl+Shift+,        retroceder 10 segundos'
-Write-Host '  Ctrl+Shift+.        avanzar 10 segundos'
-Write-Host '  Ctrl+Shift+] y [    subir o bajar la velocidad'
+Write-Host '  Ctrl+Alt+X          detener'
+Write-Host '  Ctrl+Alt+P          pausar o continuar'
+Write-Host '  Ctrl+Alt+,          retroceder 10 segundos'
+Write-Host '  Ctrl+Alt+.          avanzar 10 segundos'
+Write-Host '  Ctrl+Alt+R y L      mas rapido o mas lento'

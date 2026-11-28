@@ -31,6 +31,11 @@ function Get-ReadAloudPaths {
         VoicesDir   = $voicesDir
         RuntimeDir  = $runtimeDir
         TmpDir      = Join-Path $PiperBaseDir 'tmp'
+        AudioCacheDir = Join-Path $PiperBaseDir 'tmp\cache'
+        # Los traductores (ADR 0016), fuera del repositorio: translateLocally
+        # con sus modelos, llama-server y los GGUF.
+        TranslateDir = Join-Path $PiperBaseDir 'traduccion'
+        LlamaLog    = Join-Path $runtimeDir 'llama.log'
         LogFile     = Join-Path $runtimeDir 'daemon.log'
         StateFile   = Join-Path $runtimeDir 'player.json'
         UserSettingsFile = Join-Path $runtimeDir 'ajustes.json'
@@ -72,12 +77,13 @@ function Get-ReadAloudSettings {
         Accent              = 'green'
         SkipSeconds         = 10
         HotkeyRead          = 'Ctrl+Alt+V'
-        HotkeyStop          = 'Ctrl+Shift+Q'
-        HotkeyToggle        = 'Ctrl+Shift+Space'
-        HotkeyBack          = 'Ctrl+Shift+,'
-        HotkeyForward       = 'Ctrl+Shift+.'
-        HotkeyFaster        = 'Ctrl+Shift+]'
-        HotkeySlower        = 'Ctrl+Shift+['
+        HotkeyStop          = 'Ctrl+Alt+X'
+        HotkeyToggle        = 'Ctrl+Alt+P'
+        HotkeyBack          = 'Ctrl+Alt+,'
+        HotkeyForward       = 'Ctrl+Alt+.'
+        HotkeyFaster        = 'Ctrl+Alt+R'
+        HotkeySlower        = 'Ctrl+Alt+L'
+        HotkeyTranslate     = 'Ctrl+Alt+T'
         PauseParagraph      = 0.35
         PauseBeforeHeading  = 0.55
         PauseAfterHeading   = 0.30
@@ -96,6 +102,17 @@ function Get-ReadAloudSettings {
         Performance         = 'rapido'
         SaverIdleMinutes    = 5
         PlayerScale         = 1.0
+        AudioCacheMinutes   = 10
+        AudioCacheMB        = 300
+        Translate           = $true
+        TranslateQuality    = 'auto'
+        TranslatePriority   = 'auto'
+        TranslateAutoReturn = $true
+        TranslateReturnMinutes = 15
+        TranslatePractice   = $false
+        TranslateModel      = ''
+        TranslateDevice     = 'auto'
+        TranslateIdleMinutes = 10
         TextFontSize        = 13
         PanelOnShow         = 'recordar'
         # Registro de eventos (runtime\eventos_AAAA-MM.jsonl): si se escribe,
