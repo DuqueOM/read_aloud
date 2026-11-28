@@ -841,3 +841,129 @@ Describe 'La lectura de una traduccion' {
         }
     }
 }
+
+Describe 'Medir este equipo' {
+    BeforeAll {
+        $hy18 = @{} + @(Get-TranslatorCatalog | Where-Object { $_.Id -eq 'hymt2-1.8b' })[0]
+        $hy18.FileMiB = 1081
+        $hy7 = @{} + @(Get-TranslatorCatalog | Where-Object { $_.Id -eq 'hymt2-7b' })[0]
+        $hy7.FileMiB = 4411
+        $berg = @{} + @(Get-TranslatorCatalog | Where-Object { $_.Id -eq 'bergamot' })[0]
+        $berg.FileMiB = 112
+
+        function New-Registro {
+            # Una sesion del lector con tres lecturas normales con la voz
+            # propia, una con Piper, una traduccion y una con audio guardado.
+            return @(
+                '2026-11-27 08:00:00  Inicio. Temporales eliminados: 0'
+                '2026-11-27 08:01:00  Lectura 1: 3 fragmentos, 0.0 s de pausas, idioma es, 0 con audio guardado'
+                '2026-11-27 08:01:03  Espera de audio: lectura 1, fragmento 1 de 3, 3.00 s (arranque), motor qwen, grupo de 2'
+                '2026-11-27 08:02:00  Lectura 2: 3 fragmentos, 0.0 s de pausas, idioma es, 0 con audio guardado'
+                '2026-11-27 08:02:03  Espera de audio: lectura 2, fragmento 1 de 3, 2.00 s (arranque), motor qwen, grupo de 2'
+                '2026-11-27 08:03:00  Lectura 3: 3 fragmentos, 0.0 s de pausas, idioma es, 0 con audio guardado'
+                '2026-11-27 08:03:04  Espera de audio: lectura 3, fragmento 1 de 3, 4.00 s (arranque), motor qwen, grupo de 2'
+                '2026-11-27 08:04:00  Lectura 4: 2 fragmentos, 0.0 s de pausas, idioma en, 3 con audio guardado'
+                '2026-11-27 08:04:00  Espera de audio: lectura 4, fragmento 1 de 2, 0.05 s (arranque), motor guardado, grupo de -'
+                '2026-11-27 08:05:00  Traduccion 1: pedida, 260 caracteres.'
+                '2026-11-27 08:05:09  Espera de audio: lectura 5, fragmento 1 de 6, 9.00 s (arranque), motor qwen, grupo de 1'
+            )
+        }
+    }
+
+    It 'Get-Median con un numero par e impar de valores' {
+        Get-Median -Values @(3, 1, 2) | Should -Be 2
+        Get-Median -Values @(4, 1, 2, 3) | Should -Be 2.5
+        Get-Median -Values @() | Should -BeNullOrEmpty
+    }
+
+    It 'el primer sonido de la voz propia es la mediana de las lecturas normales' {
+        $v = Get-VoiceFirstSoundFromLog -Lines (New-Registro)
+        $v.qwen.Seconds | Should -Be 3.0
+        $v.qwen.Samples | Should -Be 3
+        $v.qwen.Source | Should -Be 'registro'
+    }
+
+    It 'no cuentan las traducciones, lo guardado ni otra sesion del lector' {
+        $lineas = @(New-Registro) + @(
+            '2026-11-27 09:00:00  Inicio. Temporales eliminados: 0'
+            '2026-11-27 09:00:09  Espera de audio: lectura 1, fragmento 1 de 3, 9.00 s (arranque), motor qwen, grupo de 2'
+        )
+        (Get-VoiceFirstSoundFromLog -Lines $lineas).qwen.Seconds | Should -Be 3.0
+    }
+
+    It 'con pocas lecturas usa la cifra del ADR' {
+        $v = Get-VoiceFirstSoundFromLog -Lines (New-Registro)
+        $v.piper.Source | Should -Be 'adr'
+        $v.piper.Seconds | Should -Be 0.5
+        (Get-VoiceFirstSoundFromLog -Lines @()).qwen.Seconds | Should -Be 3.1
+    }
+
+    It 'solo cuentan las ultimas lecturas' {
+        $lineas = New-Object System.Collections.Generic.List[string]
+        [void]$lineas.Add('2026-11-27 08:00:00  Inicio.')
+        for ($i = 1; $i -le 30; $i++) {
+            $s = $(if ($i -le 10) { '9.00' } else { '2.00' })
+            [void]$lineas.Add(('2026-11-27 08:00:00  Lectura {0}: 1 fragmentos' -f $i))
+            [void]$lineas.Add(('2026-11-27 08:00:01  Espera de audio: lectura {0}, fragmento 1 de 1, {1} s (arranque), motor piper, grupo de 1' -f $i, $s))
+        }
+        $v = Get-VoiceFirstSoundFromLog -Lines $lineas.ToArray() -Last 20
+        $v.piper.Seconds | Should -Be 2.0
+        $v.piper.Samples | Should -Be 20
+    }
+
+    It 'la voz cuenta con la cifra de referencia del ADR' {
+        $r = Get-ReferenceVoiceFirstSound
+        $r.qwen.Seconds | Should -Be 3.1
+        $r.piper.Seconds | Should -Be 0.5
+        $r.qwen.Source | Should -Be 'referencia'
+    }
+
+    It 'lo que tarda la voz en el uso diario queda como dato, sin contar en la nota' {
+        $diario = @{ qwen = @{ Seconds = 7.05; Samples = 20; Source = 'registro' }; piper = @{ Seconds = 0.5; Samples = 0; Source = 'adr' } }
+        $medido = @(@{ Translator = $hy18; Where = 'cpu'; Seconds = 0.59 })
+        $p = New-DeviceProfile -Measured $medido -VoiceFirstSound (Get-ReferenceVoiceFirstSound) -ObservedVoice $diario -QwenAvailable $true
+        $p.combinaciones['qwen+hymt2-1.8b@cpu'].primer_sonido_s | Should -Be 3.69
+        $p.voz.qwen.primer_sonido_s | Should -Be 3.1
+        $p.voz.qwen.uso_diario_s | Should -Be 7.05
+        $p.voz.qwen.uso_diario_muestras | Should -Be 20
+    }
+
+    It 'el perfil suma la voz y el traductor, y lleva el freno del ADR' {
+        $voz = @{ qwen = @{ Seconds = 3.0; Samples = 5; Source = 'registro' }; piper = @{ Seconds = 0.4; Samples = 0; Source = 'adr' } }
+        $medido = @(
+            @{ Translator = $hy18; Where = 'cpu'; Seconds = 0.86 }
+            @{ Translator = $berg; Where = 'cpu'; Seconds = 0.004 }
+        )
+        $p = New-DeviceProfile -Measured $medido -VoiceFirstSound $voz -QwenAvailable $true -Now ([DateTime]'2026-11-27T21:00:00')
+        $p.version | Should -Be 1
+        $p.fecha | Should -Be '2026-11-27 21:00'
+        $p.combinaciones.Keys | Should -Be @('qwen+hymt2-1.8b@cpu', 'qwen+bergamot@cpu')
+        $c = $p.combinaciones['qwen+hymt2-1.8b@cpu']
+        $c.primer_sonido_s | Should -Be 3.86
+        $c.freno_voz | Should -Be 0.04
+        $c.fuente_freno | Should -Be 'adr'
+        $p.combinaciones['qwen+bergamot@cpu'].traductor_s | Should -Be 0.004
+        $p.voz.qwen.Contains('uso_diario_s') | Should -BeFalse
+    }
+
+    It 'con voz propia, Piper solo con el traductor en la tarjeta; sin ella, todo con Piper' {
+        $voz = @{ qwen = @{ Seconds = 3.0 }; piper = @{ Seconds = 0.4 } }
+        $medido = @(@{ Translator = $hy7; Where = 'gpu'; Seconds = 0.5 }, @{ Translator = $hy18; Where = 'cpu'; Seconds = 1.0 })
+        $con = New-DeviceProfile -Measured $medido -VoiceFirstSound $voz -QwenAvailable $true
+        $con.combinaciones.Keys | Should -Contain 'piper+hymt2-7b@gpu'
+        $con.combinaciones.Keys | Should -Not -Contain 'piper+hymt2-1.8b@cpu'
+        $sin = New-DeviceProfile -Measured $medido -VoiceFirstSound $voz -QwenAvailable $false
+        $sin.combinaciones.Keys | Should -Be @('piper+hymt2-7b@gpu', 'piper+hymt2-1.8b@cpu')
+    }
+
+    It 'Select-TranslationCombo lee el perfil escrito en JSON' {
+        $voz = @{ qwen = @{ Seconds = 3.0 }; piper = @{ Seconds = 0.4 } }
+        $medido = @(@{ Translator = $hy18; Where = 'cpu'; Seconds = 9.0 }, @{ Translator = $berg; Where = 'cpu'; Seconds = 0.3 })
+        $json = New-DeviceProfile -Measured $medido -VoiceFirstSound $voz -QwenAvailable $true | ConvertTo-Json -Depth 6
+        $perfil = $json | ConvertFrom-Json
+        $equipo = @{ RamAvailableMiB = 6000; GpuFreeMiB = 2867; GpuBusy = $false; PhysicalCores = 16 }
+        $r = Select-TranslationCombo -Translators @($berg, $hy18) -Device $equipo -Voice (New-VoiceState -Available $true -Loaded $true) -Options @{} -Perfil $perfil
+        $r.Combo.Id | Should -Be 'qwen+bergamot@cpu'
+        $r.Combo.Metrics.Source | Should -Be 'perfil'
+    }
+}

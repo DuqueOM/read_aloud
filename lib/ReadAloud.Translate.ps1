@@ -1003,3 +1003,145 @@ function Format-VoiceReturnNotice {
     }
     return @{ Text = 'Voz propia en pausa mientras traduces'; Minutes = 0 }
 }
+
+# --------------------------------------------------------------------------
+# Medir este equipo (parte 5): runtime\perfil_equipo.json.
+#
+# El primer sonido de una combinacion es lo que tarda la voz en dar su primer
+# audio mas lo que tarda el traductor en traducir la primera frase. Lo de la
+# voz sale de las lecturas normales que ya estan en daemon.log; lo del
+# traductor se mide en el momento, con cada traductor que cabe. Cuanto se
+# frena la voz no se mide: se toma del ADR 0016 o de la estimacion.
+# --------------------------------------------------------------------------
+
+$script:RA_DefaultVoiceFirstSound = @{ qwen = 3.1; piper = 0.5 }
+
+# Tres primeras frases distintas, de un largo parecido: con la misma frase
+# tres veces, translateLocally y llama-server reutilizan lo de la vez
+# anterior y la medida sale demasiado buena.
+$script:RA_MeasureSentences = @(
+    'The meeting was moved to Thursday because the room is not available this week.'
+    'Please bring your laptop and the latest report before you come to the office.'
+    'We will review the deployment plan and the open issues after the short break.'
+)
+
+function Get-MeasureSentences {
+    return $script:RA_MeasureSentences
+}
+
+function Get-Median {
+    param([double[]]$Values)
+    $v = @($Values | Sort-Object)
+    if ($v.Count -eq 0) { return $null }
+    $m = [int][Math]::Floor($v.Count / 2)
+    if ($v.Count % 2 -eq 1) { return [double]$v[$m] }
+    return ([double]$v[$m - 1] + [double]$v[$m]) / 2.0
+}
+
+function Get-VoiceFirstSoundFromLog {
+    # El primer sonido de cada voz en las lecturas normales del registro: la
+    # mediana de las ultimas Last esperas de arranque con ese motor. Las de una
+    # traduccion no cuentan (incluyen lo que tarda el traductor) ni las del
+    # audio guardado. Con menos de MinSamples, la cifra del ADR 0016.
+    param(
+        [string[]]$Lines,
+        [int]$Last = 20,
+        [int]$MinSamples = 3
+    )
+
+    $muestras = @{ qwen = New-Object System.Collections.Generic.List[double]; piper = New-Object System.Collections.Generic.List[double] }
+    $normales = @{}
+    $inv = [Globalization.CultureInfo]::InvariantCulture
+    foreach ($l in @($Lines)) {
+        if ($null -eq $l) { continue }
+        if ($l -match '  Inicio\.') { $normales = @{}; continue }
+        $m = [regex]::Match($l, '  Lectura (\d+): ')
+        if ($m.Success) { $normales[$m.Groups[1].Value] = $true; continue }
+        $m = [regex]::Match($l, 'Espera de audio: lectura (\d+), fragmento 1 de \d+, ([0-9.]+) s \(arranque\), motor (\w+)')
+        if ($m.Success -and $normales.ContainsKey($m.Groups[1].Value)) {
+            $motor = $m.Groups[3].Value
+            if ($muestras.ContainsKey($motor)) { [void]$muestras[$motor].Add([double]::Parse($m.Groups[2].Value, $inv)) }
+        }
+    }
+
+    $salida = @{}
+    foreach ($motor in @('qwen', 'piper')) {
+        $lista = $muestras[$motor]
+        $desde = [Math]::Max(0, $lista.Count - $Last)
+        $ultimas = [double[]]@(for ($i = $desde; $i -lt $lista.Count; $i++) { $lista[$i] })
+        if ($ultimas.Count -ge $MinSamples) {
+            $salida[$motor] = @{ Seconds = (Get-Median -Values $ultimas); Samples = $ultimas.Count; Source = 'registro' }
+        } else {
+            $salida[$motor] = @{ Seconds = $script:RA_DefaultVoiceFirstSound[$motor]; Samples = $ultimas.Count; Source = 'adr' }
+        }
+    }
+    return $salida
+}
+
+function Get-ReferenceVoiceFirstSound {
+    # El primer sonido de cada voz en la prueba controlada del ADR 0016. Es el
+    # que se suma al del traductor: las combinaciones que no se miden usan las
+    # cifras del ADR, y mezclar con ellas lo que tarda la voz en el uso diario
+    # (otros programas, grupos largos) haria parecer peor a la voz propia solo
+    # por haberse medido.
+    return @{
+        qwen  = @{ Seconds = $script:RA_DefaultVoiceFirstSound.qwen; Samples = 0; Source = 'referencia' }
+        piper = @{ Seconds = $script:RA_DefaultVoiceFirstSound.piper; Samples = 0; Source = 'referencia' }
+    }
+}
+
+function New-DeviceProfile {
+    # El perfil del equipo con lo medido. Measured: una entrada por traductor
+    # y lugar (Translator, el hashtable del catalogo; Where; Seconds, lo que
+    # tardo la primera frase). VoiceFirstSound: lo que se suma de la voz
+    # (Get-ReferenceVoiceFirstSound). ObservedVoice, opcional, es lo que la
+    # voz tarda en el uso diario (Get-VoiceFirstSoundFromLog): queda en el
+    # perfil como dato, sin contar en la nota.
+    # Solo se escriben las combinaciones que Select-TranslationCombo puede
+    # elegir: sin voz propia, todas con Piper; con ella, Piper solo con el
+    # traductor en la tarjeta (la voz propia cede la tarjeta).
+    param(
+        [object[]]$Measured,
+        [hashtable]$VoiceFirstSound,
+        [bool]$QwenAvailable,
+        [hashtable]$ObservedVoice = $null,
+        [DateTime]$Now = (Get-Date)
+    )
+
+    $combinaciones = [ordered]@{}
+    $voces = @('piper')
+    if ($QwenAvailable) { $voces = @('qwen', 'piper') }
+    foreach ($m in @($Measured)) {
+        if ($null -eq $m) { continue }
+        foreach ($v in $voces) {
+            if ($QwenAvailable -and $v -eq 'piper' -and $m.Where -ne 'gpu') { continue }
+            $id = Get-ComboId -Voice $v -Translator $m.Translator.Id -Where $m.Where
+            $sinPerfil = Get-ComboMetrics -Voice $v -Translator $m.Translator -Where $m.Where
+            $voz = [double]$VoiceFirstSound[$v].Seconds
+            $combinaciones[$id] = [ordered]@{
+                primer_sonido_s = [Math]::Round($voz + [double]$m.Seconds, 3)
+                traductor_s     = [Math]::Round([double]$m.Seconds, 3)
+                voz_s           = [Math]::Round($voz, 2)
+                freno_voz       = [double]$sinPerfil.Slowdown
+                fuente_freno    = [string]$sinPerfil.Source
+            }
+        }
+    }
+
+    $vozPerfil = [ordered]@{}
+    foreach ($v in @('qwen', 'piper')) {
+        $e = [ordered]@{ primer_sonido_s = [double]$VoiceFirstSound[$v].Seconds; fuente = [string]$VoiceFirstSound[$v].Source }
+        if ($null -ne $ObservedVoice -and $null -ne $ObservedVoice[$v]) {
+            $e.uso_diario_s = [double]$ObservedVoice[$v].Seconds
+            $e.uso_diario_muestras = [int]$ObservedVoice[$v].Samples
+            $e.uso_diario_fuente = [string]$ObservedVoice[$v].Source
+        }
+        $vozPerfil[$v] = $e
+    }
+    return [ordered]@{
+        version       = 1
+        fecha         = $Now.ToString('yyyy-MM-dd HH:mm', [Globalization.CultureInfo]::InvariantCulture)
+        voz           = $vozPerfil
+        combinaciones = $combinaciones
+    }
+}
