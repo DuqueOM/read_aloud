@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- An event log, `read_aloud_piper\runtime\eventos_YYYY-MM.jsonl`, one JSON
+  line per event and one file per month, kept for `EventLogMonths` (12). It
+  records each reading (how it arrived, language, length, voices, speed,
+  whether the laptop was on battery and the Windows power mode), each
+  sentence's audio (engine, group, real against estimated length, how much
+  margin it had), each group the voice generated (when it was sent, how long
+  it took, whether its reading had already been replaced, why Piper read it
+  instead of the own voice), each wait, each control used (pause, jumps and
+  where from, speed, text panel), each translation (direction, translator,
+  sentences) and how each reading ended. Sentences are stored as traits
+  (characters, words, digits, acronyms, commas), not words;
+  `EventLogText = $true` stores the text too, except for translations, whose
+  text is never written to disk. `EventLog = $false` turns it off.
+- `lib/servidor_qwen.py` returns, with the first path of each group, the
+  group's measurements: time, audio, factor, repeated sentences, trimmed
+  silence, CPU load, GPU memory used by other programs and an `nvidia-smi`
+  sample (utilization, temperature, clock, power, performance state).
+  `qwen.log` adds the group name, the CPU load and the GPU clock to each line.
+- `tools/resumen_eventos.ps1` summarizes the event log by day, lists each
+  wait with the group that caused it (`-Esperas`) and applies the rule from
+  pull request #8 for smaller groups or falling back to Piper.
+
+### Fixed
+
+- A long sentence was split at the colon of a time or a ratio, so "son las
+  3:30 en la sede" became "... son las 3:" and "30 en la sede", and the voice
+  read "3", paused with a falling, end-of-sentence tone and then read "30".
+  The same could happen at the dash of a range ("1990–2000"). A colon,
+  semicolon, comma or dash between two digits is no longer a place to split
+  (3:30, 10:45, 1:2, 2,5, 1990–2000); decimal commas and thousands dots
+  (3,5, 1.000) were already kept whole and now have tests.
+
 ## [1.4.0] - 2026-11-28
 
 Quick offline translation between English and Spanish, read aloud with the

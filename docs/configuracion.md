@@ -103,6 +103,10 @@ resumen. Para verlo por día:
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\resumen_esperas.ps1 -Dias 3
 ```
 
+Con más detalle (cada espera unida al grupo que la causó, la carga del
+procesador y de la tarjeta, la batería), en el [registro de
+eventos](#registro-de-eventos).
+
 Qwen tarda unos 20 s en cargar (hasta un minuto si Windows no tiene sus
 librerías en la cache del disco) y ocupa unos 5 GB de la tarjeta y 2.3 GB de
 RAM. Para que ninguna lectura espere esa carga, se abre con el proceso
@@ -146,7 +150,7 @@ una voz más plana y predecible; subirlos, más variada y a veces inestable.
 |---|---|---|
 | `MinChunkChars` | `25` | Frases más cortas que esto se juntan con la siguiente |
 | `FirstChunkChars` | `70` | Largo máximo del primer fragmento de una lectura. Corto, para que la voz empiece pronto |
-| `MaxChunkChars` | `180` | Largo máximo del resto. Una frase más larga se parte en una pausa (`;` `:` coma, raya). `0` no parte nada |
+| `MaxChunkChars` | `180` | Largo máximo del resto. Una frase más larga se parte en una pausa (`;` `:` coma, raya), nunca en un signo entre dos cifras (`3:30`, `2,5`, `1990–2000`). `0` no parte nada |
 
 El segundo fragmento usa uno y medio de `FirstChunkChars`. El tope crece porque
 un fragmento largo retrasa a los que vienen detrás: la voz propia genera por
@@ -337,6 +341,72 @@ Los ajustes de la traducción rápida (`Translate`, `TranslateQuality`,
 `TranslateIdleMinutes`) están en [traduccion.md](traduccion.md#ajustes). Se
 cambian también en el panel de ajustes, sección **Traducción**, que solo
 muestra lo que el equipo puede usar.
+
+## Registro de eventos
+
+| Valor | Por defecto | Qué hace |
+|---|---|---|
+| `EventLog` | `$true` | Escribir el registro de eventos |
+| `EventLogText` | `$false` | Guardar también las palabras de cada frase |
+| `EventLogMonths` | `12` | Meses que se conservan; `0`, todos |
+
+El proceso residente anota lo que pasa en cada lectura en
+`read_aloud_piper\runtime\eventos_AAAA-MM.jsonl`, un archivo por mes con una
+línea JSON por evento. Sirve para ver, con datos y no de memoria, dónde y por
+qué hay pausas, cómo rinde cada voz y qué controles se usan. No sale de tu
+equipo: Read Aloud no lo manda a ningún sitio. Un mes de uso diario ocupa unos
+pocos MB.
+
+De cada frase se guardan sus rasgos (caracteres, palabras, cifras, siglas y
+comas), no sus palabras: lo que lees puede ser privado. Con `EventLogText =
+$true` se guarda también el texto (`texto`, y en `dicho` lo que recibe la voz
+si el diccionario lo cambió). Enciéndelo unos días cuando quieras ver qué frase
+exacta causó una espera o sonó mal, y apágalo después. El texto de una
+traducción no se escribe nunca: solo vive en la memoria del proceso residente.
+
+Cada línea empieza por la hora (`t`, con milisegundos y zona) y el tipo
+(`tipo`). `ms` son los milisegundos desde que llegó la orden de esa lectura.
+Las lecturas se numeran desde 1 cada vez que arranca el lector, y cada
+arranque escribe un `inicio`: para unir eventos, cuenta los `inicio` que van.
+
+| Tipo | Cuándo | Campos principales |
+|---|---|---|
+| `inicio` | Al arrancar el lector | `version`, `motores`, `rendimiento`, `qwen_lote`, `energia` |
+| `lectura` | Al empezar una lectura | `lectura`, `via` (`atajo`, `tuberia` o `ajustes`), `traduccion`, `idioma`, `idiomas`, `fragmentos`, `guardados` (frases con audio guardado), `estimado_s`, `plan_ms`, `qwen_listo`, `velocidad`, rasgos del texto, `energia` |
+| `fragmento` | Al llegar el audio de una frase | `i`, `motor` (`guardado` si se copió del audio guardado), `grupo`, `audio_s` frente a `estimado_s`, `margen_s` (audio que quedaba antes de necesitarla; 0 si se la esperaba, negativo si quedó atrás tras un salto), `cambiado`, rasgos del texto |
+| `grupo` | Al terminar de generar un grupo | `grupo`, `ms` (cuándo se mandó), `motor` y `pedido`, `motivo` (por qué Piper en vez de Qwen: `qwen_cargando`, `tarjeta_ocupada`, `cedida_al_traductor`, `qwen_fallo`), `tamano`, `tope`, `salto`, `espera_motor_ms`, `gen_ms`, `descartado` (su lectura ya se había reemplazado), `servidor`, `energia` |
+| `espera` | Al llegar el audio que se esperaba, o al cortarse la espera | `i`, `clase` (`arranque`, `frase` o `salto`), `s`, `cortada`, `motor`, `grupo`, `tamano` |
+| `accion` | Pausa, sigue, salto, velocidad, panel | `accion`, `via` (`raton`, `atajo`, `tuberia`), `posicion_s`; en un salto, `origen` (`atras`, `adelante`, `barra`, `texto`, `frase_anterior`, `frase_siguiente`, `inicio`), `hasta_s` y `listo` |
+| `fin` | Al terminar, detener, reemplazar o cerrar | `motivo`, `posicion_s`, `total_s`, `listos`, `esperas`, `espera_max_s`, `arranque_s`, `saltos`, `velocidad` |
+| `traduccion` | Al terminar o fallar una traducción | `origen`, `destino`, `traductor`, `practica`, `bloques`, `fragmentos`, `guardados`, `caracteres`, `ok`, `error` |
+| `error` | Un error no controlado de la ventana | `donde`, `mensaje` |
+
+`energia` dice si el equipo estaba enchufado (`ac`) o con batería, el
+porcentaje de la batería y el modo de energía de Windows (`eficiencia`,
+`equilibrado` o `rendimiento`). `servidor` son las medidas que devuelve el
+servidor de Qwen de cada grupo: `s` (lo que tardó), `audio_s`, `factor`,
+`repetidas` (frases que hubo que generar otra vez), `recorte_s` (silencio
+quitado con `--pausa-maxima`), `cpu_pct` (procesador ocupado mientras
+generaba), `otros_gb` (memoria de la tarjeta que usaban otros programas) y
+`tarjeta`: una muestra de `nvidia-smi` con el uso, la temperatura, el reloj
+(`mhz`), el consumo y el estado de energía. Un grupo lento con la tarjeta a
+pocos MHz apunta a la energía del portátil; con `otros_gb` alto, a otro
+programa en la tarjeta; con el procesador lleno, a otra cosa que corría a la
+vez.
+
+Para el resumen por día, cada espera con su grupo y lo que dice la regla de
+las esperas (PR #8):
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\resumen_eventos.ps1 -Dias 3 -Esperas
+```
+
+Y para trabajar con los eventos en PowerShell:
+
+```powershell
+$eventos = Get-Content read_aloud_piper\runtime\eventos_2026-11.jsonl -Encoding UTF8 | ConvertFrom-Json
+$eventos | Where-Object tipo -eq 'espera' | Format-Table t, lectura, i, clase, s, motor, grupo
+```
 
 ## Atajos de teclado
 

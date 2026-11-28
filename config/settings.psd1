@@ -174,4 +174,15 @@
     # Minutos sin traducir tras los que el traductor alto se cierra y deja la
     # memoria. Con la prioridad de traduccion se queda hasta volver a la voz.
     TranslateIdleMinutes = 10
+
+    # Registro de eventos: una linea por lectura, frase, grupo de la voz,
+    # espera y control que usas, en read_aloud_piper\runtime\eventos_AAAA-MM.jsonl
+    # (uno por mes, solo en este equipo). Sirve para ver donde y por que hay
+    # pausas y como rinde cada voz (docs\configuracion.md). De cada frase
+    # guarda el largo, las palabras, las cifras y las siglas, no lo que dice;
+    # con EventLogText = $true guarda tambien el texto. EventLogMonths: meses
+    # que se conservan (0, todos). EventLog = $false lo apaga.
+    EventLog = $true
+    EventLogText = $false
+    EventLogMonths = 12
 }
