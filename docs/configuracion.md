@@ -311,6 +311,33 @@ fragmento en curso termina y los siguientes salen con la voz nueva; lo demás
 El borrado ocurre al arrancar el proceso residente, es decir, normalmente una
 vez al día cuando inicias sesión.
 
+## Audio guardado
+
+Releer un texto, o una parte, no genera otra vez el audio: cada frase se guarda
+en `read_aloud_piper\tmp\cache` unos minutos desde su último uso, y una lectura
+nueva copia el de las frases que ya tiene. Con la voz propia, 500 palabras son
+de 1 a 2 minutos de tarjeta gráfica que así no se repiten. La clave es el motor,
+la voz, el idioma, el texto y los ajustes que cambian el sonido (velocidad,
+variación y silencio final), así que cambiar uno de ellos genera audio nuevo.
+Las traducciones se guardan los mismos minutos, pero en la memoria del proceso
+residente: el texto no se escribe en el disco.
+
+| Valor | Por defecto | Qué hace |
+|---|---|---|
+| `AudioCacheMinutes` | `10` | Minutos que se conserva cada frase, y cada traducción, desde su último uso. `0` lo desactiva |
+| `AudioCacheMB` | `300` | Tope de espacio del audio guardado; al pasarlo se borra lo usado hace más tiempo |
+
+`daemon.log` dice en cada lectura cuántas frases tenían audio guardado.
+
+## Traducción
+
+Los ajustes de la traducción rápida (`Translate`, `TranslateQuality`,
+`TranslatePriority`, `TranslateAutoReturn`, `TranslateReturnMinutes`,
+`TranslatePractice`, `TranslateModel`, `TranslateDevice`,
+`TranslateIdleMinutes`) están en [traduccion.md](traduccion.md#ajustes). Se
+cambian también en el panel de ajustes, sección **Traducción**, que solo
+muestra lo que el equipo puede usar.
+
 ## Atajos de teclado
 
 Los atajos los registra el proceso residente; no hace falta instalar nada
@@ -331,6 +358,7 @@ en `config/settings.psd1` o `settings.local.psd1`:
 | `HotkeyForward` | `Ctrl+Alt+.` | Avanzar `SkipSeconds` |
 | `HotkeyFaster` | `Ctrl+Alt+R` | Subir la velocidad (rápido) |
 | `HotkeySlower` | `Ctrl+Alt+L` | Bajar la velocidad (lento) |
+| `HotkeyTranslate` | `Ctrl+Alt+T` | Traducir lo seleccionado ([traduccion.md](traduccion.md)) |
 
 Todos son `Ctrl+Alt` y una tecla. En los teclados en español `Ctrl+Alt` es
 `AltGr`: un atajo `Ctrl+Alt` que con `AltGr` escribe un carácter en alguna de
@@ -382,6 +410,11 @@ Si quieres controlar el lector desde otro programa, escribe una línea JSON en
 | `{"cmd":"panel"}` | Muestra u oculta el panel de texto |
 | `{"cmd":"slower"}` | Baja la velocidad un paso |
 | `{"cmd":"ping"}` | No hace nada, sirve para probar la conexión |
+| `{"cmd":"translate-read","text":"..."}` | Traduce ese texto (inglés ↔ español), abre el panel y lee la traducción |
+| `{"cmd":"translate","text":"..."}` | Traduce y deja el resultado en `daemon.log`, sin leer (para probar; acepta `quality`, `priority`, `model` y `where`) |
+| `{"cmd":"translate-voice"}` | Devuelve la tarjeta gráfica a la voz propia |
+| `{"cmd":"translate-unload"}` | Cierra los traductores |
+| `{"cmd":"measure"}` | Mide los traductores de este equipo ([traduccion.md](traduccion.md#medir-este-equipo)) |
 | `{"cmd":"quit"}` | Cierra el proceso residente |
 
 `lang` acepta `Auto`, `Spanish` o `English`.

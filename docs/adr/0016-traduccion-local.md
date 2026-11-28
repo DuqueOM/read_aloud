@@ -1,7 +1,8 @@
 # 0016. Traducción local en dos niveles y una prioridad para la tarjeta gráfica
 
-- **Estado:** aceptada. Se implementa en la versión 1.4.0.
-- **Fecha:** 26 de noviembre de 2026
+- **Estado:** aceptada e implementada en la versión 1.4.0 (ver
+  [Implementación](#implementación-en-la-140)).
+- **Fecha:** 26 de noviembre de 2026; implementación, 27 y 28 de noviembre
 
 ## Contexto
 
@@ -202,3 +203,66 @@ tarjeta compartida: con 8 hilos va un 130 % más lenta y con 4, solo un 4 %.
   propia, pero con la voz de Piper. Volver a la voz propia tarda unos 18 s.
 - **Las notas de calidad** son de dos jueces automáticos sobre 20 textos.
   Sirven para ordenar los motores, no como una medida exacta.
+
+## Implementación en la 1.4.0
+
+Lo que se decidió al implementar, y lo que se midió en el lector, en el mismo
+equipo. El uso está en [docs/traduccion.md](../traduccion.md) y el
+funcionamiento, en [docs/como-funciona.md](../como-funciona.md#la-traducción).
+
+**Decisiones**
+
+- **La nota de cada combinación,** para Automática: la calidad de la
+  traducción (la media de los dos jueces) más la de la voz, con 5 para la voz
+  propia y 2,5 para Piper en la misma escala; menos 0,3 por cada segundo de
+  primer sonido por encima de 1 s, y menos 2 por cada vez que se frena la voz
+  (1,0 es el doble de lenta). La voz no se midió con jueces: la propia es la que
+  el usuario eligió de oído. En este equipo da 7,6 a la voz propia con Hy-MT2
+  1.8B en el procesador y 6,9 a Piper con el 7B en la tarjeta; con Piper en 3,
+  la diferencia sería de 0,1 y dependería del ruido de las medidas.
+- **Lo que se guarda:** las traducciones, en la memoria del proceso residente
+  (pesan unos KB y así el texto no queda en el disco); el audio de cada frase,
+  en `tmp\cache`, con un tope de 300 MB. Los dos caducan a los 10 minutos sin
+  usarse.
+- **translateLocally** solo publica una versión de prueba con la etiqueta
+  `latest`. Su sha256 queda fijo en `config/traduccion.psd1`; si un día no
+  coincide, la instalación lo dice y sigue sin la traducción básica.
+- **La prioridad «Traducción» se llama «Traductor»** en el panel de ajustes, y
+  aparece si alguna vez la voz propia y el mejor traductor instalado no
+  cupieron juntos; entonces queda a la vista toda la sesión, para no aparecer y
+  desaparecer con la RAM libre.
+- **El traductor que tiene la tarjeta de la voz propia** no se cierra por
+  `TranslateIdleMinutes`: se queda hasta que la voz vuelve. La voz propia sabe,
+  por un archivo de reserva, que esa memoria es de Read Aloud, y no cede por
+  creer que la usa otro programa.
+- **«Medir este equipo»** mide solo al traductor: lo que tarda cada uno que
+  cabe en traducir tres frases distintas (con la misma frase, translateLocally y
+  llama-server reutilizan lo anterior y la medida salía mejor: 0,59 s frente a
+  0,83 s con Hy-MT2 1.8B). Al primer sonido se le suma el de la voz en la prueba
+  controlada (3,1 s la propia, 0,5 s Piper), porque las combinaciones que no se
+  miden usan las cifras de este ADR. Cuánto se frena la voz tampoco se mide.
+  Tarda unos 5 s, no los 3 a 5 minutos previstos.
+- **Al terminar de leer una traducción,** el reproductor no se cierra solo: el
+  panel con la traducción y el original queda a la vista.
+
+**Medidas en el lector (27 y 28 de noviembre)**
+
+| Qué | Medido |
+|---|---|
+| Hy-MT2 1.8B en el procesador, cargar | 1,2 a 2,2 s |
+| Hy-MT2 1.8B, una frase ya cargado | 0,83 s (mediana de 3) |
+| Bergamot, una frase | 0,01 s |
+| Inglés a español con la voz propia y el 1.8B, primer sonido | 3,1 s, con la carga del modelo |
+| La voz propia cede la tarjeta | 1,5 a 3,0 s |
+| Hy-MT2 7B en la tarjeta (Vulkan), cargar | 4,5 a 5,6 s; ocupa 5055 MiB |
+| Hy-MT2 7B, la primera parte ya cargado | 0,46 a 0,87 s |
+| Volver a la voz propia tras el reinicio del equipo | 69 s (caché del disco fría y RAM justa) |
+
+**Lo que se aprendió**
+
+- **El primer sonido de la voz propia en el uso diario** es mayor que en la
+  prueba controlada: 7,05 s de mediana en las últimas 20 lecturas normales de
+  `daemon.log` (de 2,4 a 14,5 s), frente a 3,1 s. El perfil del equipo lo
+  guarda como dato, sin que cuente en la nota.
+- **Volver a la voz propia** puede tardar un minuto, no 18 s, con la caché del
+  disco fría. Mientras tanto se lee con Piper, así que no deja mudo al lector.
