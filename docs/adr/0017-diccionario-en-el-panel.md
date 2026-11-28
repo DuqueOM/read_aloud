@@ -1,7 +1,7 @@
 # 0017. Diccionario en el panel: WordNet abierto y WikDict, sin conexión
 
-- **Estado:** propuesta, con medidas. Las fuentes y la descarga para medir
-  están aprobadas (28 nov). Falta aprobar el diseño.
+- **Estado:** aceptada el 28 de noviembre de 2026, con medidas. Queda abierto
+  el nombre del modo práctica (ver «Ajustes»).
 - **Fecha:** 28 de noviembre de 2026
 
 ## Contexto
@@ -254,12 +254,24 @@ básico.
 En la sección TRADUCCIÓN: «Diccionario en el panel», Sí o No, y la carpeta
 del archivo de Anki. Solo se muestra si el diccionario está instalado.
 
-**El «Modo práctica» pasa a «Al traducir, leer»**, con dos opciones: «La
-traducción» (como hoy) y «El original, con la traducción debajo» (el modo
-práctica de hoy). El usuario propuso llamarlo «Modo traducción». Se propone
-este nombre porque dice qué se lee, y porque toda la función ya es la
-traducción. El ajuste `TranslatePractice` se conserva por compatibilidad. Es
-un cambio chico que va en la parte de los ajustes.
+**El nombre del «Modo práctica» (abierto).** Hoy, con un texto en inglés, lee
+el original frase por frase y muestra debajo la traducción del párrafo
+entero, en letra chica y sin resaltar. Opciones:
+
+- «Modo traducción» (propuesta del usuario): no sirve, porque toda la función
+  ya es la traducción y el nombre no dice qué se lee.
+- «Al traducir, leer: la traducción / el original» (propuesta del 28 nov):
+  exacto, pero largo y técnico.
+- «Modo subtítulos» (propuesta del usuario): la idea más clara para
+  cualquiera (oyes el original y lees la traducción), pero promete algo que
+  hoy no hace: en unos subtítulos se ve la traducción de lo que suena en ese
+  momento.
+
+Recomendación: «Modo subtítulos», si además se traduce frase por frase en ese
+modo y se resalta la frase traducida al mismo tiempo que la original. Con
+Bergamot cuesta 0.01 s por frase; con Hy-MT2, más llamadas al modelo. Sin
+esa sincronía, el nombre exacto es mejor. El ajuste `TranslatePractice` se
+conserva por compatibilidad. Va en la parte de los ajustes.
 
 ## Después: paquetes de idiomas (fase 3, no ahora)
 

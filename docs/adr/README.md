@@ -29,4 +29,4 @@ Laptop de 8 GB.
 | [0014](0014-proceso-para-cualquier-voz.md) | Un solo proceso para cualquier voz: voz.toml y la validación elegida por el proceso | Aceptada |
 | [0015](0015-panel-de-ajustes.md) | Panel de ajustes en el reproductor, guardado aparte de settings.psd1, y dos modos de rendimiento | Aceptada |
 | [0016](0016-traduccion-local.md) | Traducción local en dos niveles y una prioridad para la tarjeta gráfica | Aceptada |
-| [0017](0017-diccionario-en-el-panel.md) | Diccionario en el panel con Open English WordNet y WikDict, sin conexión | Propuesta |
+| [0017](0017-diccionario-en-el-panel.md) | Diccionario en el panel con Open English WordNet y WikDict, sin conexión | Aceptada |
