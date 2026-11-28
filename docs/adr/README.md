@@ -8,7 +8,7 @@ reemplaza al anterior y se marca el viejo como reemplazado.
 
 Casi todas son de la voz personalizada, hecha entre octubre de 2026 y hoy con
 una voz de prueba tomada de distintos videos para uso personal; la 0015 es
-del reproductor y la 0016, de la traducción. Las cifras son de esas pruebas, en una RTX 5070
+del reproductor; la 0016, de la traducción, y la 0017, del diccionario. Las cifras son de esas pruebas, en una RTX 5070
 Laptop de 8 GB.
 
 | ADR | Decisión | Estado |
@@ -29,3 +29,4 @@ Laptop de 8 GB.
 | [0014](0014-proceso-para-cualquier-voz.md) | Un solo proceso para cualquier voz: voz.toml y la validación elegida por el proceso | Aceptada |
 | [0015](0015-panel-de-ajustes.md) | Panel de ajustes en el reproductor, guardado aparte de settings.psd1, y dos modos de rendimiento | Aceptada |
 | [0016](0016-traduccion-local.md) | Traducción local en dos niveles y una prioridad para la tarjeta gráfica | Aceptada |
+| [0017](0017-diccionario-en-el-panel.md) | Diccionario en el panel con Open English WordNet y WikDict, sin conexión | Propuesta |
