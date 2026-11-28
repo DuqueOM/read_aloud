@@ -12,6 +12,8 @@
 # Uso desde la consola:
 #   .\read_aloud.ps1                       Lee el portapapeles
 #   .\read_aloud.ps1 -InputText "Hola"     Lee un texto concreto
+#   .\read_aloud.ps1 -Translate            Traduce el portapapeles (ingles <-> espanol) y lee la traduccion
+#   .\read_aloud.ps1 -MeasureDevice        Mide los traductores de este equipo (unos minutos)
 #   .\read_aloud.ps1 -Stop                 Detiene la lectura
 #   .\read_aloud.ps1 -Toggle               Pausa o continua
 #   .\read_aloud.ps1 -Quit                 Cierra Read Aloud del todo
@@ -29,6 +31,8 @@ param(
 
     [string]$InputText = '',
 
+    [switch]$Translate,
+    [switch]$MeasureDevice,
     [switch]$Stop,
     [switch]$Toggle,
     [switch]$Quit,
@@ -92,6 +96,21 @@ if ($ShowSettings) {
         }
     }
     [void](Send-ReadAloudCommand -PipeName $paths.PipeName -Command @{ cmd = 'settings' })
+    exit 0
+}
+
+if ($MeasureDevice) {
+    # "Medir este equipo" de la traduccion (docs\adr\0016): la hace el proceso
+    # residente, que se arranca si hace falta; el resultado va a
+    # read_aloud_piper\runtime\perfil_equipo.json.
+    if (-not (Test-DaemonRunning -PipeName $paths.PipeName)) {
+        if (-not (Start-ReadAloudDaemon -Paths $paths)) {
+            Write-Host 'No pude arrancar Read Aloud. Revisa read_aloud_piper\runtime\daemon.log' -ForegroundColor Yellow
+            exit 1
+        }
+    }
+    [void](Send-ReadAloudCommand -PipeName $paths.PipeName -Command @{ cmd = 'measure' } -TimeoutMs 2000)
+    Write-Host 'Midiendo el equipo en segundo plano; el resultado queda en daemon.log y en los ajustes.' -ForegroundColor Green
     exit 0
 }
 
@@ -371,6 +390,8 @@ if ($Direct) {
 # Camino normal: hablar con el proceso residente.
 # --------------------------------------------------------------------------
 $command = @{ cmd = 'speak'; text = $text; lang = $Language }
+# La traduccion solo la hace el proceso residente (docs\adr\0016).
+if ($Translate) { $command = @{ cmd = 'translate-read'; text = $text } }
 $answer = Send-ReadAloudCommand -PipeName $paths.PipeName -Command $command
 
 if ($null -eq $answer) {
@@ -384,6 +405,10 @@ if ($null -eq $answer) {
 }
 
 if ($null -eq $answer) {
+    if ($Translate) {
+        Write-Host 'No pude usar el proceso residente, y sin el no se puede traducir.' -ForegroundColor Yellow
+        exit 1
+    }
     Write-Host 'No pude usar el proceso residente; leo directamente.' -ForegroundColor Yellow
     Invoke-DirectRead -Text $text
     exit 0
@@ -392,6 +417,6 @@ if ($null -eq $answer) {
 if (-not $NoPreview) {
     $preview = $text
     if ($preview.Length -gt 400) { $preview = $preview.Substring(0, 400) + '...' }
-    Write-Host 'Leyendo en voz alta.' -ForegroundColor Green
+    Write-Host $(if ($Translate) { 'Traduciendo y leyendo la traduccion.' } else { 'Leyendo en voz alta.' }) -ForegroundColor Green
     Write-Host $preview -ForegroundColor Gray
 }
