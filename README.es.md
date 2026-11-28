@@ -29,6 +29,7 @@ Ctrl+Alt+P          pausar o continuar
 Ctrl+Alt+,          retroceder 10 segundos
 Ctrl+Alt+.          avanzar 10 segundos
 Ctrl+Alt+R y L      más rápido o más lento
+Ctrl+Alt+T          traducir lo seleccionado (inglés ↔ español) y leer la traducción
 ```
 
 En los teclados en español Ctrl+Alt es lo mismo que AltGr, así que los atajos
@@ -54,6 +55,16 @@ cambia de tamaño desde cualquiera de sus lados y esquinas. Se mueve con la
 pestaña de arriba.
 
 ![El panel de texto: la frase que suena resaltada y lo ya leído atenuado](docs/media/panel.png)
+
+`Ctrl+Alt+T` traduce lo seleccionado del inglés al español o al revés, también
+sin conexión, y lo lee con la voz del otro idioma. El panel muestra la
+traducción en grande y el original en pequeño debajo, párrafo por párrafo, y se
+llena mientras se traduce: la primera frase suena enseguida. Hay dos niveles,
+uno básico para cualquier equipo y uno alto con un modelo de lenguaje, y un modo
+práctica que lee el original en inglés con la traducción debajo. Ver
+[docs/traduccion.md](docs/traduccion.md).
+
+![El panel con una traducción: el texto en español en grande y el original en inglés debajo](docs/media/traduccion.png)
 
 El botón de la tuerca (o el acceso directo del escritorio que puede crear el
 instalador) abre los ajustes. Todo se aplica al instante, sin reiniciar: el
@@ -88,6 +99,16 @@ cómo se dice en cada idioma y con cada voz, y probarla. Ver
   normalizados por longitud para poder comparar una frase corta con un
   párrafo largo. Una palabra suelta en inglés no cambia la voz: un diccionario
   de 250 términos la reescribe con ortografía española.
+- **Traducción local en dos niveles.** Bergamot de Mozilla en cualquier equipo
+  y, si cabe, Hy-MT2 de Tencent con llama.cpp, elegidos en cada traducción
+  según la memoria libre de la tarjeta y la RAM. Con un modelo de lenguaje, la
+  primera frase se traduce sola y suena mientras se traduce el resto. La
+  calidad se midió con dos jueces a ciegas sobre 20 textos, y el tiempo hasta
+  el primer sonido y el freno de la voz en cada combinación
+  ([ADR 0016](docs/adr/0016-traduccion-local.md)).
+- **Lo ya leído no se genera dos veces.** El audio de cada frase y cada
+  traducción se guardan unos minutos: releer un texto, o una parte, copia el
+  audio en vez de volver a generarlo.
 - **Una voz propia, opcional.** Un proceso que saca la voz de una persona de
   grabaciones donde hablan varias, limpia y transcribe el audio y afina
   [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS) con LoRA, corrigiendo tres
@@ -105,7 +126,8 @@ cómo se dice en cada idioma y con cada voz, y probarla. Ver
 |---|---|
 | Windows | 10 u 11, 64 bits |
 | Windows PowerShell | 5.1, el que ya viene con Windows |
-| Espacio en disco | Unos 210 MB para el motor y dos voces |
+| Espacio en disco | Unos 210 MB para el motor y dos voces, y 112 MB para la traducción básica |
+| 12 GB de RAM y un procesador con AVX2 | Solo para la traducción de mejor calidad (1,17 GB), que es opcional |
 | Tarjeta NVIDIA de 7 GB o más | Solo para la voz propia, que es opcional |
 
 No hace falta ser administrador. Nada se instala fuera de la carpeta del
@@ -143,6 +165,14 @@ Aloud ofrece descargarlos la primera vez que lo abras; también puedes usar
 "Instalar o reparar las voces" del menú Inicio. Lo que pasó queda en
 `read_aloud_piper\runtime\setup.log` (lo primero que hay que mandar si pides
 ayuda).
+
+En la página de tareas eliges la traducción, con el tamaño y la licencia de
+cada parte: la básica (112 MB) viene marcada; la de mejor calidad (1,17 GB),
+marcada si tu equipo puede usarla, o desmarcada y con la razón; y el modelo
+grande para la tarjeta gráfica (4,6 GB), ofrecido si tienes una NVIDIA de 8 GB
+o más. Todo se comprueba con sha256 antes de instalarlo. Si la traducción
+falla, la lectura funciona igual y el instalador te dice cómo reintentar. Ver
+[docs/traduccion.md](docs/traduccion.md#instalación).
 
 **Actualizar.** Instalar una versión nueva sobre la anterior conserva tus
 ajustes, tu diccionario de pronunciación, `config/settings.psd1` y
@@ -188,6 +218,8 @@ funciona desde la consola:
 .\read_aloud.ps1 -Stop                             # detiene
 .\read_aloud.ps1 -Toggle                           # pausa o continua
 .\read_aloud.ps1 -Language English                 # fuerza el idioma
+.\read_aloud.ps1 -Translate                        # traduce el portapapeles y lee la traduccion
+.\read_aloud.ps1 -MeasureDevice                    # mide los traductores de este equipo
 .\read_aloud.ps1 -ShowPlan                         # muestra la segmentacion, sin leer
 .\read_aloud.ps1 -ListVoices                       # voces instaladas
 .\read_aloud.ps1 -Diagnose                         # revisa la instalacion
@@ -212,17 +244,19 @@ Ctrl+Alt+V                   read_aloud.ps1
         read_aloud_daemon.ps1
         proceso residente
                    |
-        +----------+----------+---------------------+
-        |                     |                     |
-   piper.exe es          piper.exe en        servidor_qwen.py
-   (modelo cargado)      (modelo cargado)    (voz propia, opcional)
+        +----------+----------+---------------------+---------------------+
+        |                     |                     |                     |
+   piper.exe es          piper.exe en        servidor_qwen.py      translateLocally.exe
+   (modelo cargado)      (modelo cargado)    (voz propia, opcional) llama-server.exe
+                                                                   (traducción)
                    |
         reproductor flotante
 ```
 
-El proceso residente tiene tres hilos: la tubería, que encola lo que llega;
-la síntesis, que le pasa cada fragmento al motor de su idioma; y la interfaz,
-con la ventana del reproductor. Un mutex con nombre deja una sola instancia.
+El proceso residente tiene cuatro hilos: la tubería, que encola lo que llega;
+la síntesis, que le pasa cada fragmento al motor de su idioma; la traducción,
+que abre los traductores cuando hacen falta; y la interfaz, con la ventana del
+reproductor. Un mutex con nombre deja una sola instancia.
 En reposo, la síntesis espera un evento en vez de mirar su cola, y el pulso de
 la ventana baja de 60 a 250 ms: unos 16 ms de procesador cada 20 s.
 
@@ -308,12 +342,16 @@ read_aloud.ps1              Punto de entrada
 read_aloud_daemon.ps1       Proceso residente y reproductor
 lib/ReadAloud.Hotkeys.ps1   Atajos de teclado
 stop_read_aloud.ps1         Detener
-setup.ps1                   Instala el motor y las voces
+setup.ps1                   Instala el motor, las voces y la traduccion
 install_startup.ps1         Arranque automatico con Windows
 config/settings.psd1        Ajustes
 config/terms_es.tsv         Diccionario de pronunciacion
+config/traduccion.psd1      Lo que se descarga para la traduccion, con su sha256
 lib/ReadAloud.Core.ps1      Rutas, ajustes, audio y comunicacion
 lib/ReadAloud.Text.ps1      Idioma, segmentacion y normalizacion
+lib/ReadAloud.Translate.ps1 Traduccion: troceo, eleccion del traductor y memoria
+lib/ReadAloud.Translators.ps1  translateLocally y llama-server
+lib/ReadAloud.Cache.ps1     Audio y traducciones guardados
 lib/ReadAloud.Settings.ps1  Panel de ajustes
 lib/servidor_qwen.py        Proceso de la voz propia (Qwen3-TTS)
 lib/qwen_rapido.py          Generacion en tiempo real de Qwen3-TTS
@@ -322,7 +360,7 @@ docs/adr/                   Registro de decisiones
 voz_personalizada/          Proceso para crear una voz propia
 tests/                      Pruebas de Pester
 tools/                      Revisiones del pre-commit y del CI
-read_aloud_piper/           Motor y voces (lo crea setup.ps1)
+read_aloud_piper/           Motor, voces y traductores (lo crea setup.ps1)
 ```
 
 ## Apoya el proyecto
