@@ -35,6 +35,9 @@ function Get-ReadAloudPaths {
         # Los traductores (ADR 0016), fuera del repositorio: translateLocally
         # con sus modelos, llama-server y los GGUF.
         TranslateDir = Join-Path $PiperBaseDir 'traduccion'
+        # El diccionario del panel (ADR 0017): WordNet, WikDict y el indice
+        # inverso, segun config\idiomas.psd1.
+        DictionaryDir = Join-Path $PiperBaseDir 'diccionario'
         LlamaLog    = Join-Path $runtimeDir 'llama.log'
         LogFile     = Join-Path $runtimeDir 'daemon.log'
         StateFile   = Join-Path $runtimeDir 'player.json'

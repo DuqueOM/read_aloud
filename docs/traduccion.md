@@ -110,6 +110,25 @@ traduccion\
   modelos\Hy-MT2-1.8B-Q4_K_M.gguf               (y Hy-MT2-7B-Q4_K_M.gguf)
 ```
 
+### El diccionario del panel
+
+`setup.ps1` instala también, por defecto, el diccionario del panel
+([ADR 0017](adr/0017-diccionario-en-el-panel.md)): Open English WordNet 2025
+(CC BY 4.0) y WikDict en-es y es-en (CC BY-SA 4.0). Son 14 MB de descarga y
+unos 50 MB instalados, con el índice inverso es-en, que setup arma en unos
+20 segundos. En el instalador es la tarea «Diccionario», marcada.
+
+```powershell
+.\setup.ps1 -SkipDictionary     # sin diccionario
+.\setup.ps1 -OnlyDictionary     # solo el diccionario
+```
+
+La lista, con el sha256 de cada archivo, está en
+[config/idiomas.psd1](../config/idiomas.psd1), por idioma y por par. WikDict
+rearma sus archivos cada mes, así que se baja una copia sin cambios guardada
+en un release de este repositorio. Todo queda en `read_aloud_piper\diccionario`
+(`oewn2025`, `wikdict-en-es`, `wikdict-es-en` e `inverso\es-en.tsv`).
+
 translateLocally guarda cuántos hilos usar en
 `HKCU\Software\translateLocally` (Read Aloud le pone 4, para no frenar la voz)
 y deja una carpeta vacía en `%APPDATA%\translateLocally`. Al desinstalar se

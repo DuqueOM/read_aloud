@@ -1116,3 +1116,261 @@ function Find-DictionaryEntry {
         Irregular       = $irregulares
     }
 }
+
+# --------------------------------------------------------------------------
+# El catalogo (config\idiomas.psd1) y la instalacion de sus piezas. Lo usan
+# setup.ps1 (instalar) y el lector (saber que hay instalado).
+# --------------------------------------------------------------------------
+
+# Sube este numero si cambia el formato del indice inverso: setup.ps1 lo
+# vuelve a armar en los equipos que tengan el viejo.
+$script:RA_DictReverseVersion = 1
+
+function Resolve-DictionaryUrl {
+    # '{Origen}/archivo.zip' -> la direccion de ese origen + '/archivo.zip'.
+    # Una Url sin llaves queda igual.
+    param(
+        [string]$Url,
+        [hashtable]$Origins
+    )
+    $m = [regex]::Match($Url, '^\{([A-Za-z0-9]+)\}')
+    if (-not $m.Success) { return $Url }
+    $nombre = $m.Groups[1].Value
+    if ($null -eq $Origins -or -not $Origins.ContainsKey($nombre)) { throw "El origen '$nombre' no esta en Origenes." }
+    return ([string]$Origins[$nombre]).TrimEnd('/') + $Url.Substring($m.Length)
+}
+
+function Get-DictionaryPieces {
+    # Las piezas del catalogo, en orden fijo: las definiciones de cada idioma
+    # y despues el diccionario bilingue de cada par. Cada una es una copia con
+    # la Url resuelta, Rol ('Definiciones' o 'Bilingue'), Lang y Pair.
+    param([hashtable]$Catalog)
+
+    $salida = New-Object System.Collections.Generic.List[object]
+    $listas = @(
+        @{ Tabla = $Catalog.Idiomas; Rol = 'Definiciones' }
+        @{ Tabla = $Catalog.Pares; Rol = 'Bilingue' }
+    )
+    foreach ($l in $listas) {
+        if ($null -eq $l.Tabla) { continue }
+        foreach ($clave in @($l.Tabla.Keys | Sort-Object)) {
+            $pieza = $l.Tabla[$clave][$l.Rol]
+            if ($null -eq $pieza) { continue }
+            $copia = @{}
+            foreach ($k in $pieza.Keys) { $copia[$k] = $pieza[$k] }
+            $copia.Url = Resolve-DictionaryUrl -Url ([string]$pieza.Url) -Origins $Catalog.Origenes
+            $copia.Rol = $l.Rol
+            $copia.Lang = ''
+            $copia.Pair = ''
+            if ($l.Rol -eq 'Definiciones') { $copia.Lang = $clave } else { $copia.Pair = $clave }
+            $salida.Add($copia)
+        }
+    }
+    return $salida.ToArray()
+}
+
+function Get-DictionaryReverseIndexes {
+    # Los indices inversos que pide el catalogo: @{ Pair = 'es-en'; From =
+    # 'en-es'; Path = <DictionaryDir>\inverso\es-en.tsv }.
+    param(
+        [hashtable]$Catalog,
+        [string]$DictionaryDir
+    )
+    $salida = New-Object System.Collections.Generic.List[object]
+    if ($null -eq $Catalog.Pares) { return $salida.ToArray() }
+    foreach ($par in @($Catalog.Pares.Keys | Sort-Object)) {
+        $desde = [string]$Catalog.Pares[$par].Inverso
+        if (-not $desde) { continue }
+        $salida.Add(@{ Pair = $par; From = $desde; Path = (Join-Path $DictionaryDir "inverso\$par.tsv") })
+    }
+    return $salida.ToArray()
+}
+
+function Read-DictionaryMarker {
+    # Las lineas clave=valor de una marca de instalacion; $null si no esta.
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) { return $null }
+    $marca = @{}
+    foreach ($linea in [IO.File]::ReadAllLines($Path, $script:RA_DictUtf8)) {
+        $i = $linea.IndexOf('=')
+        if ($i -gt 0) { $marca[$linea.Substring(0, $i)] = $linea.Substring($i + 1) }
+    }
+    return $marca
+}
+
+function Write-DictionaryMarker {
+    param(
+        [string]$Path,
+        [System.Collections.Specialized.OrderedDictionary]$Values
+    )
+    $lineas = foreach ($k in $Values.Keys) { '{0}={1}' -f $k, $Values[$k] }
+    [IO.File]::WriteAllText($Path, (($lineas -join "`n") + "`n"), $script:RA_DictUtf8)
+}
+
+function Test-DictionaryPiece {
+    # Si la pieza esta instalada y es la del catalogo: su carpeta tiene todos
+    # los Archivos y su pieza.txt dice el mismo sha256. Si el catalogo pasa a
+    # otra version (otro sha256), deja de estarlo y setup.ps1 la reemplaza.
+    param(
+        [hashtable]$Piece,
+        [string]$DictionaryDir
+    )
+    $dir = Join-Path $DictionaryDir $Piece.Destino
+    $marca = Read-DictionaryMarker -Path (Join-Path $dir 'pieza.txt')
+    if ($null -eq $marca -or [string]$marca.Sha256 -ne ([string]$Piece.Sha256).ToLowerInvariant()) { return $false }
+    foreach ($a in @($Piece.Archivos)) {
+        if (-not (Test-Path -LiteralPath (Join-Path $dir $a))) { return $false }
+    }
+    return $true
+}
+
+function Expand-DictionaryZip {
+    # Extrae un zip entrada por entrada: salta los archivos de Exclude (por
+    # nombre) y rechaza las entradas que saldrian de la carpeta (un "..\" o
+    # una ruta absoluta dentro del zip).
+    param(
+        [string]$ZipPath,
+        [string]$Destination,
+        [string[]]$Exclude = @()
+    )
+    Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+    New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+    $base = [IO.Path]::GetFullPath($Destination).TrimEnd('\') + '\'
+    $zip = [IO.Compression.ZipFile]::OpenRead($ZipPath)
+    try {
+        foreach ($e in $zip.Entries) {
+            $completa = [IO.Path]::GetFullPath([IO.Path]::Combine($base, $e.FullName.Replace('/', '\')))
+            if (-not $completa.StartsWith($base, [StringComparison]::OrdinalIgnoreCase)) {
+                throw ('El zip trae una ruta que sale de la carpeta: {0}' -f $e.FullName)
+            }
+            if (-not $e.Name) {
+                New-Item -ItemType Directory -Path $completa -Force | Out-Null
+                continue
+            }
+            if (@($Exclude) -contains $e.Name) { continue }
+            $carpeta = Split-Path -Parent $completa
+            if (-not (Test-Path -LiteralPath $carpeta)) { New-Item -ItemType Directory -Path $carpeta -Force | Out-Null }
+            [IO.Compression.ZipFileExtensions]::ExtractToFile($e, $completa, $true)
+        }
+    } finally {
+        $zip.Dispose()
+    }
+}
+
+function Install-DictionaryPiece {
+    # Instala una pieza desde su zip ya bajado. Comprueba el sha256 (lo que no
+    # coincide no se instala), extrae aparte, sin lo de Excluir, comprueba que
+    # esten los Archivos y cambia la carpeta de golpe: si algo falla, lo que
+    # habia queda como estaba. Deja pieza.txt con el sha256 y el origen.
+    param(
+        [string]$ZipPath,
+        [hashtable]$Piece,
+        [string]$DictionaryDir
+    )
+
+    $nombre = Split-Path -Leaf $ZipPath
+    if ([string]$Piece.Destino -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') { throw ('Destino no valido para {0}: {1}' -f $Piece.Id, $Piece.Destino) }
+    $hash = (Get-FileHash -LiteralPath $ZipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($hash -ne ([string]$Piece.Sha256).ToLowerInvariant()) {
+        throw ('{0} no es el archivo esperado (sha256 {1}, se esperaba {2}). No se instala.' -f $nombre, $hash, $Piece.Sha256)
+    }
+
+    if (-not (Test-Path -LiteralPath $DictionaryDir)) { New-Item -ItemType Directory -Path $DictionaryDir -Force | Out-Null }
+    $trabajo = Join-Path $DictionaryDir ('_extraer_' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
+    try {
+        Expand-DictionaryZip -ZipPath $ZipPath -Destination $trabajo -Exclude ([string[]]@($Piece.Excluir))
+
+        # El zip trae una sola carpeta (oewn2025/, wikdict-en-es/): esa es la
+        # pieza. Si trae los archivos sueltos, la pieza es todo.
+        $contenido = $trabajo
+        $hijos = @(Get-ChildItem -LiteralPath $trabajo -Force)
+        if ($hijos.Count -eq 1 -and $hijos[0].PSIsContainer) { $contenido = $hijos[0].FullName }
+        foreach ($a in @($Piece.Archivos)) {
+            if (-not (Test-Path -LiteralPath (Join-Path $contenido $a))) { throw ('{0} no trae {1}. No se instala.' -f $nombre, $a) }
+        }
+        $marca = [ordered]@{ Id = $Piece.Id; Sha256 = $hash; Url = $Piece.Url; Instalado = (Get-Date).ToString('yyyy-MM-dd HH:mm') }
+        Write-DictionaryMarker -Path (Join-Path $contenido 'pieza.txt') -Values $marca
+
+        $destino = Join-Path $DictionaryDir $Piece.Destino
+        $anterior = $destino + '.anterior'
+        if (Test-Path -LiteralPath $anterior) { Remove-Item -LiteralPath $anterior -Recurse -Force }
+        $apartado = $false
+        if (Test-Path -LiteralPath $destino) {
+            try {
+                Move-Item -LiteralPath $destino -Destination $anterior -ErrorAction Stop
+                $apartado = $true
+            } catch {
+                throw ('No pude reemplazar {0} porque algo lo esta usando ({1}). Cierra Read Aloud (icono de la bandeja > Salir) y vuelve a intentarlo.' -f $Piece.Destino, $_.Exception.Message)
+            }
+        }
+        try {
+            Move-Item -LiteralPath $contenido -Destination $destino -ErrorAction Stop
+        } catch {
+            if ($apartado -and -not (Test-Path -LiteralPath $destino)) { Move-Item -LiteralPath $anterior -Destination $destino -ErrorAction SilentlyContinue }
+            throw ('No pude instalar {0}: {1}' -f $Piece.Destino, $_.Exception.Message)
+        }
+        if ($apartado) { Remove-Item -LiteralPath $anterior -Recurse -Force -ErrorAction SilentlyContinue }
+    } finally {
+        if (Test-Path -LiteralPath $trabajo) { Remove-Item -LiteralPath $trabajo -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+}
+
+function Test-DictionaryReverseIndex {
+    # Si el indice inverso esta armado con la version de hoy del diccionario
+    # de origen (su sha256) y del formato del indice.
+    param(
+        [hashtable]$Index,
+        [hashtable]$Source
+    )
+    if (-not (Test-Path -LiteralPath $Index.Path)) { return $false }
+    $marca = Read-DictionaryMarker -Path ([IO.Path]::ChangeExtension($Index.Path, '.txt'))
+    if ($null -eq $marca) { return $false }
+    return ([string]$marca.Sha256 -eq ([string]$Source.Sha256).ToLowerInvariant()) -and ([string]$marca.Version -eq [string]$script:RA_DictReverseVersion)
+}
+
+function Install-DictionaryReverseIndex {
+    # Arma el indice inverso de un par (es-en) con el diccionario instalado
+    # de otro (en-es): primero en un .part y despues de golpe. Devuelve
+    # cuantas claves escribio.
+    param(
+        [hashtable]$Index,
+        [hashtable]$Source,
+        [string]$DictionaryDir
+    )
+    if ([string]$Source.Formato -ne 'stardict') { throw ('El indice inverso de {0} necesita un StarDict, y {1} es {2}.' -f $Index.Pair, $Source.Id, $Source.Formato) }
+    $dict = Open-StarDict -Dir (Join-Path $DictionaryDir $Source.Destino)
+    $parcial = $Index.Path + '.part'
+    try {
+        $claves = Export-ReverseDictionaryIndex -Dict $dict -Path $parcial
+        Move-Item -LiteralPath $parcial -Destination $Index.Path -Force
+    } finally {
+        if (Test-Path -LiteralPath $parcial) { Remove-Item -LiteralPath $parcial -Force -ErrorAction SilentlyContinue }
+    }
+    $marca = [ordered]@{ Desde = $Index.From; Sha256 = ([string]$Source.Sha256).ToLowerInvariant(); Version = $script:RA_DictReverseVersion; Claves = $claves; Armado = (Get-Date).ToString('yyyy-MM-dd HH:mm') }
+    Write-DictionaryMarker -Path ([IO.Path]::ChangeExtension($Index.Path, '.txt')) -Values $marca
+    return $claves
+}
+
+function Get-InstalledDictionary {
+    # Lo que esta instalado y sirve, con la forma de Sources de
+    # Find-DictionaryEntry pero sin abrir nada: Definitions y Bilingual, por
+    # idioma y por par, @{ Dir; Format }; Reverse, la ruta de cada indice.
+    # Una pieza a medias o de otra version no cuenta.
+    param(
+        [hashtable]$Catalog,
+        [string]$DictionaryDir
+    )
+    $definiciones = @{}
+    $bilingues = @{}
+    $inversos = @{}
+    $porPar = @{}
+    foreach ($p in (Get-DictionaryPieces -Catalog $Catalog)) {
+        if (-not (Test-DictionaryPiece -Piece $p -DictionaryDir $DictionaryDir)) { continue }
+        $info = @{ Dir = (Join-Path $DictionaryDir $p.Destino); Format = [string]$p.Formato }
+        if ($p.Rol -eq 'Definiciones') { $definiciones[$p.Lang] = $info } else { $bilingues[$p.Pair] = $info; $porPar[$p.Pair] = $p }
+    }
+    foreach ($i in (Get-DictionaryReverseIndexes -Catalog $Catalog -DictionaryDir $DictionaryDir)) {
+        if ($porPar.ContainsKey($i.From) -and (Test-DictionaryReverseIndex -Index $i -Source $porPar[$i.From])) { $inversos[$i.Pair] = $i.Path }
+    }
+    return @{ Definitions = $definiciones; Bilingual = $bilingues; Reverse = $inversos }
+}

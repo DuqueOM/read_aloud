@@ -7,9 +7,10 @@
 ;
 ; Queda en dist\ReadAloud-Setup-<version>.exe. Se instala solo para el usuario,
 ; en %LOCALAPPDATA%\Programs\Read Aloud, sin pedir permisos de administrador.
-; Los binarios de Piper, las voces y la traduccion no van dentro: los baja
-; setup.ps1 durante la instalacion, igual que al instalar desde el repositorio
-; (la traduccion, segun las tareas que se marquen; ver config\traduccion.psd1).
+; Los binarios de Piper, las voces, la traduccion y el diccionario no van
+; dentro: los baja setup.ps1 durante la instalacion, igual que al instalar desde
+; el repositorio (la traduccion y el diccionario, segun las tareas que se
+; marquen; ver config\traduccion.psd1 y config\idiomas.psd1).
 ;
 ; Guardado en UTF-8 con BOM, que Inno Setup entiende (los acentos de los textos).
 
@@ -60,8 +61,8 @@ en.IconUninstall=Uninstall Read Aloud
 es.KeepData=Se quitó Read Aloud.%n%n¿Quieres conservar tus ajustes y tu diccionario de pronunciación por si lo instalas de nuevo?
 en.KeepData=Read Aloud was removed.%n%nDo you want to keep your settings and pronunciation dictionary in case you install it again?
 en.IconVoices=Install or repair the voices
-es.StatusVoices=Descargando el motor de voz, las voces y la traducción que elegiste. Puede tardar unos minutos...
-en.StatusVoices=Downloading the voice engine, the voices and the translation you chose. This can take a few minutes...
+es.StatusVoices=Descargando el motor de voz, las voces, y la traducción y el diccionario que elegiste. Puede tardar unos minutos...
+en.StatusVoices=Downloading the voice engine, the voices, and the translation and dictionary you chose. This can take a few minutes...
 es.VoicesFailed=No se pudieron descargar el motor de voz y las voces (suele ser la conexión a internet, un firewall o un antivirus).%n%nRead Aloud queda instalado: abre «Instalar o reparar las voces» en el menú Inicio para reintentar, o te lo ofrecerá la primera vez que lo abras. El detalle queda en read_aloud_piper\runtime\setup.log.
 en.VoicesFailed=The voice engine and voices could not be downloaded (usually the internet connection, a firewall or an antivirus).%n%nRead Aloud is installed: open "Install or repair the voices" in the Start menu to retry, or it will offer to do it the first time you open it. The details are in read_aloud_piper\runtime\setup.log.
 es.LockedLeft=Algunos archivos de Read Aloud estaban en uso y no se pudieron borrar. Reinicia el equipo y borra la carpeta de instalacion a mano.
@@ -84,8 +85,12 @@ es.TaskTrans7B=La mejor para la tarjeta gráfica: Hy-MT2 7B (licencia Apache 2.0
 en.TaskTrans7B=The best one for the graphics card: Hy-MT2 7B (Apache 2.0 license, huggingface.co/tencent/Hy-MT2-7B-GGUF), 4.6 GB
 es.TaskMeasure=Medir este equipo al terminar, para elegir mejor el traductor (uno o dos minutos)
 en.TaskMeasure=Measure this computer at the end, to choose the translator better (one or two minutes)
-es.TranslationFailed=La lectura quedó lista, pero alguna parte de la traducción no se pudo instalar.%n%nAbre «Instalar o reparar las voces» en el menú Inicio para reintentar. El detalle queda en read_aloud_piper\runtime\setup.log.
-en.TranslationFailed=Reading is ready, but some part of the translation could not be installed.%n%nOpen "Install or repair the voices" in the Start menu to retry. The details are in read_aloud_piper\runtime\setup.log.
+es.TranslationFailed=La lectura quedó lista, pero alguna parte de la traducción o del diccionario no se pudo instalar.%n%nAbre «Instalar o reparar las voces» en el menú Inicio para reintentar. El detalle queda en read_aloud_piper\runtime\setup.log.
+en.TranslationFailed=Reading is ready, but some part of the translation or the dictionary could not be installed.%n%nOpen "Install or repair the voices" in the Start menu to retry. The details are in read_aloud_piper\runtime\setup.log.
+es.GroupDictionary=Diccionario en el panel de texto, sin conexión (Ctrl+clic en una palabra):
+en.GroupDictionary=Dictionary in the text panel, offline (Ctrl+click a word):
+es.TaskDictionary=Diccionario: Open English WordNet (licencia CC BY 4.0) y WikDict (licencia CC BY-SA 4.0), 14 MB
+en.TaskDictionary=Dictionary: Open English WordNet (CC BY 4.0 license) and WikDict (CC BY-SA 4.0 license), 14 MB
 
 [Tasks]
 Name: "autostart"; Description: "{cm:TaskAutostart}"
@@ -98,6 +103,8 @@ Name: "transhigh"; Description: "{cm:TaskTransHigh}"; GroupDescription: "{cm:Gro
 Name: "transhighno"; Description: "{code:DescripcionAltaNo}"; GroupDescription: "{cm:GroupTranslation}"; Flags: unchecked; Check: not PuedeAlta
 Name: "trans7b"; Description: "{cm:TaskTrans7B}"; GroupDescription: "{cm:GroupTranslation}"; Flags: unchecked; Check: Puede7B
 Name: "measure"; Description: "{cm:TaskMeasure}"; GroupDescription: "{cm:GroupTranslation}"; Flags: unchecked
+; El diccionario del panel (docs\adr\0017-diccionario-en-el-panel.md), marcado.
+Name: "dictionary"; Description: "{cm:TaskDictionary}"; GroupDescription: "{cm:GroupDictionary}"
 
 [Files]
 Source: "..\read_aloud.ps1"; DestDir: "{app}"; Flags: ignoreversion
@@ -231,6 +238,12 @@ begin
   if WizardIsTaskSelected('trans7b') then Result := Result + ' -Translation7B';
 end;
 
+function ArgumentosDiccionario: String;
+begin
+  Result := '';
+  if not WizardIsTaskSelected('dictionary') then Result := ' -SkipDictionary';
+end;
+
 // Al actualizar, el proceso residente tiene los archivos en uso: se cierra antes.
 // Y los diccionarios de fabrica se reemplazan por los nuevos: se guarda una copia
 // de los actuales por si la persona los habia editado a mano (lo suyo, sus
@@ -284,9 +297,9 @@ begin
   begin
     WizardForm.StatusLabel.Caption := CustomMessage('StatusVoices');
     Ok := Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
-      '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\setup.ps1') + '" -NoStartupPrompt -PauseOnError' + ArgumentosTraduccion,
+      '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\setup.ps1') + '" -NoStartupPrompt -PauseOnError' + ArgumentosTraduccion + ArgumentosDiccionario,
       ExpandConstant('{app}'), SW_SHOWNORMAL, ewWaitUntilTerminated, Codigo);
-    // 2: las voces estan, pero alguna parte de la traduccion no.
+    // 2: las voces estan, pero alguna parte de la traduccion o del diccionario no.
     if Ok and (Codigo = 2) then
       SuppressibleMsgBox(CustomMessage('TranslationFailed'), mbInformation, MB_OK, IDOK)
     else if (not Ok) or (Codigo <> 0) then
@@ -301,9 +314,10 @@ begin
   end;
 end;
 
-// Al desinstalar se borra lo que bajo setup.ps1 (motor y voces, unos 200 MB). Lo
-// que es del usuario (ajustes y diccionario, en read_aloud_piper\runtime) se
-// conserva si lo pide; en una desinstalacion silenciosa se borra todo.
+// Al desinstalar se borra lo que bajo setup.ps1 (motor, voces, traduccion y
+// diccionario del panel). Lo que es del usuario (ajustes y diccionario de
+// pronunciacion, en read_aloud_piper\runtime) se conserva si lo pide; en una
+// desinstalacion silenciosa se borra todo.
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Conservar: Boolean;
@@ -330,6 +344,9 @@ begin
     end;
     RegDeleteKeyIncludingSubkeys(HKEY_CURRENT_USER, 'Software\translateLocally');
     RemoveDir(ExpandConstant('{userappdata}\translateLocally'));
+    // El diccionario del panel (unos 50 MB): datos que bajo setup.ps1, no
+    // del usuario (su archivo de Anki esta en Documentos).
+    DelTree(ExpandConstant('{app}\read_aloud_piper\diccionario'), True, True, True);
     DelTree(ExpandConstant('{app}\copia_de_config_anterior'), True, True, True);
     if not Conservar then
     begin

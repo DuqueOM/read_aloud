@@ -18,15 +18,25 @@
 #   .\setup.ps1 -Translation7B   Tambien Hy-MT2 7B (4.6 GB), para la tarjeta grafica
 #   .\setup.ps1 -SkipTranslation Sin traduccion
 #   .\setup.ps1 -OnlyTranslation Solo la traduccion, sin el motor ni las voces
+#
+# Diccionario del panel (docs\adr\0017-diccionario-en-el-panel.md), lo que
+# baja config\idiomas.psd1:
+#   (sin nada)                   Open English WordNet y WikDict en-es y es-en
+#                                (14 MB), y arma el indice inverso es-en
+#   .\setup.ps1 -SkipDictionary  Sin diccionario
+#   .\setup.ps1 -OnlyDictionary  Solo el diccionario
+#
 #   .\setup.ps1 -LocalSource C:\carpeta   Toma los archivos de esa carpeta (con
 #                                su nombre original) en vez de bajarlos; se
 #                                comprueban igual
 #
-# Se descargan unos 200 MB la primera vez, mas la traduccion. Despues, nada.
-# Todo lo que se ve aqui queda tambien en read_aloud_piper\runtime\setup.log.
+# Se descargan unos 200 MB la primera vez, mas la traduccion y el diccionario.
+# Despues, nada. Todo lo que se ve aqui queda tambien en
+# read_aloud_piper\runtime\setup.log.
 #
 # Codigo de salida: 0 todo bien; 1 el motor o las voces fallaron; 2 las voces
-# estan bien pero alguna parte de la traduccion no se pudo instalar.
+# estan bien pero alguna parte de la traduccion o del diccionario no se pudo
+# instalar.
 #
 # Si algo falla, se puede volver a ejecutar sin riesgo: lo que ya esta no se
 # descarga otra vez.
@@ -41,6 +51,8 @@ param(
     [switch]$Translation7B,
     [switch]$SkipTranslation,
     [switch]$OnlyTranslation,
+    [switch]$SkipDictionary,
+    [switch]$OnlyDictionary,
     [string]$LocalSource = '',
     # Para probar la instalacion en otra carpeta.
     [string]$PiperBaseDir = ''
@@ -52,6 +64,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Text.ps1')
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Translate.ps1')
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Translators.ps1')
+. (Join-Path $PSScriptRoot 'lib\ReadAloud.Dictionary.ps1')
 
 $paths = Get-ReadAloudPaths -PiperBaseDir $PiperBaseDir
 $settings = Get-ReadAloudSettings -Paths $paths
@@ -139,7 +152,7 @@ function Get-RemoteFile {
     }
 
     if ($null -ne $last) {
-        throw ("No pude descargar {0}: {1}`nRevisa tu conexion a internet y que ningun firewall, proxy o antivirus bloquee github.com y huggingface.co." -f $name, $last)
+        throw ("No pude descargar {0}: {1}`nRevisa tu conexion a internet y que ningun firewall, proxy o antivirus bloquee {2}." -f $name, $last, ([Uri]$Url).Host)
     }
 
     $size = (Get-Item -LiteralPath $Destination).Length / 1MB
@@ -571,6 +584,81 @@ function Install-Translation {
     return $ok
 }
 
+# --------------------------------------------------------------------------
+# Diccionario del panel (docs\adr\0017-diccionario-en-el-panel.md).
+# --------------------------------------------------------------------------
+$dictionaryCatalog = Read-PowerShellDataFile -Path (Join-Path $paths.ConfigDir 'idiomas.psd1')
+
+function Install-DictionaryItem {
+    # Baja (o copia de -LocalSource) una pieza del diccionario y la instala
+    # con Install-DictionaryPiece, que comprueba el sha256 antes de extraer:
+    # lo que no coincide no se instala.
+    param([hashtable]$Item)
+
+    $nombre = ([Uri]$Item.Url).Segments[-1]
+    if ((Test-DictionaryPiece -Piece $Item -DictionaryDir $paths.DictionaryDir) -and -not $Force) {
+        Write-Host ("    {0} ya estaba" -f $nombre) -ForegroundColor DarkGray
+        return
+    }
+
+    Assert-FreeSpace -Bytes ([long]$Item.Bytes)
+    $trabajo = Join-Path $paths.DictionaryDir ('_descarga_' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
+    New-Item -ItemType Directory -Path $trabajo -Force | Out-Null
+    try {
+        $bajado = Join-Path $trabajo $nombre
+        Get-RemoteFile -Url $Item.Url -Destination $bajado
+        Write-Host '    comprobando el sha256 y descomprimiendo' -ForegroundColor Gray
+        Install-DictionaryPiece -ZipPath $bajado -Piece $Item -DictionaryDir $paths.DictionaryDir
+        Write-Host ("    {0} instalado en diccionario\{1}" -f $nombre, $Item.Destino) -ForegroundColor DarkGray
+    } finally {
+        if (Test-Path -LiteralPath $trabajo) { Remove-Item -LiteralPath $trabajo -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+}
+
+function Install-Dictionary {
+    # Cada pieza por su lado: si una falla, las otras se instalan igual. Al
+    # final, los indices inversos cuyo diccionario de origen quedo instalado.
+    # Devuelve $true si quedo todo.
+    Write-Step 'Diccionario del panel (Open English WordNet y WikDict, unos 14 MB)'
+    Write-Host '    Open English WordNet, licencia CC BY 4.0: https://en-word.net' -ForegroundColor DarkGray
+    Write-Host '    WikDict de Karl Bartel, con datos de Wiktionary via DBnary, licencia CC BY-SA 4.0: https://www.wikdict.com' -ForegroundColor DarkGray
+    if (-not (Test-Path -LiteralPath $paths.DictionaryDir)) { New-Item -ItemType Directory -Path $paths.DictionaryDir -Force | Out-Null }
+
+    $ok = $true
+    $piezas = @(Get-DictionaryPieces -Catalog $dictionaryCatalog)
+    foreach ($p in $piezas) {
+        try {
+            Install-DictionaryItem -Item $p
+        } catch {
+            Write-Host ("    no se pudo instalar {0}: {1}" -f $p.Id, $_.Exception.Message) -ForegroundColor Yellow
+            $ok = $false
+        }
+    }
+
+    foreach ($i in @(Get-DictionaryReverseIndexes -Catalog $dictionaryCatalog -DictionaryDir $paths.DictionaryDir)) {
+        $origen = @($piezas | Where-Object { $_.Pair -eq $i.From })[0]
+        if ($null -eq $origen -or -not (Test-DictionaryPiece -Piece $origen -DictionaryDir $paths.DictionaryDir)) {
+            Write-Host ("    sin el indice inverso {0}: falta el diccionario {1}" -f $i.Pair, $i.From) -ForegroundColor Yellow
+            $ok = $false
+            continue
+        }
+        if ((Test-DictionaryReverseIndex -Index $i -Source $origen) -and -not $Force) {
+            Write-Host ("    el indice inverso {0} ya estaba" -f $i.Pair) -ForegroundColor DarkGray
+            continue
+        }
+        Write-Host ("    armando el indice inverso {0} con {1} (unos 20 segundos)" -f $i.Pair, $i.From) -ForegroundColor Gray
+        try {
+            $reloj = [Diagnostics.Stopwatch]::StartNew()
+            $claves = Install-DictionaryReverseIndex -Index $i -Source $origen -DictionaryDir $paths.DictionaryDir
+            Write-Host ("    indice inverso {0}: {1} palabras en {2:N1} s" -f $i.Pair, $claves, $reloj.Elapsed.TotalSeconds) -ForegroundColor DarkGray
+        } catch {
+            Write-Host ("    no se pudo armar el indice inverso {0}: {1}" -f $i.Pair, $_.Exception.Message) -ForegroundColor Yellow
+            $ok = $false
+        }
+    }
+    return $ok
+}
+
 # Lo que se ve aqui queda tambien en un archivo, para poder ver despues que fallo
 # (por ejemplo, en el equipo de otra persona).
 if (-not (Test-Path -LiteralPath $paths.RuntimeDir)) {
@@ -586,7 +674,7 @@ try {
     Write-Host 'Read Aloud - instalacion' -ForegroundColor White
     Write-Host ("Carpeta destino: {0}" -f $paths.BaseDir) -ForegroundColor Gray
 
-    if (-not $OnlyTranslation) {
+    if (-not $OnlyTranslation -and -not $OnlyDictionary) {
         Write-Step 'Motor Piper'
         Install-Piper
 
@@ -607,11 +695,21 @@ try {
     }
 
     # La traduccion va despues de las voces: si falla, la lectura funciona.
-    if (-not $SkipTranslation) {
+    if (-not $SkipTranslation -and -not $OnlyDictionary) {
         if (-not (Install-Translation)) {
             $exitCode = 2
             Write-Host ''
             Write-Host 'La lectura funciona, pero alguna parte de la traduccion no se pudo instalar (arriba esta el motivo).' -ForegroundColor Yellow
+            Write-Host 'Se puede reintentar: menu Inicio, "Instalar o reparar las voces", o .\setup.ps1' -ForegroundColor Yellow
+        }
+    }
+
+    # El diccionario, al final: si falla, la lectura y la traduccion funcionan.
+    if (-not $SkipDictionary -and -not $OnlyTranslation) {
+        if (-not (Install-Dictionary)) {
+            $exitCode = 2
+            Write-Host ''
+            Write-Host 'La lectura funciona, pero alguna parte del diccionario no se pudo instalar (arriba esta el motivo).' -ForegroundColor Yellow
             Write-Host 'Se puede reintentar: menu Inicio, "Instalar o reparar las voces", o .\setup.ps1' -ForegroundColor Yellow
         }
     }

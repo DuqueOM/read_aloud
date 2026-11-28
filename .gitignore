@@ -4,6 +4,8 @@ read_aloud_piper/voices/
 read_aloud_piper/tmp/
 # Traductores y sus modelos (ADR 0016): tambien los instala setup.ps1
 read_aloud_piper/traduccion/
+# El diccionario del panel (ADR 0017): tambien lo instala setup.ps1
+read_aloud_piper/diccionario/
 
 # Ajustes propios de este equipo (rutas locales): ver docs/configuracion.md
 config/settings.local.psd1
