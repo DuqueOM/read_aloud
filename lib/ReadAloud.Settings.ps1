@@ -361,6 +361,76 @@ $xamlAjustes = @'
           <TextBlock Style="{StaticResource Nota}"
                      Text="Los cambios de pausa se notan desde la próxima lectura."/>
 
+          <TextBlock Style="{StaticResource Seccion}" Text="TRADUCCIÓN"/>
+          <TextBlock x:Name="TraduccionNota" Style="{StaticResource Nota}"/>
+          <StackPanel x:Name="TraduccionOpciones">
+            <TextBlock Style="{StaticResource Etiqueta}" Text="Traducción rápida"/>
+            <WrapPanel>
+              <RadioButton GroupName="Traducir" Tag="True" Content="Sí"/>
+              <RadioButton GroupName="Traducir" Tag="False" Content="No"/>
+            </WrapPanel>
+            <StackPanel x:Name="TraduccionDetalle">
+              <StackPanel x:Name="TradCalidadFila">
+                <TextBlock Style="{StaticResource Etiqueta}" Text="Calidad de la traducción"/>
+                <WrapPanel>
+                  <RadioButton GroupName="TradCalidad" Tag="auto" Content="Automática"
+                               ToolTip="La mejor que cabe en el equipo en ese momento"/>
+                  <RadioButton x:Name="TradBasica" GroupName="TradCalidad" Tag="basic" Content="Básica"/>
+                  <RadioButton x:Name="TradAlta" GroupName="TradCalidad" Tag="high" Content="Alta"/>
+                </WrapPanel>
+                <TextBlock Style="{StaticResource Nota}" Text="Básica traduce al instante y literal; Alta usa un modelo de lenguaje, más natural, que tarda uno o dos segundos más."/>
+              </StackPanel>
+              <StackPanel x:Name="TradPrioridadFila">
+                <TextBlock Style="{StaticResource Etiqueta}" Text="Prioridad de la tarjeta gráfica"/>
+                <WrapPanel>
+                  <RadioButton GroupName="TradPrioridad" Tag="auto" Content="Automática"/>
+                  <RadioButton GroupName="TradPrioridad" Tag="voice" Content="Voz propia"/>
+                  <RadioButton GroupName="TradPrioridad" Tag="translation" Content="Traductor"/>
+                </WrapPanel>
+                <TextBlock Style="{StaticResource Nota}" Text="La voz propia y el mejor traductor no caben juntos en la tarjeta. Con Voz propia se traduce con lo que quepa a su lado; con Traductor la voz propia cede la tarjeta y se lee con Piper; Automática elige lo más equilibrado."/>
+                <TextBlock Style="{StaticResource Etiqueta}" Text="Volver sola a la voz propia"/>
+                <WrapPanel>
+                  <RadioButton GroupName="TradVuelta" Tag="True" Content="Sí"/>
+                  <RadioButton GroupName="TradVuelta" Tag="False" Content="No"/>
+                </WrapPanel>
+                <StackPanel x:Name="TradMinutosFila">
+                  <TextBlock Style="{StaticResource Etiqueta}" Text="Tras este tiempo sin traducir"/>
+                  <WrapPanel>
+                    <RadioButton GroupName="TradMinutos" Tag="5" Content="5 min"/>
+                    <RadioButton GroupName="TradMinutos" Tag="10" Content="10 min"/>
+                    <RadioButton GroupName="TradMinutos" Tag="15" Content="15 min"/>
+                    <RadioButton GroupName="TradMinutos" Tag="30" Content="30 min"/>
+                  </WrapPanel>
+                </StackPanel>
+                <TextBlock Style="{StaticResource Nota}" Text="Nunca vuelve a mitad de una lectura. También se vuelve a mano desde el reproductor o la bandeja."/>
+              </StackPanel>
+              <TextBlock Style="{StaticResource Etiqueta}" Text="Modo práctica"/>
+              <WrapPanel>
+                <RadioButton GroupName="TradPractica" Tag="True" Content="Sí"/>
+                <RadioButton GroupName="TradPractica" Tag="False" Content="No"/>
+              </WrapPanel>
+              <TextBlock Style="{StaticResource Nota}" Text="Con un texto en inglés, lee el original y muestra la traducción debajo."/>
+              <StackPanel x:Name="TradModeloFila">
+                <TextBlock Style="{StaticResource Etiqueta}" Text="Avanzado: modelo"/>
+                <WrapPanel x:Name="TradModelos">
+                  <RadioButton GroupName="TradModelo" Tag="" Content="Automático"/>
+                </WrapPanel>
+              </StackPanel>
+              <StackPanel x:Name="TradDondeFila">
+                <TextBlock Style="{StaticResource Etiqueta}" Text="Avanzado: dónde corre el modelo"/>
+                <WrapPanel>
+                  <RadioButton GroupName="TradDonde" Tag="auto" Content="Automático"/>
+                  <RadioButton x:Name="TradDondeGpu" GroupName="TradDonde" Tag="gpu" Content="Tarjeta gráfica"/>
+                  <RadioButton GroupName="TradDonde" Tag="cpu" Content="Procesador"/>
+                </WrapPanel>
+              </StackPanel>
+              <TextBlock Style="{StaticResource Etiqueta}" Text="Medir este equipo"/>
+              <TextBlock Style="{StaticResource Nota}" Text="Prueba de uno o dos minutos que mide cuánto tarda cada traductor que cabe en este equipo, para que Automática elija mejor. Usa el procesador y la tarjeta mientras tanto."/>
+              <Button x:Name="BtnMedir" Content="Medir este equipo" Padding="12,5" Margin="0,6,0,0" HorizontalAlignment="Left" Background="#14FFFFFF"/>
+              <TextBlock x:Name="MedirNota" Style="{StaticResource Nota}"/>
+            </StackPanel>
+          </StackPanel>
+
           <TextBlock Style="{StaticResource Seccion}" Text="PRONUNCIACIÓN"/>
           <TextBlock Style="{StaticResource Nota}"
                      Text="Aquí está todo lo que cambia cómo suenan las palabras: el diccionario de fábrica y tus correcciones. Elige el idioma del texto y la voz que quieres afinar, busca la palabra (o escribe una nueva), cámbiala y pulsa Probar. Guardar la aplica a la lectura siguiente."/>
@@ -448,7 +518,10 @@ foreach ($nombre in @('Titulo', 'Cerrar', 'Scroll', 'Opacidad', 'OpacidadValor',
                       'AtajosFilas', 'BtnAtajosRestablecer', 'AtajosAviso', 'AcercaVersion', 'BtnDiagnostico', 'BtnActualizar', 'BtnGitHub',
                       'ActualizarNota', 'BtnInstalarUpdate',
                       'TerminoPalabra', 'TerminoDice', 'TerminoDiceEtiqueta', 'BtnTerminoProbar', 'BtnTerminoGuardar',
-                      'BtnTerminoQuitar', 'TerminoNota', 'DicMotorNota', 'DicBuscar', 'DicLista', 'DicConteo')) {
+                      'BtnTerminoQuitar', 'TerminoNota', 'DicMotorNota', 'DicBuscar', 'DicLista', 'DicConteo',
+                      'TraduccionNota', 'TraduccionOpciones', 'TraduccionDetalle', 'TradCalidadFila', 'TradBasica', 'TradAlta',
+                      'TradPrioridadFila', 'TradMinutosFila', 'TradModeloFila', 'TradModelos', 'TradDondeFila', 'TradDondeGpu',
+                      'BtnMedir', 'MedirNota')) {
     $aj[$nombre] = $ajustesVentana.FindName($nombre)
 }
 
@@ -530,6 +603,97 @@ function Update-RendimientoNota {
     }
 }
 
+function Update-TraduccionPanel {
+    # Solo se ve lo que el equipo puede usar: sin traductor instalado, un aviso;
+    # Básica y Alta segun lo instalado; la prioridad de la tarjeta, si la voz
+    # propia y el mejor traductor no caben juntos (lo dice el hilo de
+    # traduccion); el modelo, con mas de uno; la tarjeta, con NVIDIA.
+    $s = $sync.TranslateStatus
+    $instalados = [string[]]@()
+    if ($null -ne $s -and $null -ne $s.Installed) { $instalados = [string[]]$s.Installed }
+    if ($instalados.Count -eq 0) {
+        $instalados = [string[]]@(Get-InstalledTranslators -TranslateDir $paths.TranslateDir | ForEach-Object { [string]$_.Id })
+    }
+    $hayBasico = $instalados -contains 'bergamot'
+    $modelos = @($instalados | Where-Object { $_ -ne 'bergamot' })
+
+    if ($instalados.Count -eq 0) {
+        $aj.TraduccionOpciones.Visibility = 'Collapsed'
+        $aj.TraduccionNota.Text = (T 'No hay ningún traductor instalado. «Instalar o reparar las voces», en el menú Inicio, también instala la traducción.')
+        return
+    }
+    $aj.TraduccionOpciones.Visibility = 'Visible'
+    $atajo = [string](Get-ConfiguredHotkeys -Settings $settings).translate
+    if ($atajo) {
+        $aj.TraduccionNota.Text = (T 'Selecciona un texto en inglés o en español y pulsa {0}: se traduce al otro idioma y se lee. Funciona sin conexión.') -f $atajo
+    } else {
+        $aj.TraduccionNota.Text = (T 'El atajo de traducir está desactivado: ponle uno en Atajos de teclado.')
+    }
+
+    $aj.TraduccionDetalle.Visibility = $(if ([bool]$settings.Translate) { 'Visible' } else { 'Collapsed' })
+    $aj.TradBasica.Visibility = $(if ($hayBasico) { 'Visible' } else { 'Collapsed' })
+    $aj.TradAlta.Visibility = $(if ($modelos.Count -gt 0) { 'Visible' } else { 'Collapsed' })
+    $aj.TradCalidadFila.Visibility = $(if ($hayBasico -and $modelos.Count -gt 0) { 'Visible' } else { 'Collapsed' })
+    $aj.TradPrioridadFila.Visibility = $(if ($null -ne $s -and [bool]$s.PriorityNeeded) { 'Visible' } else { 'Collapsed' })
+    # Los minutos solo se cambian con la vuelta activada.
+    $aj.TradMinutosFila.IsEnabled = [bool]$settings.TranslateAutoReturn
+    $aj.TradMinutosFila.Opacity = $(if ([bool]$settings.TranslateAutoReturn) { 1.0 } else { 0.45 })
+    foreach ($opcion in $aj.TradModelos.Children) {
+        if ([string]$opcion.Tag -ne '') { $opcion.Visibility = $(if ($instalados -contains [string]$opcion.Tag) { 'Visible' } else { 'Collapsed' }) }
+    }
+    $aj.TradModeloFila.Visibility = $(if ($modelos.Count -gt 1) { 'Visible' } else { 'Collapsed' })
+    $aj.TradDondeFila.Visibility = $(if ($modelos.Count -gt 0) { 'Visible' } else { 'Collapsed' })
+    $aj.TradDondeGpu.Visibility = $(if ($vramGB -gt 0) { 'Visible' } else { 'Collapsed' })
+    Update-MedirNota
+}
+
+$script:midiendo = $false
+$script:medirError = ''
+
+function Update-MedirNota {
+    # El estado de "Medir este equipo": midiendo, el error, o cuando se midio.
+    param($Evento = $null)
+
+    if ($null -ne $Evento) {
+        switch ([string]$Evento.State) {
+            'start' { $script:midiendo = $true }
+            'done'  { $script:midiendo = $false }
+            'error' { $script:midiendo = $false; $script:medirError = [string]$Evento.Error }
+        }
+    }
+    $aj.BtnMedir.IsEnabled = -not $script:midiendo
+    if ($script:midiendo) {
+        $aj.MedirNota.Text = (T 'Midiendo... puede tardar unos minutos.')
+        return
+    }
+    if ($script:medirError) {
+        $aj.MedirNota.Text = (T 'No se pudo medir: {0}') -f $script:medirError
+        $script:medirError = ''
+        return
+    }
+    $archivo = Join-Path $paths.RuntimeDir 'perfil_equipo.json'
+    $perfil = $null
+    if ([IO.File]::Exists($archivo)) {
+        try { $perfil = [IO.File]::ReadAllText($archivo) | ConvertFrom-Json } catch { $perfil = $null }
+    }
+    if ($null -ne $perfil -and $perfil.fecha) {
+        $n = @($perfil.combinaciones.PSObject.Properties).Count
+        $aj.MedirNota.Text = (T 'Medido el {0}: {1} combinaciones.') -f $perfil.fecha, $n
+    } else {
+        $aj.MedirNota.Text = (T 'Sin medir: se usan las cifras de un equipo de referencia.')
+    }
+}
+
+function Start-DeviceMeasure {
+    # El boton de los ajustes y la orden "measure" de la tuberia.
+    if ($script:midiendo) { return }
+    $script:midiendo = $true
+    $sync.TranslateJobs.Enqueue(@{ Kind = 'measure'; Id = 0 })
+    [void]$sync.TranslateSignal.Set()
+    Write-DaemonLog 'Medir este equipo: pedido.'
+    Update-MedirNota
+}
+
 function Update-PlayerLayout {
     if ($window.IsVisible) {
         $window.UpdateLayout()
@@ -564,6 +728,16 @@ $gruposAjustes = @{
     Cerrar      = @{ Clave = 'PlayerAutoClose'; Tipo = 'bool' }
     Salto       = @{ Clave = 'SkipSeconds'; Tipo = 'double'; Aplicar = { param($v) Update-SkipLabels } }
     Idioma      = @{ Clave = 'FallbackLanguage' }
+    # Traduccion (ADR 0016): el hilo de traduccion lee $translateConfig en cada
+    # traduccion y en cada revision, asi que se aplica al momento.
+    Traducir      = @{ Clave = 'Translate'; Tipo = 'bool'; Aplicar = { param($v) $translateConfig.Enabled = [bool]$v; Update-TraduccionPanel; Update-TranslateButtons } }
+    TradCalidad   = @{ Clave = 'TranslateQuality'; Aplicar = { param($v) $translateConfig.Quality = [string]$v } }
+    TradPrioridad = @{ Clave = 'TranslatePriority'; Aplicar = { param($v) $translateConfig.Priority = [string]$v } }
+    TradVuelta    = @{ Clave = 'TranslateAutoReturn'; Tipo = 'bool'; Aplicar = { param($v) $translateConfig.AutoReturn = [bool]$v; Update-TraduccionPanel } }
+    TradMinutos   = @{ Clave = 'TranslateReturnMinutes'; Tipo = 'double'; Aplicar = { param($v) $translateConfig.ReturnMinutes = [double]$v } }
+    TradPractica  = @{ Clave = 'TranslatePractice'; Tipo = 'bool' }
+    TradModelo    = @{ Clave = 'TranslateModel'; Aplicar = { param($v) $translateConfig.Model = [string]$v } }
+    TradDonde     = @{ Clave = 'TranslateDevice'; Aplicar = { param($v) $translateConfig.Where = [string]$v } }
     DicIdioma   = @{ Clave = ''; Defecto = 'es'; Aplicar = { param($v) $script:dicIdioma = $v; Update-DicLista } }
     DicMotor    = @{ Clave = ''; Defecto = 'piper'; Aplicar = { param($v) $script:dicMotor = $v; Update-DicLista } }
 }
@@ -619,6 +793,22 @@ foreach ($modelo in $instaladas) {
     $opcion.Content = $etiqueta
     $opcion.ToolTip = $nombreVoz
     [void]$caja.Children.Add($opcion)
+}
+
+# "Alta" comparte clave con "alta" (la calidad de las voces de Piper, en
+# minuscula) en la tabla de textos, que no distingue mayusculas.
+if ((Get-UiLanguage) -eq 'en') { $aj.TradAlta.Content = 'High' }
+
+# Los modelos de lenguaje del catalogo, para la seccion avanzada de la
+# traduccion. Update-TraduccionPanel deja a la vista solo los instalados.
+$nombresModelo = @{ 'hymt2-1.8b' = 'Hy-MT2 1.8B'; 'hymt2-7b' = 'Hy-MT2 7B'; 'translategemma-4b' = 'TranslateGemma 4B' }
+foreach ($modelo in @(Get-TranslatorCatalog | Where-Object { $_.Engine -eq 'llama' })) {
+    $opcion = New-Object Windows.Controls.RadioButton
+    $opcion.GroupName = 'TradModelo'
+    $opcion.Tag = [string]$modelo.Id
+    $opcion.Content = $(if ($nombresModelo.ContainsKey($modelo.Id)) { $nombresModelo[$modelo.Id] } else { [string]$modelo.Id })
+    $opcion.Visibility = 'Collapsed'
+    [void]$aj.TradModelos.Children.Add($opcion)
 }
 
 foreach ($opcion in @(Get-OpcionesAjuste $ajustesVentana)) {
@@ -732,6 +922,7 @@ function Show-SettingsWindow {
     }
     Update-MotorNota
     Update-RendimientoNota
+    Update-TraduccionPanel
     Update-AtajosLista
     Update-DicLista
     $aj.AcercaVersion.Text = 'Read Aloud ' + (Get-ReadAloudVersion -Root $paths.Root)
@@ -935,6 +1126,8 @@ $ajustesVentana.Add_PreviewKeyDown({
 
 # Si se sale de la ventana a medias, se deja todo como estaba.
 $ajustesVentana.Add_Deactivated({ Stop-HotkeyRecording })
+
+$aj.BtnMedir.Add_Click({ Start-DeviceMeasure })
 
 $aj.BtnAtajosRestablecer.Add_Click({
     Stop-HotkeyRecording

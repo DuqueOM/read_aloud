@@ -867,6 +867,26 @@ $translateScript = {
         NextCheck       = [DateTime]::UtcNow
         NextRoomCheck   = [DateTime]::UtcNow
         NextCacheClean  = [DateTime]::UtcNow.AddSeconds(60)
+        # Lo que los ajustes necesitan saber para mostrar solo lo que el
+        # equipo puede usar (ver Update-TranslateCapabilities).
+        NextCaps        = [DateTime]::UtcNow
+        PriorityNeeded  = $false
+        Installed       = [string[]]@()
+        HasNvidia       = $false
+    }
+
+    function Update-TranslateCapabilities {
+        # Que traductores hay, si hay tarjeta NVIDIA y si la prioridad de la
+        # tarjeta tiene sentido: la voz propia y el mejor traductor no caben
+        # juntos. Una vez que no cupieron, la opcion queda a la vista en toda
+        # la sesion, para que no aparezca y desaparezca con la RAM libre.
+        $instalados = @(Get-InstalledTranslators -TranslateDir $tcfg.TranslateDir)
+        $equipo = Get-DeviceNow
+        if (-not $t.PriorityNeeded -and $instalados.Count -gt 0) {
+            $t.PriorityNeeded = Test-PriorityChoiceNeeded -Translators $instalados -Device $equipo -Voice (Get-VoiceSnapshot)
+        }
+        $t.Installed = [string[]]@($instalados | ForEach-Object { [string]$_.Id })
+        $t.HasNvidia = ([double]$equipo.GpuFreeMiB -ge 0)
     }
 
     function Write-TranslateLog {
@@ -1258,6 +1278,68 @@ $translateScript = {
         }
     }
 
+    function Invoke-DeviceMeasure {
+        # "Medir este equipo": cuanto tarda cada traductor que cabe ahora en
+        # traducir la primera frase (la mediana de tres, ya cargado), con la
+        # voz que haya, sin hacerla ceder. El primer sonido de la voz sale de
+        # las lecturas normales de daemon.log. El resultado va a
+        # runtime\perfil_equipo.json, que Automatica usa en vez de las cifras
+        # del ADR 0016.
+        $reloj = [Diagnostics.Stopwatch]::StartNew()
+        Write-TranslateLog 'Medir este equipo: empieza.'
+        Send-TranslateEvent @{ Kind = 'measure'; State = 'start' }
+
+        $instalados = @(Get-InstalledTranslators -TranslateDir $tcfg.TranslateDir)
+        if ($instalados.Count -eq 0) { throw 'no hay ningun traductor instalado' }
+        $opciones = Get-TranslateOptions -Overrides @{}
+        $frases = [string[]](Get-MeasureSentences)
+        $medidos = New-Object System.Collections.Generic.List[object]
+
+        foreach ($tr in $instalados) {
+            $lugares = @('cpu')
+            if ($tr.Engine -eq 'llama') { $lugares = @('cpu', 'gpu') }
+            foreach ($w in $lugares) {
+                $estado = Get-VoiceSnapshot
+                $voz = $(if ($estado.QwenAvailable -and -not $sync.QwenHold) { 'qwen' } else { 'piper' })
+                $id = Get-ComboId -Voice $voz -Translator $tr.Id -Where $w
+                if ($id -ne (Get-LoadedComboId)) {
+                    $cabe = Test-TranslatorFits -Translator $tr -Where $w -Device (Get-DeviceNow) -Voice $estado -VoiceName $voz
+                    if (-not $cabe.Fits) {
+                        Write-TranslateLog ('Medir este equipo: {0} no cabe ahora ({1}).' -f $id, $cabe.Reason)
+                        continue
+                    }
+                }
+                try {
+                    $combo = Use-Combo -Combo @{ Id = $id; Voice = $voz; Translator = $tr; Where = $w } -Options $opciones -Translators $instalados -Number 0
+                    # La primera vez calienta el modelo; no se cuenta.
+                    [void](Invoke-PartTranslation -Combo $combo -Text 'Hello.' -Source 'en' -Target 'es')
+                    $tiempos = [double[]]@(foreach ($frase in $frases) {
+                        $r = [Diagnostics.Stopwatch]::StartNew()
+                        [void](Invoke-PartTranslation -Combo $combo -Text $frase -Source 'en' -Target 'es')
+                        $r.Elapsed.TotalSeconds
+                    })
+                    $segundos = Get-Median -Values $tiempos
+                    [void]$medidos.Add(@{ Translator = $tr; Where = $w; Seconds = $segundos })
+                    Write-TranslateLog ('Medir este equipo: {0} traduce la primera frase en {1:N2} s.' -f $id, $segundos)
+                } catch {
+                    Write-TranslateLog ('Medir este equipo: {0} fallo ({1}).' -f $id, $_.Exception.Message)
+                }
+            }
+        }
+        $t.LastTranslation = [DateTime]::Now
+
+        $lineas = [string[]]@()
+        try { $lineas = [IO.File]::ReadAllLines($tcfg.LogFile) } catch { }
+        # La voz cuenta con su cifra de referencia; lo que tarda en el uso
+        # diario queda en el perfil como dato (ver Get-ReferenceVoiceFirstSound).
+        $diario = Get-VoiceFirstSoundFromLog -Lines $lineas
+        $perfil = New-DeviceProfile -Measured $medidos.ToArray() -VoiceFirstSound (Get-ReferenceVoiceFirstSound) -ObservedVoice $diario -QwenAvailable ([bool](Get-VoiceSnapshot).QwenAvailable)
+        [IO.File]::WriteAllText($tcfg.ProfileFile, (ConvertTo-Json -InputObject $perfil -Depth 6), (New-Object Text.UTF8Encoding($false)))
+        Write-TranslateLog ('Medir este equipo: {0} combinaciones en {1:N0} s. En el uso diario el primer sonido tarda {2:N2} s con la voz propia ({3} lecturas) y {4:N2} s con Piper ({5}). Guardado en perfil_equipo.json.' -f
+            $perfil.combinaciones.Count, $reloj.Elapsed.TotalSeconds, $diario.qwen.Seconds, $diario.qwen.Samples, $diario.piper.Seconds, $diario.piper.Samples)
+        Send-TranslateEvent @{ Kind = 'measure'; State = 'done'; Count = $perfil.combinaciones.Count; Seconds = $reloj.Elapsed.TotalSeconds }
+    }
+
     function Invoke-TranslateMaintenance {
         $ahora = [DateTime]::Now
 
@@ -1333,14 +1415,22 @@ $translateScript = {
             [void](Clear-ExpiredTranslations -Memory $memoria -Minutes ([double]$tcfg.CacheMinutes))
         }
 
+        if ([DateTime]::UtcNow -ge $t.NextCaps) {
+            $t.NextCaps = [DateTime]::UtcNow.AddSeconds(60)
+            try { Update-TranslateCapabilities } catch { Write-TranslateLog ('No se pudo revisar que traductores hay: {0}' -f $_.Exception.Message) }
+        }
+
         # Para el reproductor: el aviso de la vuelta a la voz propia y el
-        # cambio a mano.
+        # cambio a mano. Para los ajustes: que se puede usar.
         $sync.TranslateStatus = @{
             VoiceHeld         = [bool]$sync.QwenHold
             Server            = $(if ($t.Server) { '{0}@{1}' -f $t.Server.Id, $t.Server.Where } else { '' })
             Bergamot          = (Test-BergamotAlive)
             ReturnActive      = [bool]$vuelta.Active
             ReturnSecondsLeft = [double]$vuelta.SecondsLeft
+            Installed         = $t.Installed
+            PriorityNeeded    = [bool]$t.PriorityNeeded
+            HasNvidia         = [bool]$t.HasNvidia
         }
     }
 
@@ -1355,6 +1445,12 @@ $translateScript = {
             try {
                 switch ([string]$job.Kind) {
                     'translate' { Invoke-TranslateJob -Job $job }
+                    'measure' {
+                        try { Invoke-DeviceMeasure } catch {
+                            Write-TranslateLog ('Medir este equipo: no se pudo ({0}).' -f $_.Exception.Message)
+                            Send-TranslateEvent @{ Kind = 'measure'; State = 'error'; Error = $_.Exception.Message }
+                        }
+                    }
                     'voice' { Restore-Voice -Why 'se pidio a mano' }
                     'unload' {
                         Stop-TranslateServer -Why 'se pidio a mano'
@@ -3638,6 +3734,12 @@ function Receive-TranslateEvent {
         Write-DaemonLog ('Traduccion {0} ({1} -> {2}): {3}' -f $Evento.Id, $Evento.Source, $Evento.Target, ($texto -replace '(\r?\n)+', ' / '))
     }
 
+    if ($tipo -eq 'measure') {
+        Write-DaemonLog ('Medir este equipo: {0}.' -f $Evento.State)
+        Update-MedirNota -Evento $Evento
+        return
+    }
+
     if ($tipo -eq 'voice') {
         # La voz propia vuelve: el aviso lo dice unos segundos, mientras carga.
         if ([string]$Evento.State -eq 'returned') { $script:voiceBackUntil = [DateTime]::UtcNow.AddSeconds(15) }
@@ -3760,6 +3862,9 @@ $timer.Add_Tick({
             # La de uso: traduce, abre el panel y lee la traduccion (el atajo
             # de traducir y read_aloud.ps1 -Translate la mandan).
             'translate-read' { Start-TranslationRequest -Text ([string]$request.text) }
+            # "Medir este equipo" (ajustes, la tarea del instalador y
+            # read_aloud.ps1 -MeasureDevice).
+            'measure' { Start-DeviceMeasure }
             'translate-voice' {
                 $sync.TranslateJobs.Enqueue(@{ Kind = 'voice'; Id = 0 })
                 [void]$sync.TranslateSignal.Set()

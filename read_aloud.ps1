@@ -13,6 +13,7 @@
 #   .\read_aloud.ps1                       Lee el portapapeles
 #   .\read_aloud.ps1 -InputText "Hola"     Lee un texto concreto
 #   .\read_aloud.ps1 -Translate            Traduce el portapapeles (ingles <-> espanol) y lee la traduccion
+#   .\read_aloud.ps1 -MeasureDevice        Mide los traductores de este equipo (unos minutos)
 #   .\read_aloud.ps1 -Stop                 Detiene la lectura
 #   .\read_aloud.ps1 -Toggle               Pausa o continua
 #   .\read_aloud.ps1 -Quit                 Cierra Read Aloud del todo
@@ -31,6 +32,7 @@ param(
     [string]$InputText = '',
 
     [switch]$Translate,
+    [switch]$MeasureDevice,
     [switch]$Stop,
     [switch]$Toggle,
     [switch]$Quit,
@@ -94,6 +96,21 @@ if ($ShowSettings) {
         }
     }
     [void](Send-ReadAloudCommand -PipeName $paths.PipeName -Command @{ cmd = 'settings' })
+    exit 0
+}
+
+if ($MeasureDevice) {
+    # "Medir este equipo" de la traduccion (docs\adr\0016): la hace el proceso
+    # residente, que se arranca si hace falta; el resultado va a
+    # read_aloud_piper\runtime\perfil_equipo.json.
+    if (-not (Test-DaemonRunning -PipeName $paths.PipeName)) {
+        if (-not (Start-ReadAloudDaemon -Paths $paths)) {
+            Write-Host 'No pude arrancar Read Aloud. Revisa read_aloud_piper\runtime\daemon.log' -ForegroundColor Yellow
+            exit 1
+        }
+    }
+    [void](Send-ReadAloudCommand -PipeName $paths.PipeName -Command @{ cmd = 'measure' } -TimeoutMs 2000)
+    Write-Host 'Midiendo el equipo en segundo plano; el resultado queda en daemon.log y en los ajustes.' -ForegroundColor Green
     exit 0
 }
 
