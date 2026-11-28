@@ -31,6 +31,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wait with the group that caused it (`-Esperas`) and applies the rule from
   pull request #8 for smaller groups or falling back to Piper.
 
+### Fixed
+
+- A long sentence was split at the colon of a time or a ratio, so "son las
+  3:30 en la sede" became "... son las 3:" and "30 en la sede", and the voice
+  read "3", paused with a falling, end-of-sentence tone and then read "30".
+  The same could happen at the dash of a range ("1990–2000"). A colon,
+  semicolon, comma or dash between two digits is no longer a place to split
+  (3:30, 10:45, 1:2, 2,5, 1990–2000); decimal commas and thousands dots
+  (3,5, 1.000) were already kept whole and now have tests.
+
 ## [1.4.0] - 2026-11-28
 
 Quick offline translation between English and Spanish, read aloud with the

@@ -75,10 +75,57 @@ Describe 'Split-LongText' {
         @($piezas | Where-Object { $_ -match '\d,$' }).Count | Should -Be 0
     }
 
+    It 'no corta en los dos puntos de una hora o una proporcion: <Cifra>' -ForEach @(
+        @{ Cifra = '3:30' }
+        @{ Cifra = '10:45' }
+        @{ Cifra = '1:2' }
+        @{ Cifra = '12:05:30' }
+    ) {
+        # La cifra cae justo antes del tope: antes se cortaba en su ":".
+        $texto = 'uno dos tres cuatro, cinco seis siete ocho a las ' + $Cifra + ' nueve diez once doce trece catorce quince dieciseis'
+        $piezas = @(Split-LongText -Text $texto -Limits @(60))
+        $piezas.Count | Should -BeGreaterThan 1
+        @($piezas | Where-Object { $_ -match '\d:$' }).Count | Should -Be 0
+        @($piezas | Where-Object { $_.Contains($Cifra) }).Count | Should -Be 1
+        ($piezas -join ' ') | Should -BeExactly $texto
+    }
+
+    It 'con una hora y otros dos puntos antes, corta en los de antes' {
+        $texto = 'Primer parrafo de prueba, con una cifra: son las 3:30 en la sede de la ONU.'
+        $piezas = @(Split-LongText -Text $texto -Limits @(70, 105, 180))
+        $piezas.Count | Should -Be 2
+        $piezas[0] | Should -BeExactly 'Primer parrafo de prueba, con una cifra:'
+        $piezas[1] | Should -BeExactly 'son las 3:30 en la sede de la ONU.'
+    }
+
+    It 'no corta un numero con coma decimal o punto de miles: <Cifra>' -ForEach @(
+        @{ Cifra = '3,5' }
+        @{ Cifra = '1.000' }
+        @{ Cifra = '1.000.000' }
+        @{ Cifra = '2.500,75' }
+        @{ Cifra = '1,000' }
+    ) {
+        # Esto ya funcionaba: la coma entre cifras no es pausa y el punto no es
+        # punto de corte aqui. La prueba lo fija con la cifra justo antes del tope.
+        $texto = 'uno dos tres cuatro, cinco seis siete ocho son ' + $Cifra + ' nueve diez once doce trece catorce quince dieciseis'
+        $piezas = @(Split-LongText -Text $texto -Limits @(60))
+        $piezas.Count | Should -BeGreaterThan 1
+        @($piezas | Where-Object { $_.Contains($Cifra) }).Count | Should -Be 1
+        ($piezas -join ' ') | Should -BeExactly $texto
+    }
+
     It 'corta en una raya' {
         $texto = 'aaa bbb ccc ddd eee fff ' + $rayaLarga + ' ggg hhh iii jjj kkk lll mmm nnn ooo ppp qqq'
         $piezas = @(Split-LongText -Text $texto -Limits @(40))
         $piezas[0].EndsWith($rayaLarga) | Should -BeTrue
+    }
+
+    It 'no corta en la raya de un rango entre cifras' {
+        $rango = '1990' + $rayaLarga + '2000'
+        $texto = 'aaa bbb ccc ddd eee fff los anos ' + $rango + ' ggg hhh iii jjj kkk lll mmm nnn ooo ppp qqq'
+        $piezas = @(Split-LongText -Text $texto -Limits @(40))
+        @($piezas | Where-Object { $_.EndsWith($rayaLarga) }).Count | Should -Be 0
+        @($piezas | Where-Object { $_.Contains($rango) }).Count | Should -Be 1
     }
 
     It 'sin ninguna pausa natural no parte una frase que pasa poco del tope' {
@@ -165,6 +212,15 @@ Describe 'Build-SpeechPlan: arboles y frases largas' {
         $largos[0] | Should -BeLessOrEqual 70
         $largos[1] | Should -BeLessOrEqual 105
         @($largos | Where-Object { $_ -gt 180 }).Count | Should -Be 0
+    }
+
+    It 'una hora no queda partida entre dos fragmentos' {
+        $plan = Build-SpeechPlan -Text 'Primer parrafo de prueba, con una cifra: son las 3:30 en la sede de la ONU.'
+        @($plan.Chunks | ForEach-Object { $_.Display }) | Should -Be @(
+            'Primer parrafo de prueba, con una cifra:'
+            'son las 3:30 en la sede de la ONU.'
+        )
+        @($plan.Chunks | Where-Object { $_.Text -match '\d:\W*$' -or $_.Text -match '^\d' }).Count | Should -Be 0
     }
 
     It 'con -MaxChunkChars 0 no se parte nada' {
