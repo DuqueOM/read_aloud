@@ -477,7 +477,13 @@ function Test-TranslatorFits {
     if (-not $r.Fits) {
         $lugar = 'la tarjeta'
         if ($Where -ne 'gpu') { $lugar = 'la RAM' }
-        $r.Reason = ('en {0} necesita {1:N0} MiB y hay {2:N0}' -f $lugar, $necesita, $tiene)
+        # Lo que toma la voz propia puede dejar el saldo por debajo de cero:
+        # "y hay -4,524" confunde, asi que se dice que no queda nada.
+        if ($tiene -lt 0) {
+            $r.Reason = ('en {0} necesita {1:N0} MiB y no queda nada libre' -f $lugar, $necesita)
+        } else {
+            $r.Reason = ('en {0} necesita {1:N0} MiB y hay {2:N0}' -f $lugar, $necesita, $tiene)
+        }
     }
     return $r
 }

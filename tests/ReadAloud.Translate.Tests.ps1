@@ -385,6 +385,14 @@ Describe 'Eleccion del traductor' {
             $r.HaveMiB | Should -Be (7800 - 1434 - 5120)
         }
 
+        It 'si lo de la voz propia deja el saldo bajo cero, dice que no queda nada libre' {
+            $sinCargar = New-VoiceState -Available $true -Loaded $false
+            $r = Test-TranslatorFits -Translator $hy7 -Where 'gpu' -Device (New-AdrDevice -Gpu 2030) -Voice $sinCargar -VoiceName 'qwen'
+            $r.HaveMiB | Should -BeLessThan 0
+            $r.Fits | Should -BeFalse
+            $r.Reason | Should -BeLike 'en la tarjeta necesita * MiB y no queda nada libre'
+        }
+
         It 'procesador: 1.25 veces el archivo mas 1.5 GB' {
             $r = Test-TranslatorFits -Translator $hy18 -Where 'cpu' -Device (New-AdrDevice -Ram 2888) -Voice $conVoz -VoiceName 'qwen'
             $r.NeedMiB | Should -Be 2888

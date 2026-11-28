@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- When the own voice had given up the graphics card, the reason a translator
+  did not fit could read "needs 5,923 MiB and there are -4,524". It now says
+  that nothing is left.
+
 ## [1.4.1] - 2026-11-28
 
 An event log to see where and why a reading waits for its audio, and a
