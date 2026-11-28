@@ -152,6 +152,9 @@ function Stop-PiperInUse {
     # sobrescribirlas: la extraccion fallaba con "Acceso denegado" a medias y la
     # instalacion quedaba sin motor. Se cierran antes; el proceso residente los
     # vuelve a abrir solo cuando hace falta.
+    # En una carpeta de prueba (-PiperBaseDir) no corre nada nuestro: el lector
+    # de esta carpeta sigue con sus procesos.
+    if ($PiperBaseDir) { return }
     $script = Join-Path $PSScriptRoot 'parar_read_aloud.ps1'
     if (-not (Test-Path -LiteralPath $script)) { return }
     $cerrados = @(& $script -Root $PSScriptRoot -OnlyPiper)
