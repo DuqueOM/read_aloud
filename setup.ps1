@@ -11,8 +11,22 @@
 #                                que abren esta ventana y no queremos que el
 #                                error desaparezca antes de poder leerlo)
 #
-# Se descargan unos 200 MB la primera vez. Despues, nada. Todo lo que se ve aqui
-# queda tambien en read_aloud_piper\runtime\setup.log.
+# Traduccion (docs\adr\0016-traduccion-local.md), lo que baja config\traduccion.psd1:
+#   (sin nada)                   La basica (Bergamot, 112 MB), y repara la alta
+#                                o el 7B si ya estaban
+#   .\setup.ps1 -TranslationHigh Tambien la alta: Hy-MT2 1.8B y llama.cpp (1.17 GB)
+#   .\setup.ps1 -Translation7B   Tambien Hy-MT2 7B (4.6 GB), para la tarjeta grafica
+#   .\setup.ps1 -SkipTranslation Sin traduccion
+#   .\setup.ps1 -OnlyTranslation Solo la traduccion, sin el motor ni las voces
+#   .\setup.ps1 -LocalSource C:\carpeta   Toma los archivos de esa carpeta (con
+#                                su nombre original) en vez de bajarlos; se
+#                                comprueban igual
+#
+# Se descargan unos 200 MB la primera vez, mas la traduccion. Despues, nada.
+# Todo lo que se ve aqui queda tambien en read_aloud_piper\runtime\setup.log.
+#
+# Codigo de salida: 0 todo bien; 1 el motor o las voces fallaron; 2 las voces
+# estan bien pero alguna parte de la traduccion no se pudo instalar.
 #
 # Si algo falla, se puede volver a ejecutar sin riesgo: lo que ya esta no se
 # descarga otra vez.
@@ -22,14 +36,24 @@ param(
     [switch]$SkipEnglish,
     [switch]$Force,
     [switch]$NoStartupPrompt,
-    [switch]$PauseOnError
+    [switch]$PauseOnError,
+    [switch]$TranslationHigh,
+    [switch]$Translation7B,
+    [switch]$SkipTranslation,
+    [switch]$OnlyTranslation,
+    [string]$LocalSource = '',
+    # Para probar la instalacion en otra carpeta.
+    [string]$PiperBaseDir = ''
 )
 
 $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'lib\ReadAloud.Core.ps1')
+. (Join-Path $PSScriptRoot 'lib\ReadAloud.Text.ps1')
+. (Join-Path $PSScriptRoot 'lib\ReadAloud.Translate.ps1')
+. (Join-Path $PSScriptRoot 'lib\ReadAloud.Translators.ps1')
 
-$paths = Get-ReadAloudPaths
+$paths = Get-ReadAloudPaths -PiperBaseDir $PiperBaseDir
 $settings = Get-ReadAloudSettings -Paths $paths
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -65,12 +89,24 @@ function Get-RemoteFile {
     )
 
     $name = Split-Path -Leaf $Destination
-    Write-Host ("    descargando {0}" -f $name) -ForegroundColor Gray
 
     $directory = Split-Path -Parent $Destination
     if (-not (Test-Path -LiteralPath $directory)) {
         New-Item -ItemType Directory -Path $directory -Force | Out-Null
     }
+
+    # Con -LocalSource, el archivo se toma de esa carpeta, con el nombre que
+    # tiene en su origen (instalar sin conexion, o probar sin descargar).
+    if ($LocalSource) {
+        $local = Join-Path $LocalSource ([Uri]$Url).Segments[-1]
+        if (Test-Path -LiteralPath $local) {
+            Write-Host ("    copiando {0} de {1}" -f $name, $LocalSource) -ForegroundColor Gray
+            Copy-Item -LiteralPath $local -Destination $Destination -Force
+            return
+        }
+    }
+
+    Write-Host ("    descargando {0}" -f $name) -ForegroundColor Gray
 
     $temp = "$Destination.part"
     $last = $null
@@ -303,6 +339,235 @@ function Test-Installation {
     return $ok
 }
 
+# --------------------------------------------------------------------------
+# Traduccion (docs\adr\0016-traduccion-local.md).
+# --------------------------------------------------------------------------
+$translateCatalog = Read-PowerShellDataFile -Path (Join-Path $paths.ConfigDir 'traduccion.psd1')
+
+# Opciones de marian para los modelos de Mozilla (las que usa Firefox).
+# translateLocally busca los modelos en una carpeta models junto al .exe; cada
+# modelo es una carpeta con model_info.json y config.intgemm8bitalpha.yml.
+$bergamotConfig = @'
+models:
+  - {0}
+vocabs:
+  - {1}
+  - {1}
+shortlist:
+  - {2}
+  - false
+beam-size: 1
+normalize: 1.0
+word-penalty: 0
+max-length-break: 128
+mini-batch-words: 1024
+workspace: 128
+max-length-factor: 2.0
+skip-cost: true
+cpu-threads: 0
+quiet: true
+quiet-translation: true
+gemm-precision: int8shiftAlphaAll
+alignment: soft
+'@
+
+function Get-FileSha256 {
+    param([string]$Path)
+    return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+
+function Test-TranslationItem {
+    # Si una pieza ya esta instalada. Un archivo copiado tal cual se compara
+    # por su tamano; uno descomprimido, solo con que exista; un zip, con que
+    # este llama-server.exe.
+    param([hashtable]$Item)
+
+    $destino = Join-Path $paths.TranslateDir $Item.Destino
+    switch ($Item.Tipo) {
+        'zip' { return Test-Path -LiteralPath (Join-Path $destino 'llama-server.exe') }
+        'gz' { return Test-Path -LiteralPath $destino }
+        default { return (Test-Path -LiteralPath $destino) -and ((Get-Item -LiteralPath $destino).Length -eq [long]$Item.Bytes) }
+    }
+}
+
+function Assert-FreeSpace {
+    # Antes de bajar algo grande: el disco necesita el archivo, lo que ocupa
+    # al descomprimirlo y un margen.
+    param([long]$Bytes)
+
+    $raiz = [IO.Path]::GetPathRoot([IO.Path]::GetFullPath($paths.BaseDir))
+    $libre = (New-Object IO.DriveInfo($raiz)).AvailableFreeSpace
+    $necesita = (2 * $Bytes) + 512MB
+    if ($libre -lt $necesita) {
+        throw ('No hay sitio en el disco {0}: hacen falta {1:N1} GB y quedan {2:N1} GB.' -f $raiz, ($necesita / 1GB), ($libre / 1GB))
+    }
+}
+
+function Install-TranslationItem {
+    # Baja (o copia de -LocalSource) una pieza, comprueba su sha256 y la deja
+    # en su sitio. Lo que no coincide no se instala.
+    param([hashtable]$Item)
+
+    $destino = Join-Path $paths.TranslateDir $Item.Destino
+    $nombre = ([Uri]$Item.Url).Segments[-1]
+    if ((Test-TranslationItem -Item $Item) -and -not $Force) {
+        Write-Host ("    {0} ya estaba" -f $nombre) -ForegroundColor DarkGray
+        return
+    }
+
+    Assert-FreeSpace -Bytes ([long]$Item.Bytes)
+    $trabajo = Join-Path $paths.TranslateDir ('_descarga_' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
+    New-Item -ItemType Directory -Path $trabajo -Force | Out-Null
+    try {
+        $bajado = Join-Path $trabajo $nombre
+        Get-RemoteFile -Url $Item.Url -Destination $bajado
+
+        Write-Host '    comprobando el sha256' -ForegroundColor Gray
+        $hash = Get-FileSha256 -Path $bajado
+        if ($hash -ne ([string]$Item.Sha256).ToLowerInvariant()) {
+            throw ("{0} no es el archivo esperado (sha256 {1}, se esperaba {2}). No se instala." -f $nombre, $hash, $Item.Sha256)
+        }
+
+        $carpeta = Split-Path -Parent $destino
+        if ($Item.Tipo -ne 'zip' -and -not (Test-Path -LiteralPath $carpeta)) { New-Item -ItemType Directory -Path $carpeta -Force | Out-Null }
+
+        switch ($Item.Tipo) {
+            'gz' {
+                $parcial = $destino + '.part'
+                $entrada = [IO.File]::OpenRead($bajado)
+                try {
+                    $gz = New-Object IO.Compression.GZipStream($entrada, [IO.Compression.CompressionMode]::Decompress)
+                    $salida = [IO.File]::Create($parcial)
+                    try { $gz.CopyTo($salida) } finally { $salida.Dispose(); $gz.Dispose() }
+                } finally {
+                    $entrada.Dispose()
+                }
+                Move-Item -LiteralPath $parcial -Destination $destino -Force
+            }
+            'zip' {
+                # Se extrae aparte y se cambia de golpe: un llama.cpp a medias
+                # no sirve. Si el lector lo tiene abierto, se cierra antes.
+                $extraido = Join-Path $trabajo 'zip'
+                Expand-Archive -LiteralPath $bajado -DestinationPath $extraido -Force
+                if (-not (Test-Path -LiteralPath (Join-Path $extraido 'llama-server.exe'))) { throw 'El paquete de llama.cpp no trae llama-server.exe.' }
+                Stop-TranslatorsInUse
+                if (Test-Path -LiteralPath $destino) { Remove-Item -LiteralPath $destino -Recurse -Force }
+                Move-Item -LiteralPath $extraido -Destination $destino
+            }
+            default {
+                if ($Item.Id -eq 'translatelocally') { Stop-TranslatorsInUse }
+                Move-Item -LiteralPath $bajado -Destination $destino -Force
+            }
+        }
+        Write-Host ("    {0} instalado" -f $nombre) -ForegroundColor DarkGray
+    } finally {
+        if (Test-Path -LiteralPath $trabajo) { Remove-Item -LiteralPath $trabajo -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+}
+
+function Stop-TranslatorsInUse {
+    # Un llama-server o translateLocally de esta carpeta tiene sus archivos
+    # abiertos: se cierran, y el lector los vuelve a abrir cuando hagan falta.
+    try { [void](Stop-OrphanTranslators -TranslateDir $paths.TranslateDir) } catch { }
+}
+
+function Initialize-BergamotModels {
+    # Los dos modelos de Mozilla como modelos de translateLocally.
+    $nombres = @{ en = 'English'; es = 'Spanish' }
+    foreach ($par in @('en-es', 'es-en')) {
+        $origen, $destino = $par -split '-'
+        $carpeta = Join-Path $paths.TranslateDir "translateLocally\models\$par-base-memory"
+        $archivos = @(Get-ChildItem -LiteralPath $carpeta -File)
+        $modelo = ($archivos | Where-Object { $_.Name -like 'model.*' } | Select-Object -First 1).Name
+        $vocab = ($archivos | Where-Object { $_.Name -like 'vocab.*' } | Select-Object -First 1).Name
+        $lex = ($archivos | Where-Object { $_.Name -like 'lex.*' } | Select-Object -First 1).Name
+        if (-not $modelo -or -not $vocab -or -not $lex) { throw "Faltan archivos del modelo $par de Bergamot." }
+
+        $utf8 = New-Object Text.UTF8Encoding($false)
+        [IO.File]::WriteAllText((Join-Path $carpeta 'config.intgemm8bitalpha.yml'), ($bergamotConfig -f $modelo, $vocab, $lex), $utf8)
+        $info = [ordered]@{
+            modelName = '{0}-{1} base-memory' -f $nombres[$origen], $nombres[$destino]
+            shortName = "$par-base-memory"
+            type      = 'base-memory'
+            src       = $nombres[$origen]
+            trg       = $nombres[$destino]
+            srcTags   = @{ $origen = $nombres[$origen] }
+            trgTag    = $destino
+            version   = 1
+            API       = 1
+        }
+        [IO.File]::WriteAllText((Join-Path $carpeta 'model_info.json'), (ConvertTo-Json -InputObject $info), $utf8)
+    }
+}
+
+function Test-BergamotWorks {
+    # Una traduccion de prueba con translateLocally, como la hara el lector.
+    $exe = Join-Path $paths.TranslateDir 'translateLocally\translateLocally.exe'
+    $cliente = $null
+    try {
+        $cliente = Start-BergamotProcess -Exe $exe -Threads (Get-TranslatorThreads -PhysicalCores (Get-PhysicalCoreCount))
+        $texto = Invoke-BergamotTranslate -Client $cliente -Text 'The installation is complete.' -Source 'en' -Target 'es' -TimeoutMs 60000
+        Write-Host ("    prueba correcta: ""{0}""" -f $texto) -ForegroundColor Green
+        return $true
+    } catch {
+        Write-Host ("    la prueba de la traduccion fallo: {0}" -f $_.Exception.Message) -ForegroundColor Red
+        return $false
+    } finally {
+        if ($null -ne $cliente) { Stop-TranslatorProcess -Process $cliente.Process -Stdin $cliente.In }
+    }
+}
+
+function Install-TranslationLevel {
+    # Instala un nivel entero. Devuelve $true si quedo bien; si algo falla lo
+    # dice y sigue: la lectura no depende de la traduccion.
+    param([string]$Nombre, [object[]]$Items)
+
+    try {
+        foreach ($item in $Items) { Install-TranslationItem -Item $item }
+        return $true
+    } catch {
+        Write-Host ("    no se pudo instalar {0}: {1}" -f $Nombre, $_.Exception.Message) -ForegroundColor Yellow
+        return $false
+    }
+}
+
+function Install-Translation {
+    # La basica siempre (salvo -SkipTranslation). La alta y el 7B si se piden
+    # o si ya estaban, para que "Instalar o reparar" tambien los repare.
+    $ok = $true
+    if (-not (Test-Path -LiteralPath $paths.TranslateDir)) { New-Item -ItemType Directory -Path $paths.TranslateDir -Force | Out-Null }
+
+    Write-Step 'Traduccion basica (Bergamot, unos 112 MB)'
+    if (Install-TranslationLevel -Nombre 'la traduccion basica' -Items @($translateCatalog.Basica)) {
+        try {
+            Initialize-BergamotModels
+            if (-not (Test-BergamotWorks)) { $ok = $false }
+        } catch {
+            Write-Host ("    no se pudieron preparar los modelos de Bergamot: {0}" -f $_.Exception.Message) -ForegroundColor Yellow
+            $ok = $false
+        }
+    } else {
+        $ok = $false
+    }
+
+    $modelos = Join-Path $paths.TranslateDir 'modelos'
+    $tenia18 = Test-Path -LiteralPath (Join-Path $modelos 'Hy-MT2-1.8B-Q4_K_M.gguf')
+    $tenia7 = Test-Path -LiteralPath (Join-Path $modelos 'Hy-MT2-7B-Q4_K_M.gguf')
+    $teniaLlama = Test-Path -LiteralPath (Join-Path $paths.TranslateDir 'llama\llama-server.exe')
+
+    if ($TranslationHigh -or $Translation7B -or $tenia18 -or $teniaLlama) {
+        Write-Step 'Traduccion alta (Hy-MT2 1.8B y llama.cpp, unos 1.17 GB)'
+        Write-Host '    Hy-MT2 de Tencent, licencia Apache 2.0: https://huggingface.co/tencent/Hy-MT2-1.8B-GGUF' -ForegroundColor DarkGray
+        if (-not (Install-TranslationLevel -Nombre 'la traduccion alta' -Items @($translateCatalog.Alta))) { $ok = $false }
+    }
+    if ($Translation7B -or $tenia7) {
+        Write-Step 'Hy-MT2 7B para la tarjeta grafica (unos 4.6 GB)'
+        Write-Host '    licencia Apache 2.0: https://huggingface.co/tencent/Hy-MT2-7B-GGUF' -ForegroundColor DarkGray
+        if (-not (Install-TranslationLevel -Nombre 'Hy-MT2 7B' -Items @($translateCatalog.Modelo7B))) { $ok = $false }
+    }
+    return $ok
+}
+
 # Lo que se ve aqui queda tambien en un archivo, para poder ver despues que fallo
 # (por ejemplo, en el equipo de otra persona).
 if (-not (Test-Path -LiteralPath $paths.RuntimeDir)) {
@@ -318,23 +583,35 @@ try {
     Write-Host 'Read Aloud - instalacion' -ForegroundColor White
     Write-Host ("Carpeta destino: {0}" -f $paths.BaseDir) -ForegroundColor Gray
 
-    Write-Step 'Motor Piper'
-    Install-Piper
+    if (-not $OnlyTranslation) {
+        Write-Step 'Motor Piper'
+        Install-Piper
 
-    Write-Step 'Voz en espanol'
-    Install-Voice -Name $settings.VoiceEs
+        Write-Step 'Voz en espanol'
+        Install-Voice -Name $settings.VoiceEs
 
-    if (-not $SkipEnglish) {
-        Write-Step 'Voz en ingles'
-        Write-Host '    sin esta voz, el texto en ingles se lee con acento espanol' -ForegroundColor DarkGray
-        Install-Voice -Name $settings.VoiceEn
+        if (-not $SkipEnglish) {
+            Write-Step 'Voz en ingles'
+            Write-Host '    sin esta voz, el texto en ingles se lee con acento espanol' -ForegroundColor DarkGray
+            Install-Voice -Name $settings.VoiceEn
+        }
+
+        Write-Step 'Visual C++ (lo que necesita Piper para arrancar)'
+        Install-VcRuntime
+
+        Write-Step 'Prueba de funcionamiento'
+        if (-not (Test-Installation)) { throw 'La prueba de funcionamiento no genero audio.' }
     }
 
-    Write-Step 'Visual C++ (lo que necesita Piper para arrancar)'
-    Install-VcRuntime
-
-    Write-Step 'Prueba de funcionamiento'
-    if (-not (Test-Installation)) { throw 'La prueba de funcionamiento no genero audio.' }
+    # La traduccion va despues de las voces: si falla, la lectura funciona.
+    if (-not $SkipTranslation) {
+        if (-not (Install-Translation)) {
+            $exitCode = 2
+            Write-Host ''
+            Write-Host 'La lectura funciona, pero alguna parte de la traduccion no se pudo instalar (arriba esta el motivo).' -ForegroundColor Yellow
+            Write-Host 'Se puede reintentar: menu Inicio, "Instalar o reparar las voces", o .\setup.ps1' -ForegroundColor Yellow
+        }
+    }
 
     Write-Host ''
     Write-Host 'Todo listo.' -ForegroundColor Green
